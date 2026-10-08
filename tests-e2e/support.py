@@ -107,7 +107,7 @@ class Stack:
         build = (VENDOR / v.tarball).exists()
         if not build and _run("docker", "image", "inspect", v.image).returncode != 0:
             pytest.skip(
-                f"NAOqi {v.name}: no suite in docker/vendor/ and no {v.image} image"
+                f"NAOqi {v.name}: no suite in docker/vendor/ (uv run nao-sim-fetch-suite {v.name}) and no {v.image} image"
             )
         if _port_taken(9559):
             pytest.fail("127.0.0.1:9559 is taken: stop the running nao-sim stack first")

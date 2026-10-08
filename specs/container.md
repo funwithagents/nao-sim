@@ -6,8 +6,10 @@ code:
   - docker/entrypoint.sh
   - docker/suite-2.1.sha256
   - docker/suite-2.8.sha256
+  - src/nao_sim/suite.py
 tests:
   - tests-e2e/test_speech_live.py
+  - tests/test_suite.py
 ---
 
 # NAOqi container
@@ -22,7 +24,12 @@ The container gives the desktop `naoqi-bin` from the user's Choregraphe suite th
 
 ### Suites and licensing
 
-- The user supplies the suite tarball in `docker/vendor/` (gitignored). The image is built locally, tagged locally (`nao-sim/naoqi:<version>`) and never pushed: it contains Aldebaran's software.
+- The suite tarball sits in `docker/vendor/` (gitignored). The image is built locally, tagged locally (`nao-sim/naoqi:<version>`) and never pushed: it contains Aldebaran's software.
+- `nao-sim-fetch-suite [2.1] [2.8] [--vendor DIR]` (`src/nao_sim/suite.py`, default: both versions into `docker/vendor/`) downloads each pinned suite from Aldebaran's own GitHub repository (public, Git LFS, served from `media.githubusercontent.com`). It is the same file a user would download by hand, kept on their machine only, so nothing is redistributed. The user may still place the tarball by hand.
+  - A file already there with the pinned hash is kept (no download), so the command is cheap to re-run.
+  - A file there with another hash (a Git LFS pointer, a partial copy) is an error and is left untouched; the user deletes it to download again.
+  - A download goes to `<file>.part`, is hashed while it streams, and takes the final name only if the hash matches; otherwise it is deleted and the command fails (exit 1).
+  - The pinned name and hash are read from `docker/suite-<version>.sha256` (`<sha256>  <file>`, so `shasum -c` works too); the URL is the repository's LFS media path plus that name.
 - Pinned sources and hashes:
 
 | Version | Source | File | SHA-256 |

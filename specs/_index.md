@@ -16,7 +16,7 @@ Built and tested on both versions: the container, the service-replacement mechan
 |---|---|---|
 | [project.md](project.md) | Project structure and tooling: Python version, packaging with uv, layout conventions | Implemented |
 | [testing.md](testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, a live tier that drives its own stack per NAOqi version | Implemented |
-| [container.md](container.md) | NAOqi 2.1 and 2.8 images, suite pinning, single-port network layout, compose, the entrypoint's configuration interface | Implemented |
+| [container.md](container.md) | NAOqi 2.1 and 2.8 images, suite pinning and download, single-port network layout, compose, the entrypoint's configuration interface | Implemented |
 | [service-replacement.md](service-replacement.md) | Loading override modules into NAOqi, `ALModule` vs qi service per version, replacing a built-in, calling host-registered services | Implemented |
 | [speech.md](speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock | Implemented |
 | [tts-engine.md](tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the sound card | Implemented |

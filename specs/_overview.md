@@ -67,13 +67,13 @@ The code is MIT. Nothing from Aldebaran is in the repository, a package or a pub
 
 | Asset | Source | How nao-sim uses it |
 | --- | --- | --- |
-| Choregraphe suite (`naoqi-bin`, the Python 2.7 SDK) | Aldebaran's downloads and GitHub repositories, under Aldebaran's terms | Supplied by the user in `docker/vendor/` (gitignored), hash-pinned; the image is built and tagged locally and never pushed |
-| Robot packages (`animations`, the sound set) | Only inside the robot system image | Supplied by the user as `.pkg` files, installed into the running container; never in the repository or the image |
+| Choregraphe suite (`naoqi-bin`, the Python 2.7 SDK) | Aldebaran's downloads and GitHub repositories, under Aldebaran's terms | Downloaded from Aldebaran's GitHub repositories into `docker/vendor/` (gitignored) by `nao-sim-fetch-suite`, or placed there by the user, hash-pinned; the image is built and tagged locally and never pushed |
+| Robot packages (`animations`, the sound set) | Only inside the robot system images (`.opn`, public in the same two repositories) | Installed by the user into the running sim as on a robot; never in the repository or the image |
 | NAO meshes and textures (CC BY-NC-ND 4.0) | `ros-naoqi/nao_meshes` installer | Never touched by nao-sim: nao-viewer fetches them after a typed license acceptance and keeps them in the user's data directory |
 | libqi and its Python 3 bindings (BSD-3-Clause) | [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python), a fork of Aldebaran's libqi | Prebuilt wheels from the fork's GitHub Releases, a runtime dependency |
 
 - `.gitignore` covers suite tarballs, `docker/vendor/`, meshes and textures. An automated asset guard (tree, wheel, sdist and Docker build context) is planned.
-- Open: whether `nao-sim up` may download the suite itself after a typed acceptance, instead of requiring the user to supply it (to check against the suite's EULA and the license notes of Aldebaran's repositories).
+- The suite download fetches Aldebaran's own public files to the user's machine, as the user would by hand; nothing is redistributed. See [container.md](container.md).
 
 ## NAOqi 2.1 and 2.8
 
@@ -94,7 +94,7 @@ Specified in [container.md](container.md). Still to build:
 
 - **`NaoSim` status service** (an override module): reports the nao-sim version, the NAOqi version and the device sources, and publishes them in ALMemory (`NaoSim/Version`, `NaoSim/Camera/Source`, `NaoSim/Audio/Channels`, `NaoSim/Perception/*`). The desktop `naoqi-bin` has no `ALSystem`, so this is how a client learns the version and that the target is nao-sim. nao-viewer already relies on it: its pose source identifies the target as `nao-sim` when the `NaoSim` service exists, and reads the version from `NaoSim/Version`. The service name and that key are therefore a contract between the two packages.
 - **Healthcheck**: a Docker healthcheck calling the `NaoSim` service.
-- **Robot packages**: the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs through `ALBehaviorManager`) and the Aldebaran sound set are not in the Choregraphe suite and are not published as standalone files. The user supplies them as `.pkg` files (for example zipped from their own robot's package store), and nao-sim installs them with `PackageManager.install` in the container (the suite's PackageManager is present and empty).
+- **Robot packages**: the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs through `ALBehaviorManager`) and the Aldebaran sound set are not in the Choregraphe suite and are not published as standalone files (they are inside the public robot images, `.opn`). nao-sim does not ship or fetch them: the user installs their own `.pkg` files into the running sim exactly as on a robot (Choregraphe, or `PackageManager.install` over qi). nao-sim only has to make that work: the suite's PackageManager is present and empty.
 - **Camera source**: pin `VideoInput.xml` to `SimulatorCam` in the image. The desktop suites already accept `putImage` as shipped (see [Media](#media-camera-and-microphone)).
 
 ## Host services
@@ -270,8 +270,7 @@ Two tiers ([testing.md](testing.md)): a fast, deterministic `tests/` tier with n
 
 ## Open questions and risks
 
-- [ ] **Robot packages**: confirm the on-robot location of the `animations` package and the sound set, and that a `.pkg` zipped from it installs with `PackageManager.install` in the container.
-- [ ] **Suite download**: whether `nao-sim up` may fetch the suite after a typed acceptance (see [Licensing](#licensing)).
+- [ ] **Robot packages**: confirm that the `animations` and sound-set `.pkg` files install into the running sim as on a robot (Choregraphe and `PackageManager.install`), on 2.1 and 2.8.
 - [ ] **libqi wheels**: distribution to pip users, and platform coverage (Windows, Intel macOS, Linux arm64, glibc below 2.34, macOS below 15, Python 3.14).
 - [ ] **Connect retries**: `qi.Session.connect()` from the libqi 3 wheels fails about once in three against NAOqi 2.1 (`disconnected`, instant); clients retry. The root cause in the fork is open.
 - [ ] **libqi fork, legacy clients**: the fork's server binds objects only after a service-0 capability message that libqi 2.1 clients never send, so a 2.1 client opening a fresh connection to a libqi 3 service fails. Not needed by this design; patch only if a use case appears.

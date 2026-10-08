@@ -14,7 +14,8 @@ Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4, see [spike/RESULTS.
 - `docker/modules/`: Python 2.7 modules loaded inside NAOqi: `nao_sim_tts_core` (tag parsing, engine call, events), `nao_sim_tts_almodule` (2.1, `ALModule`), `nao_sim_tts_qiservice` (2.8, qi service).
 - `docker/tts/`: the speech engine container (Piper + eSpeak NG, `POST /say`, streams PCM to the host sound card).
 - `src/nao_sim/soundcard.py`: the host sound card (`nao-sim-soundcard`), a dumb PCM player with `--record` and `--silent` for tests.
-- `docker/vendor/`: gitignored; put `choregraphe-suite-2.1.4.13-linux64.tar.gz` and/or `choregraphe-suite-2.8.7.4-linux64.tar.gz` here (hashes in `docker/suite-*.sha256`).
+- `src/nao_sim/suite.py`: `nao-sim-fetch-suite`, downloads the pinned suites from Aldebaran's GitHub repositories into `docker/vendor/` and checks their hashes; keeps a suite already there.
+- `docker/vendor/`: gitignored; holds `choregraphe-suite-2.1.4.13-linux64.tar.gz` and/or `choregraphe-suite-2.8.7.4-linux64.tar.gz` (hashes in `docker/suite-*.sha256`), fetched or placed by hand.
 - `tests/`, `tests-e2e/`: the fast tier and the live tier, which starts the containers itself.
 
 ## Run
@@ -23,7 +24,9 @@ Python 3.12 or 3.13 on macOS (arm64) or Linux (x86_64): the libqi wheels (`qi`, 
 [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python)) exist for those only.
 
 ```bash
-uv sync --dev && uv run nao-sim-soundcard &                                 # host sound card on :9562
+uv sync --dev
+uv run nao-sim-fetch-suite          # both suites into docker/vendor/ (or: 2.1 / 2.8); skips those already there
+uv run nao-sim-soundcard &                                                    # host sound card on :9562
 docker compose -f docker/compose.yaml up -d --build                           # tts + NAOqi 2.1
 docker compose -f docker/compose.yaml --profile 2.8 up -d --build tts naoqi28  # tts + NAOqi 2.8 (same host port)
 docker logs -f nao-sim-naoqi        # wait for "[entrypoint] nao-sim ready"
