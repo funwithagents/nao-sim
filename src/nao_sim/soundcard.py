@@ -8,15 +8,10 @@ the audio device. Playback state is exposed on stdout as one JSON line per start
 """
 import argparse
 import json
-import queue
-import socket
 import socketserver
-import sys
 import threading
 import time
 import wave
-
-import numpy as np
 
 
 class SoundCard:
@@ -40,7 +35,7 @@ class SoundCard:
         if self._wav is None or self._wav_rate != rate:
             if self._wav:
                 self._wav.close()
-            self._wav = wave.open(self.record, "wb")
+            self._wav = wave.open(self.record, "wb")  # noqa: SIM115 (long-lived, closed on rate change or exit)
             self._wav.setnchannels(1); self._wav.setsampwidth(2); self._wav.setframerate(rate)
             self._wav_rate = rate
 
@@ -89,6 +84,7 @@ class Handler(socketserver.StreamRequestHandler):
             header = json.loads(line.decode() or "{}")
         except ValueError:
             return
+        assert isinstance(self.server, Server)
         card = self.server.card
         if header.get("cmd") == "stop":
             card.stop(); return
@@ -100,6 +96,10 @@ class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
+    def __init__(self, addr, card):
+        super().__init__(addr, Handler)
+        self.card = card
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="nao-sim host sound card")
@@ -108,8 +108,7 @@ def main(argv=None):
     ap.add_argument("--silent", action="store_true", help="do not open the audio device")
     a = ap.parse_args(argv)
     host, port = a.listen.rsplit(":", 1)
-    srv = Server((host, int(port)), Handler)
-    srv.card = SoundCard(record=a.record, silent=a.silent)
+    srv = Server((host, int(port)), SoundCard(record=a.record, silent=a.silent))
     print(json.dumps({"event": "listening", "addr": a.listen, "record": a.record, "silent": a.silent}), flush=True)
     try:
         srv.serve_forever()

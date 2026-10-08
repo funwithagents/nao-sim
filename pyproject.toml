@@ -19,3 +19,26 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nao_sim"]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+target-version = "py310"  # keep in sync with requires-python
+# docker/modules/ is Python 2.7 running inside NAOqi (naoqi, qi, urllib2): not linted here.
+extend-exclude = ["docker/modules"]
+
+[tool.pytest.ini_options]
+# Only the fast, deterministic tier is collected by default; tests-e2e/ is opt-in.
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["src", "tests", "tests-e2e"]  # type-check test code too, not just src
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.10"
+typeCheckingMode = "standard"

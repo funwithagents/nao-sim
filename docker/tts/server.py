@@ -14,7 +14,6 @@ import io
 import json
 import os
 import socket
-import struct
 import subprocess
 import threading
 import time
@@ -186,22 +185,24 @@ class Handler(BaseHTTPRequestHandler):
         # Stream in the background so the reply (and the caller's clock) starts with the audio.
         th = threading.Thread(target=self._safe_stream, args=(pcm, sr), daemon=True)
         th.start()
-        print("say: %s %.2fs audio, synth %.2fs, marks %s" % (used, duration, synth, marks))
+        print(f"say: {used} {duration:.2f}s audio, synth {synth:.2f}s, marks {marks}")
         self._json(200, {"duration": round(duration, 4), "marks": marks, "rate": sr, "engine": used, "synth_time": round(synth, 3)})
 
     def _safe_stream(self, pcm, sr):
         try:
             stream_to_soundcard(pcm, sr)
         except OSError as e:
-            print("sound card unreachable (%s): audio dropped" % e)
+            print(f"sound card unreachable ({e}): audio dropped")
 
     def log_message(self, fmt, *args):  # quieter
         pass
 
 
 if __name__ == "__main__":
-    print("nao-sim tts: engine=%s soundcard=%s voices=%s" % (DEFAULT_ENGINE, SOUNDCARD, VOICES))
+    print(f"nao-sim tts: engine={DEFAULT_ENGINE} soundcard={SOUNDCARD} voices={VOICES}")
     if DEFAULT_ENGINE == "piper":  # pre-load the voices so the first say() does not pay for it
-        for lang in VOICES:
-            t = time.time(); piper_voice(lang); print("loaded %s in %.2fs" % (VOICES[lang], time.time() - t))
+        for lang, name in VOICES.items():
+            t = time.time()
+            piper_voice(lang)
+            print(f"loaded {name} in {time.time() - t:.2f}s")
     ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
