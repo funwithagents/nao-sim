@@ -2,7 +2,7 @@
 
 Start at [specs/_index.md](specs/_index.md) for an overview of the specs and their status before making design decisions or writing code — it lists each spec and whether it's still open ("Draft"/"Not started"), design-validated ("Stable"), or built ("Implemented"). For what's been (or is being) built, see [plans/_index.md](plans/_index.md), which lists each implementation plan and its status ("Todo"/"In progress"/"Done").
 
-The cross-package architecture (nao-sim and the nao-viewer package it depends on), the licensing rules and every measured NAOqi 2.1/2.8 fact live in [specs/_overview.md](specs/_overview.md). Concept specs are carved out of it as work starts on them; until a concept has its own spec, the overview is the reference.
+The overview of nao-sim (architecture, licensing rules, NAOqi 2.1/2.8 differences, the state of every concept, milestones) is [specs/_overview.md](specs/_overview.md). Concept specs are carved out of it as work starts on them; until a concept has its own spec, the overview is the reference.
 
 **Never commit Aldebaran assets**: Choregraphe suite tarballs (`docker/vendor/`, gitignored), NAO meshes or textures, robot packages, or anything derived from them. Images built from the suite are local only and never pushed.
 

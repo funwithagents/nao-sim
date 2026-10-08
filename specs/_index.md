@@ -1,6 +1,12 @@
 # nao-sim
 
-nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe suite, 2.1.4.13 or 2.8) runs in a local Docker container, and Python 2.7 override modules loaded inside its process replace the services a desktop virtual robot lacks (`ALTextToSpeech`, `ALAudioDevice`, perception), so the container behaves like a NAO in its API on port 9559. The host is a dumb device: it plays PCM, captures microphone and camera, and renders the MuJoCo world; every NAOqi-specific decision stays in the containers. Any qi client (Choregraphe, existing scripts, client libraries) connects to nao-sim exactly as it would to a NAO, with no nao-sim-specific code. The MuJoCo world comes from the nao-viewer package; the cross-package design is in [_overview.md](_overview.md).
+nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe suite, 2.1.4.13 or 2.8.7.4) runs in a local Docker container, and Python 2.7 override modules loaded inside it replace the services the desktop NAOqi lacks, so the container behaves like a NAO in its API on `127.0.0.1:9559`. Any qi client (Choregraphe, existing scripts, client libraries) connects to it exactly as it would to a NAO, with no nao-sim-specific code.
+
+- **Containers**: the NAOqi image per version and a `tts` speech engine. Every NAOqi-specific decision stays there.
+- **Host**: dumb devices (the sound card today; microphone, webcam and the perception feed planned), Python 3.12–3.13 with libqi.
+- **Simulated world** (planned, optional): the `nao-sim[viewer]` extra pulls nao-viewer, whose sim mode poses the NAO model from nao-sim's NAOqi in a scene and renders the head cameras that nao-sim injects into `ALVideoDevice`.
+
+Built and tested on both versions: the container, the service-replacement mechanism and the speech path (`ALTextToSpeech` replacement, `tts` engine, sound card). Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
 
 ## Specs
 
@@ -16,7 +22,7 @@ nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe su
 | [tts-engine.md](tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the sound card | Implemented |
 | [soundcard.md](soundcard.md) | Host sound card: TCP PCM protocol, newest-stream-wins, stop, `--record`/`--silent` | Implemented |
 
-[_overview.md](_overview.md) is the full toolkit specification (architecture, licensing, model pipeline, nao-viewer, nao-sim, measured NAOqi 2.1/2.8 behaviour, milestones). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then points to the spec. Still only in the overview for nao-sim: host link, `ALAudioDevice`, video injection, `ALAudioPlayer`, perception, `NaoSim` status service, CLI, capability probe.
+[_overview.md](_overview.md) is the overview of nao-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: host services and host link, the simulated world (nao-viewer sim mode), `NaoSim` status service and healthcheck, robot packages, `ALAudioDevice`, video injection, `ALAudioPlayer`, perception, speech recognition, CLI, capability probe.
 
 Each spec also opens with a YAML **frontmatter** block declaring the `code:` and `tests:` files it governs — the spec → code/tests mapping the spec-drift checks use to scope what they compare. Keep it current when files move, and see [AGENTS.md](../AGENTS.md) ("Spec frontmatter") for the full convention.
 

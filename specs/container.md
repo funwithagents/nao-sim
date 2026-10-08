@@ -107,7 +107,7 @@ Sequence:
 ## Open questions
 
 1. **Readiness timeout.** After 120 failed polls the entrypoint carries on as if NAOqi were ready instead of failing. It should exit non-zero, so the container shows as failed.
-2. **Healthcheck.** There is no Docker healthcheck. It needs the planned `NaoSim` status service (no `ALSystem` on the desktop `naoqi-bin`); see [_overview.md](_overview.md), "nao-sim".
+2. **Healthcheck.** There is no Docker healthcheck. It needs the planned `NaoSim` status service (no `ALSystem` on the desktop `naoqi-bin`); see [_overview.md](_overview.md), "Container".
 3. **Build context size.** The build context is `docker/`, so every build uploads both suite tarballs in `vendor/` (about 1.7 GB). A per-Dockerfile `.dockerignore` (`Dockerfile.naoqi-2.1.dockerignore`) that keeps only the version's own tarball fixes it.
 4. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
 5. **Starting the stack.** `nao-sim up` and `down` (build if needed, pick the version, start the host services) are not built; today it is `docker compose` by hand (see [README.md](../README.md)).
