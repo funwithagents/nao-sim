@@ -8,7 +8,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 
 | Plan | Description | Status |
 |---|---|---|
-| [202610081257_baseline-tests-speech-path.md](202610081257_baseline-tests-speech-path.md) | Tests for the spike-built container and speech path (fast tier + live tier on 2.1 and 2.8), stop-during-synthesis fix; promotes five specs to Implemented | Todo |
+| [202610081257_baseline-tests-speech-path.md](202610081257_baseline-tests-speech-path.md) | Tests for the spike-built container and speech path (fast tier + live tier on 2.1 and 2.8), stop-during-synthesis fix, Python 3.12 and libqi dependency, self-managed live stacks; promotes seven specs to Implemented | Done |
 
 ## Status legend
 

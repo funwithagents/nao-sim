@@ -7,11 +7,12 @@ code:
   - docker/suite-2.1.sha256
   - docker/suite-2.8.sha256
 tests:
+  - tests-e2e/test_speech_live.py
 ---
 
 # NAOqi container
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 
@@ -90,7 +91,7 @@ Sequence:
 
 ### Desktop NAOqi facts the rest of nao-sim relies on
 
-- No `ALSystem` service and no version key in ALMemory; `RobotConfig/Body/Type` is absent (2.1 and 2.8). Version and target must come from a nao-sim service.
+- No `ALSystem` service and no version key in ALMemory; `RobotConfig/Body/Type` is absent (2.1 and 2.8). The version (and the fact that the target is nao-sim) must come from a nao-sim service.
 - No `ALAudioDevice` on either version; `ALAudioPlayer` is a stub that spawns `/opt/naoqi/bin/sndfile-play`, which fails in Docker.
 - 2.1 has `Device/SubDeviceList/*` keys in ALMemory; the 2.8 virtual robot has none.
 

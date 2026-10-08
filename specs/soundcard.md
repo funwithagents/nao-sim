@@ -2,11 +2,13 @@
 code:
   - src/nao_sim/soundcard.py
 tests:
+  - tests/test_soundcard.py
+  - tests-e2e/test_speech_live.py
 ---
 
 # Host sound card
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 

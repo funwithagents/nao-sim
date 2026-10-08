@@ -14,7 +14,11 @@ import re
 import sys
 import threading
 import time
-import urllib2
+
+try:
+    import urllib2
+except ImportError:  # Python 3, for the host-side tests
+    import urllib.request as urllib2
 
 TTS_URL = os.environ.get("NAO_SIM_TTS_URL", "http://tts:8080")
 FALLBACK_SECONDS_PER_TOKEN = 0.3
@@ -72,14 +76,14 @@ class Speaker(object):
 
     # -- engine --------------------------------------------------------------
     def _engine_say(self, items, rate, pitch):
-        body = json.dumps({"language": self.language, "rate": rate, "pitch": pitch, "items": items})
+        body = json.dumps({"language": self.language, "rate": rate, "pitch": pitch, "items": items}).encode("utf-8")
         req = urllib2.Request(TTS_URL + "/say", body, {"Content-Type": "application/json"})
         resp = urllib2.urlopen(req, timeout=30)
         return json.loads(resp.read())
 
     def _engine_stop(self):
         try:
-            urllib2.urlopen(urllib2.Request(TTS_URL + "/stop", "{}", {"Content-Type": "application/json"}), timeout=5).read()
+            urllib2.urlopen(urllib2.Request(TTS_URL + "/stop", b"{}", {"Content-Type": "application/json"}), timeout=5).read()
         except Exception as e:  # noqa: BLE001
             self.log(method="engine-stop-failed", error=repr(e))
 
@@ -88,6 +92,7 @@ class Speaker(object):
         with self._lock:
             self._id += 1
             sid = self._id
+            self._stop.clear()  # before the engine call: a stopAll during synthesis must not be lost
             self.log(method="say", id=sid, text=text, lang=self.language)
             items, rate, pitch = parse(text, self.state)
             ev = self.raise_event
@@ -116,7 +121,6 @@ class Speaker(object):
             ev("ALTextToSpeech/Status", [sid, "started"])
             ev("ALTextToSpeech/CurrentSentence", text)
             self.signal("_started", text)
-            self._stop.clear()
             interrupted = False
             for off, mk in marks:
                 if self._stop.wait(max(0.0, t0 + off - time.time())):

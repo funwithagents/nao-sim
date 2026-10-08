@@ -4,11 +4,13 @@ code:
   - docker/modules/nao_sim_tts_almodule.py
   - docker/modules/nao_sim_tts_qiservice.py
 tests:
+  - tests/test_tts_core.py
+  - tests-e2e/test_speech_live.py
 ---
 
 # Speech: ALTextToSpeech replacement
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 
@@ -19,7 +21,7 @@ The desktop virtual robot's built-in TTS is a simulator, so it is replaced insid
 - asks the engine ([tts-engine.md](tts-engine.md)) to speak; the engine streams to the host sound card ([soundcard.md](soundcard.md));
 - raises the events on its own clock, from the timings the engine returns.
 
-Only one request and one reply cross from the NAOqi container per sentence, and no events travel back. On a real robot nothing changes: the robot speaks.
+Only one request and one reply cross from the NAOqi container per sentence, and no events travel back. Clients call `say()` and listen to the events exactly as on a NAO: nothing in them is nao-sim-specific.
 
 ## Decided
 
@@ -59,7 +61,7 @@ Only one request and one reply cross from the NAOqi container per sentence, and 
   3. `CurrentBookMark N` at each marker offset.
   4. At the end: `TextInterrupted 1` (only if stopped), `Status [id, "done"]`, `CurrentSentence ""`, `TextDone 1`, `CurrentBookMark 0`, `TextStarted 0`.
 - **Blocking**: `say()` returns when the engine's `duration` has elapsed from the reply, or on `stopAll`. Calls are serialized by a lock: a second `say` waits until the first is done.
-- **Stop**: `stopAll()` ends the current `say` at once. Bookmarks not yet reached are not raised. The engine's `/stop` cuts the audio (measured within about 0.1 s).
+- **Stop**: `stopAll()` ends the current `say` at once, including while the engine is still synthesizing (the stop flag is cleared when `say()` starts, not when the engine replies). Bookmarks not yet reached are not raised. The engine's `/stop` cuts the audio (measured within about 0.1 s).
 - **Tags** (`nao_sim_tts_core.parse`):
   - `\pau=N\` becomes a pause item; `\mrk=N\` and `\mrkpause=N\` become mark items.
   - `\rspd=N\` and `\vct=N\` set rate and pitch; `\rst\` resets both to 100.
@@ -79,8 +81,7 @@ Only one request and one reply cross from the NAOqi container per sentence, and 
 
 ## Open questions
 
-1. **Stop during synthesis is lost** (defect). `Speaker.say` clears its stop flag after the engine replies, so a `stopAll` that arrives while the engine is still synthesizing (0.1–0.7 s) is dropped and the sentence plays in full. The fix is to clear the flag when `say()` starts. Scheduled in the baseline plan.
-2. **Missing methods.** `getLanguageEncoding` and `sayToFileAndPlay` are not implemented, and the box library's `stop` is not a method of either replacement: 2.1 maps `stop` to the `ALModule` generic. Check what the Say box's `stop` does against the replacement.
-3. **Microphone gate** (mute the microphone while playing, plus a 300 ms tail) and **subtitles** in the sim window are not built. Both depend on the host link.
-4. **Duration tolerance** against real-robot `say()` (proposed ±20% per sentence) is not agreed, and the reference durations from a real robot have not been measured.
-5. **Word events**: `CurrentWord` and `PositionOfCurrentWord` are not raised in v1 (see [tts-engine.md](tts-engine.md)).
+1. **Missing methods.** `getLanguageEncoding` and `sayToFileAndPlay` are not implemented, and the box library's `stop` is not a method of either replacement: 2.1 maps `stop` to the `ALModule` generic. Check what the Say box's `stop` does against the replacement.
+2. **Microphone gate** (mute the microphone while playing, plus a 300 ms tail) and **subtitles** in the sim window are not built. Both depend on the host link.
+3. **Duration tolerance** against a NAO's own `say()` (proposed ±20% per sentence) is not agreed, and no reference durations are available yet.
+4. **Word events**: `CurrentWord` and `PositionOfCurrentWord` are not raised in v1 (see [tts-engine.md](tts-engine.md)).

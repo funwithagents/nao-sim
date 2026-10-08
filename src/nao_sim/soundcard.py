@@ -76,6 +76,12 @@ class SoundCard:
         self._stop.set()
         self._log(event="stop-request")
 
+    def close(self):
+        """Finish the recording, if any."""
+        if self._wav:
+            self._wav.close()
+            self._wav = None
+
 
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
@@ -115,8 +121,7 @@ def main(argv=None):
     except KeyboardInterrupt:
         pass
     finally:
-        if srv.card._wav:
-            srv.card._wav.close()
+        srv.card.close()
 
 
 if __name__ == "__main__":

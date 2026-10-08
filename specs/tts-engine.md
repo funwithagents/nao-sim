@@ -3,11 +3,13 @@ code:
   - docker/tts/server.py
   - docker/tts/Dockerfile
 tests:
+  - tests/test_tts_engine.py
+  - tests-e2e/test_speech_live.py
 ---
 
 # TTS engine container
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 

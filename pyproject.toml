@@ -3,10 +3,11 @@ name = "nao-sim"
 version = "0.0.1"
 description = "A NAO in a box: NAOqi in Docker with host-side devices (sound card, camera, viewer)."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12,<3.14"  # capped by the libqi wheels (cp312, cp313)
 license = { text = "MIT" }
 dependencies = [
     "numpy",
+    "qi==3.1.6",
     "sounddevice",
 ]
 
@@ -27,10 +28,27 @@ dev = [
     "ruff>=0.16.10",
 ]
 
+# libqi Python 3 wheels come from the GitHub Releases of the funwithagents fork, not PyPI
+# (PyPI's `qi` is Aldebaran's older 3.1.5). Only macOS arm64 and Linux x86_64 wheels exist.
+[tool.uv]
+environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.uv.sources]
+qi = [
+    { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp312-cp312-macosx_15_0_arm64.whl", marker = "sys_platform == 'darwin' and python_version == '3.12'" },
+    { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp313-cp313-macosx_15_0_arm64.whl", marker = "sys_platform == 'darwin' and python_version == '3.13'" },
+    { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp312-cp312-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.12'" },
+    { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp313-cp313-manylinux_2_34_x86_64.whl", marker = "sys_platform == 'linux' and python_version == '3.13'" },
+]
+
 [tool.ruff]
-target-version = "py310"  # keep in sync with requires-python
+target-version = "py312"  # keep in sync with requires-python
 # docker/modules/ is Python 2.7 running inside NAOqi (naoqi, qi, urllib2): not linted here.
-extend-exclude = ["docker/modules"]
+# spike/ holds local, untracked investigation scripts.
+extend-exclude = ["docker/modules", "spike"]
 
 [tool.pytest.ini_options]
 # Only the fast, deterministic tier is collected by default; tests-e2e/ is opt-in.
@@ -40,5 +58,7 @@ testpaths = ["tests"]
 include = ["src", "tests", "tests-e2e"]  # type-check test code too, not just src
 venvPath = "."
 venv = ".venv"
-pythonVersion = "3.10"
+pythonVersion = "3.12"
+# Host-side tests import the container code by module name (tests/conftest.py adds these to sys.path).
+extraPaths = ["docker/modules", "docker/tts"]
 typeCheckingMode = "standard"

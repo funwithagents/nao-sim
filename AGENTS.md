@@ -2,7 +2,7 @@
 
 Start at [specs/_index.md](specs/_index.md) for an overview of the specs and their status before making design decisions or writing code — it lists each spec and whether it's still open ("Draft"/"Not started"), design-validated ("Stable"), or built ("Implemented"). For what's been (or is being) built, see [plans/_index.md](plans/_index.md), which lists each implementation plan and its status ("Todo"/"In progress"/"Done").
 
-The cross-package architecture (nao-bridge, nao-sim, nao-viewer), the licensing rules and every measured NAOqi 2.1/2.8 fact live in [specs/_overview.md](specs/_overview.md). Concept specs are carved out of it as work starts on them; until a concept has its own spec, the overview is the reference.
+The cross-package architecture (nao-sim and the nao-viewer package it depends on), the licensing rules and every measured NAOqi 2.1/2.8 fact live in [specs/_overview.md](specs/_overview.md). Concept specs are carved out of it as work starts on them; until a concept has its own spec, the overview is the reference.
 
 **Never commit Aldebaran assets**: Choregraphe suite tarballs (`docker/vendor/`, gitignored), NAO meshes or textures, robot packages, or anything derived from them. Images built from the suite are local only and never pushed.
 
@@ -18,7 +18,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | `specs/` | Pre-implementation design docs, one per concept, each with a `**Status:**` — indexed by [specs/_index.md](specs/_index.md) |
 | `plans/` | Implementation plans turning settled specs into buildable steps — indexed by [plans/_index.md](plans/_index.md) |
 | `tests/` | Fast, deterministic, no-network tests; mirrors the `src/nao_sim/` module structure |
-| `tests-e2e/` | Opt-in live tests against a running nao-sim container or a real NAO (not collected by default `pytest`) |
+| `tests-e2e/` | Opt-in live tests that start the nao-sim containers themselves, once per NAOqi version (not collected by default `pytest`) |
 | `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh` ([container.md](specs/container.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/service-replacement.md), [speech.md](specs/speech.md)); `tts/`, the speech engine container ([tts-engine.md](specs/tts-engine.md)); `vendor/`, user-supplied suite tarballs (gitignored) |
 | `spike/` | Local-only investigation scripts and measurement log (untracked, not committed); findings are folded into the specs |
 
@@ -72,7 +72,7 @@ The mapping is **many-to-many**: a file can be governed by several specs, so the
 
 ### Live/e2e tests
 
-Some tests need a running NAOqi: a nao-sim container (built from the user's Choregraphe suite) or a real NAO. They live in `tests-e2e/`, a directory separate from `tests/`, so the default `uv run pytest` never runs them — no Docker, suite or robot is needed for the normal dev loop. Run them explicitly, and only when you actually want to verify against a live target. Tests whose target is not configured (e.g. `NAO_SIM_URL` unset) should **skip**, not fail. Remember that libqi 3 `connect()` against NAOqi 2.1 fails about one time in three: live tests connect with a retry.
+Some tests need the nao-sim containers running (built from the user's Choregraphe suite). They live in `tests-e2e/`, a directory separate from `tests/`, so the default `uv run pytest` never runs them — no Docker or suite is needed for the normal dev loop. Run them explicitly with `uv run pytest tests-e2e`: the tests bring up each NAOqi version's stack with `docker compose`, test it over qi on `127.0.0.1:9559` and take it down, so stop any stack (or `nao-sim-soundcard`) you started by hand first. A version whose suite or image is missing, or a machine without Docker, **skips**, not fails. Remember that libqi 3 `connect()` against NAOqi 2.1 fails about one time in three: live tests connect with a retry (`tests-e2e/support.connect`). nao-sim's job is to behave like a NAO in its API; the tests check that, and never target a real robot.
 
 ## Code that is not linted here
 

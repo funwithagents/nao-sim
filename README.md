@@ -15,15 +15,27 @@ Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4, see [spike/RESULTS.
 - `docker/tts/`: the speech engine container (Piper + eSpeak NG, `POST /say`, streams PCM to the host sound card).
 - `src/nao_sim/soundcard.py`: the host sound card (`nao-sim-soundcard`), a dumb PCM player with `--record` and `--silent` for tests.
 - `docker/vendor/`: gitignored; put `choregraphe-suite-2.1.4.13-linux64.tar.gz` and/or `choregraphe-suite-2.8.7.4-linux64.tar.gz` here (hashes in `docker/suite-*.sha256`).
-- `spike/`: host-side Python 3 probe scripts (need the libqi Python 3 wheel from funwithagents/libqi-python).
+- `tests/`, `tests-e2e/`: the fast tier and the live tier, which starts the containers itself.
 
 ## Run
 
+Python 3.12 or 3.13 on macOS (arm64) or Linux (x86_64): the libqi wheels (`qi`, from
+[funwithagents/libqi-python](https://github.com/funwithagents/libqi-python)) exist for those only.
+
 ```bash
-uv venv && uv pip install -e . && nao-sim-soundcard &                       # host sound card on :9562
+uv sync --dev && uv run nao-sim-soundcard &                                 # host sound card on :9562
 docker compose -f docker/compose.yaml up -d --build                           # tts + NAOqi 2.1
 docker compose -f docker/compose.yaml --profile 2.8 up -d --build tts naoqi28  # tts + NAOqi 2.8 (same host port)
 docker logs -f nao-sim-naoqi        # wait for "[entrypoint] nao-sim ready"
-python spike/host_probe.py tcp://127.0.0.1:9559
-python spike/drive_speech.py tcp://127.0.0.1:9559   # say, animated speech bookmarks, interruption
 ```
+
+Then connect any qi client to `tcp://127.0.0.1:9559`, as to a NAO.
+
+## Test
+
+```bash
+uv run pytest             # fast tier: no Docker, no suite
+uv run pytest tests-e2e   # live tier: builds, starts and stops the 2.1 and 2.8 stacks itself
+```
+
+Stop any stack or sound card started by hand before the live tier: it needs ports 9559 and 9562.

@@ -4,11 +4,12 @@ code:
   - docker/modules/nao_sim_tts_almodule.py
   - docker/modules/nao_sim_tts_qiservice.py
 tests:
+  - tests-e2e/test_speech_live.py
 ---
 
 # Service replacement
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 
@@ -55,7 +56,7 @@ A replacement registers under the built-in's name, after the built-in has left b
 
 Some overrides must call a service that a host client registered: for example, `ALAudioDevice` calls a subscriber's `processRemote`.
 
-- Go through the broker with `naoqi.ALProxy(<name>)`. NAOqi calls the host back over the socket the host already opened (libqi 2.1 `ClientServerSocket` capability). This is also why nao-mcp's audio sink works on a real robot.
+- Go through the broker with `naoqi.ALProxy(<name>)`. NAOqi calls the host back over the socket the host already opened (libqi 2.1 `ClientServerSocket` capability), the mechanism NAOqi uses for any service a connected client registers.
 - Never go through a module's own `qi.Session`. That opens a new connection to the host's advertised endpoints, and fails for two reasons: the host auto-listens on loopback only ("No endpoint available"), and the libqi 3 fork's server binds objects only after a service-0 capability message that 2.1 clients never send.
 - Measured on 2.1 (C++ `ALMemory.subscribeToEvent` callback and an in-process `ALProxy`: pass; own `qi.Session` and `qicli` from the container: fail). 2.8 is not re-measured.
 
