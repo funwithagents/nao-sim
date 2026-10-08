@@ -19,7 +19,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | `plans/` | Implementation plans turning settled specs into buildable steps — indexed by [plans/_index.md](plans/_index.md) |
 | `tests/` | Fast, deterministic, no-network tests; mirrors the `src/nao_sim/` module structure |
 | `tests-e2e/` | Opt-in live tests against a running nao-sim container or a real NAO (not collected by default `pytest`) |
-| `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh`; `modules/` (Python 2.7 override modules loaded inside NAOqi); `tts/` (speech engine container); `vendor/` (user-supplied suite tarballs, gitignored) |
+| `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh` ([container.md](specs/container.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/service-replacement.md), [speech.md](specs/speech.md)); `tts/`, the speech engine container ([tts-engine.md](specs/tts-engine.md)); `vendor/`, user-supplied suite tarballs (gitignored) |
 | `spike/` | Local-only investigation scripts and measurement log (untracked, not committed); findings are folded into the specs |
 
 ### `src/nao_sim/` modules
@@ -29,7 +29,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | Module | Role | Spec |
 |---|---|---|
 | `src/nao_sim/__init__.py` | Package glue (no spec needed) | — |
-| `src/nao_sim/soundcard.py` | Host sound card: TCP PCM player the containers stream into (`nao-sim-soundcard`) | [speech.md](specs/speech.md) |
+| `src/nao_sim/soundcard.py` | Host sound card: TCP PCM player the containers stream into (`nao-sim-soundcard`) | [soundcard.md](specs/soundcard.md) |
 
 **Keep this map current:** when you add, rename, or remove a top-level `src/nao_sim/` module or a root directory, update the map in the same change — same discipline as keeping spec/plan statuses honest (below). A test (`tests/test_project_map.py`) enforces that every `src/nao_sim/*.py` module appears here and vice-versa — and that the spec frontmatter (see below) stays honest too.
 

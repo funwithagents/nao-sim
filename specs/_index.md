@@ -10,9 +10,13 @@ nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe su
 |---|---|---|
 | [project.md](project.md) | Project structure and tooling: Python version, packaging with uv, layout conventions | Implemented |
 | [testing.md](testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, skip-without-credentials live tier | Implemented |
-| [speech.md](speech.md) | `ALTextToSpeech` replacement, `tts` engine container and host sound card: real-voice `say()` with NAOqi's events and timing | Draft |
+| [container.md](container.md) | NAOqi 2.1 and 2.8 images, suite pinning, single-port network layout, compose, the entrypoint's configuration interface | Stable |
+| [service-replacement.md](service-replacement.md) | Loading override modules into NAOqi, `ALModule` vs qi service per version, replacing a built-in, calling host-registered services | Stable |
+| [speech.md](speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock | Stable |
+| [tts-engine.md](tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the sound card | Stable |
+| [soundcard.md](soundcard.md) | Host sound card: TCP PCM protocol, newest-stream-wins, stop, `--record`/`--silent` | Stable |
 
-[_overview.md](_overview.md) is the full toolkit specification (architecture, licensing, model pipeline, nao-bridge, nao-viewer, nao-sim, measured NAOqi 2.1/2.8 behaviour, milestones). It is reference material without a status; concept specs are extracted from it as work on each concept starts.
+[_overview.md](_overview.md) is the full toolkit specification (architecture, licensing, model pipeline, nao-bridge, nao-viewer, nao-sim, measured NAOqi 2.1/2.8 behaviour, milestones). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then points to the spec. Still only in the overview for nao-sim: host link, `ALAudioDevice`, video injection, `ALAudioPlayer`, perception, `NaoSim` status service, CLI, capability probe.
 
 Each spec also opens with a YAML **frontmatter** block declaring the `code:` and `tests:` files it governs — the spec → code/tests mapping the spec-drift checks use to scope what they compare. Keep it current when files move, and see [AGENTS.md](../AGENTS.md) ("Spec frontmatter") for the full convention.
 
