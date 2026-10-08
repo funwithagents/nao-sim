@@ -110,9 +110,7 @@ class Stack:
                 f"NAOqi {v.name}: no suite in docker/vendor/ and no {v.image} image"
             )
         if _port_taken(9559):
-            pytest.fail(
-                "127.0.0.1:9559 is taken: stop the running nao-sim stack first"
-            )
+            pytest.fail("127.0.0.1:9559 is taken: stop the running nao-sim stack first")
         since = str(int(time.time()))
         cmd = [
             *self._compose,
