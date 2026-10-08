@@ -1,0 +1,42 @@
+# nao-sim: NAOqi 2.1.4.13 (NAO V4/V5) runtime container.
+# Built locally only, from the user's Choregraphe suite tarball placed in docker/vendor/.
+# Never push this image: it contains Aldebaran's software.
+FROM --platform=linux/amd64 ubuntu:14.04
+
+ARG SUITE=choregraphe-suite-2.1.4.13-linux64.tar.gz
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      libglib2.0-0 \
+      ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Extract the suite to /opt/naoqi (bin/, lib/, etc/naoqi/, share/).
+COPY vendor/${SUITE} /tmp/suite.tar.gz
+RUN mkdir -p /opt && cd /opt \
+ && tar -xzf /tmp/suite.tar.gz \
+ && mv choregraphe-suite-2.1.4.13-linux64 naoqi \
+ && rm /tmp/suite.tar.gz
+
+# Our override modules (Python 2.7), loaded into the naoqi-bin process by the entrypoint.
+COPY modules/ /opt/naoqi/modules/
+COPY entrypoint.sh /opt/naoqi/bin/nao-sim-entrypoint.sh
+
+# naoqi-bin refuses to run as root.
+RUN useradd -m -u 1000 -s /bin/bash nao && chown -R nao:nao /opt/naoqi
+
+ENV NAOQI_HOME=/opt/naoqi \
+    PATH=/opt/naoqi/bin:$PATH \
+    LD_LIBRARY_PATH=/opt/naoqi/lib \
+    PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules \
+    HOME=/home/nao \
+    NAO_SIM_EXIT_MODULES="ALTextToSpeech" \
+    NAO_SIM_MODULES="nao_sim_tts_almodule" \
+    NAO_SIM_DEFER_MODULES="animatedspeech dialog" \
+    NAO_SIM_READY_SERVICE="ALAutonomousLife"
+
+USER nao
+WORKDIR /opt/naoqi
+# 9559: naoqi-bin broker; override modules register through it (naoqi.ALModule), so it is the only port
+EXPOSE 9559
+ENTRYPOINT ["/opt/naoqi/bin/nao-sim-entrypoint.sh"]

@@ -1,0 +1,40 @@
+services:
+  tts:
+    build:
+      context: ./tts
+    image: nao-sim/tts:dev
+    container_name: nao-sim-tts
+    environment:
+      NAO_SIM_SOUNDCARD: host.docker.internal:9562
+      NAO_SIM_TTS_ENGINE: piper
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  naoqi:
+    build:
+      context: .
+      dockerfile: Dockerfile.naoqi-2.1
+    image: nao-sim/naoqi:2.1.4.13
+    platform: linux/amd64
+    container_name: nao-sim-naoqi
+    environment:
+      NAO_SIM_TTS_URL: http://tts:8080
+    depends_on: [tts]
+    ports:
+      - "127.0.0.1:9559:9559"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  naoqi28:
+    profiles: ["2.8"]
+    build:
+      context: .
+      dockerfile: Dockerfile.naoqi-2.8
+    image: nao-sim/naoqi:2.8.7.4
+    platform: linux/amd64
+    container_name: nao-sim-naoqi28
+    environment:
+      NAO_SIM_TTS_URL: http://tts:8080
+    depends_on: [tts]
+    ports:
+      - "127.0.0.1:9559:9559"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

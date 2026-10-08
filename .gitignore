@@ -1,0 +1,35 @@
+# Aldebaran assets never enter git (see spec: Licensing)
+docker/vendor/
+*.run
+*.tar.gz
+*.whl
+
+# NAO meshes / textures
+*.dae
+*.stl
+*.obj
+*.msh
+
+# Python bytecode and caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+
+# Virtual environments
+.venv/
+venv/
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local env
+.env
+.env.*
+
+# OS cruft
+.DS_Store
