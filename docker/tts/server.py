@@ -14,8 +14,10 @@ offset is the sum of the durations before it.
 import io
 import json
 import os
+import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 import wave
@@ -241,6 +243,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    # The server is the container's PID 1, to which the kernel applies no default signal action:
+    # without a handler `docker stop` would wait its 10 s grace period, then kill it.
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
     print(f"nao-sim tts: engine={DEFAULT_ENGINE} soundcard={SOUNDCARD} voices={VOICES}")
     if (
         DEFAULT_ENGINE == "piper"

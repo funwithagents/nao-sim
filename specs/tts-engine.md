@@ -27,6 +27,7 @@ It is its own container because:
 - Piper voices from `rhasspy/piper-voices` v1.0.0, baked into `/voices`: `en_US-lessac-medium` (English) and `fr_FR-siwis-medium` (French), keyed by NAOqi language name (case-insensitive). Unknown languages use English.
 - Environment: `NAO_SIM_SOUNDCARD` (`host:port`, default `host.docker.internal:9562`), `NAO_SIM_TTS_ENGINE` (`piper` default, or `espeak`).
 - With Piper, both voices are loaded at start, so the first `say` does not pay for it (about 0.5 s each).
+- The server is the container's PID 1 and exits on `SIGTERM` (exit code 0): the kernel applies no default signal action to PID 1, so without its handler `docker stop` waited the 10 s grace period and killed it (measured: 10.2 s, exit 137; with the handler, well under a second).
 
 ### HTTP API (port 8080, standard-library `ThreadingHTTPServer`)
 

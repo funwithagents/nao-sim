@@ -14,6 +14,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 | [202610091000_status-service-and-healthcheck.md](202610091000_status-service-and-healthcheck.md) | `NaoSim` status service on 2.1 and 2.8 with its ALMemory keys, entrypoint that verifies the replacements and fails loudly, Docker healthcheck on `NaoSim.isReady`, version build argument | Done |
 | [202610091500_fetch-and-build-images.md](202610091500_fetch-and-build-images.md) | `nao-sim fetch-and-build-images`: fetch the vendor files, build the images with an `io.nao-sim.version` label, verify they boot and record them; `check_images` for starts; the `nao-sim` command, `NaoSimError` hierarchy; compose project `nao-sim`; live tier builds through it | Done |
 | [202610091830_faster-live-tier.md](202610091830_faster-live-tier.md) | Live tier builds only when `check_images` fails (new `io.nao-sim.recipes` label: an edit under `docker/` makes images outdated); vendor files not re-hashed when unchanged (`hashes.json`) | Done |
+| [202610092000_tts-stops-on-sigterm.md](202610092000_tts-stops-on-sigterm.md) | The `tts` server handles `SIGTERM` as PID 1, so a stack stops in under a second instead of being killed after Docker's 10 s grace period | Done |
 
 ## Status legend
 
