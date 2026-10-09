@@ -18,6 +18,7 @@ from support import (
     Container,
     Version,
     connect,
+    e2e_versions,
     ensure_images,
     require_docker,
     require_free_ports,
@@ -81,7 +82,7 @@ class Nao:
         return self.sink.wait_for(lambda p: p.started_at >= after, timeout).duration_s
 
 
-@pytest.fixture(scope="session", params=sorted(VERSIONS))
+@pytest.fixture(scope="session", params=e2e_versions())
 def nao(request) -> Iterator[Nao]:
     require_docker()
     version = VERSIONS[request.param]

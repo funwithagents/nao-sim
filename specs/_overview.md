@@ -62,7 +62,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | `ALAudioPlayer` shim and replacement | Draft; shim approach measured ([audio-player.md](services/audio-player.md)) |
 | Simulated world (nao-viewer sim mode) | Built on the nao-viewer side (`NaoViewer` in sim mode, windowed and headless, `camera_frame`); the window is wired into nao-sim, the headless render camera is not ([viewer.md](host/viewer.md), Stable) |
 | Distribution (wheel with the recipes, user data directory) | Specified, not built ([project.md](project.md), "Distribution") |
-| CI | Draft ([ci.md](testing/ci.md)) |
+| CI | Stable, workflow written, first runs pending ([ci.md](testing/ci.md)) |
 | Capability probe | Spike scripts only; deferred (see [below](#capability-probe)) |
 | Asset guard | Planned, deferred (see [Licensing](#licensing)) |
 | Perception, speech recognition | Not nao-sim's: clients (nao-bridge, planned) |

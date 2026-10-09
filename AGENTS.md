@@ -21,6 +21,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | `tests-e2e/` | Opt-in live tests that start the nao-sim containers themselves, once per NAOqi version (not collected by default `pytest`) |
 | `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint-2.1.sh`/`entrypoint-2.8.sh` and the `entrypoint-lib.sh` they share ([container.md](specs/container/container.md)), `healthcheck.sh` ([status-service.md](specs/container/status-service.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/container/service-replacement.md), [speech.md](specs/services/speech.md), [status-service.md](specs/container/status-service.md)); `tts/`, the speech engine container ([tts-engine.md](specs/container/tts-engine.md)); `vendor/<version>/`, the suite tarball and `animations.pkg` fetched by `nao-sim fetch-and-build-images`, and `vendor/images.json`, the verified image IDs (gitignored) |
 | `examples/configs/` | Ready-to-use `NaoSimConfig` files for `nao-sim run --config` ([config.md](specs/runtime/config.md), "Example files") |
+| `.github/workflows/` | `ci.yml`, the CI workflow on GitHub's hosted runners ([ci.md](specs/testing/ci.md)) |
 | `spike/` | Local-only investigation scripts and measurement log (untracked, not committed); findings are folded into the specs |
 
 ### `src/nao_sim/` modules
