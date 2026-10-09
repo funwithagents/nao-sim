@@ -48,7 +48,7 @@ Each image is built from two Aldebaran files per version, kept in `docker/vendor
 
 The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--vendor DIR]` ([api.md](api.md), "Images"; default: both versions into `docker/vendor/`), which then builds and verifies the images. `suite.fetch` (`src/nao_sim/suite.py`) makes `<vendor>/<version>/` hold the pinned suite and `animations.pkg`.
 
-- A file already there with the pinned hash is kept, so re-running is cheap (it hashes the files, nothing is downloaded).
+- A file already there with the pinned hash is kept, so re-running is cheap: nothing is downloaded, and a file whose size and modification time match its entry in `<vendor>/hashes.json` (written after each verification) is not even hashed again. A missing or unreadable record only means hashing again.
 - A file there with another hash (a Git LFS pointer, a partial copy) is an error and is left untouched; the user deletes it to fetch again.
 - Every download goes to `<file>.part`, is hashed while it streams and takes its final name only if the hash matches; otherwise it is deleted and the step fails with a `FetchError` (the command exits 1).
 - `animations.pkg`, when missing, is extracted from the version's robot image:
@@ -88,7 +88,7 @@ One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override 
 | Boot to ready | about 5 s | about 15 s |
 
 - `naoqi-bin` refuses to run as root: the image runs as user `nao` (uid 1000), which owns `/opt/naoqi`.
-- Label `io.nao-sim.version` on the NAOqi and `tts` images, set by compose (`build.labels`, from `NAO_SIM_VERSION`) so neither Dockerfile changes; `NaoSim.start()` reads it to refuse an image built by another nao-sim version ([api.md](api.md)).
+- Labels `io.nao-sim.version` and `io.nao-sim.recipes` on the NAOqi and `tts` images, set by compose (`build.labels`, from `NAO_SIM_VERSION` and `NAO_SIM_RECIPES`) so neither Dockerfile changes; `check_images` reads them to refuse an image built by another nao-sim version or from other recipes ([api.md](api.md), "Images").
 - Environment: `PATH`, `LD_LIBRARY_PATH=/opt/naoqi/lib`, `PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules`, `NAO_SIM_NAOQI_VERSION` (the suite's full version) and `NAO_SIM_VERSION` (build argument, default `dev`; see [status-service.md](status-service.md)), plus the per-version entrypoint defaults below.
 
 ### Network layout

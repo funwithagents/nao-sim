@@ -7,6 +7,7 @@ services:
       context: ./tts
       labels:
         io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
+        io.nao-sim.recipes: ${NAO_SIM_RECIPES:-}
     image: nao-sim/tts:dev
     container_name: nao-sim-tts
     environment:
@@ -23,6 +24,7 @@ services:
         NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
       labels:
         io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
+        io.nao-sim.recipes: ${NAO_SIM_RECIPES:-}
     image: nao-sim/naoqi:2.1.4.13
     platform: linux/amd64
     container_name: nao-sim-naoqi21
@@ -44,6 +46,7 @@ services:
         NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
       labels:
         io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
+        io.nao-sim.recipes: ${NAO_SIM_RECIPES:-}
     image: nao-sim/naoqi:2.8.7.4
     platform: linux/amd64
     container_name: nao-sim-naoqi28

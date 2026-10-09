@@ -45,7 +45,7 @@ The API is **async**, as `NaoBridge`: `await sim.start()`, `await sim.stop()`, `
 
 1. **Environment checks**, before anything starts, each failing with its own error (see "Errors"):
    - Docker answers;
-   - the images are there: the version's NAOqi image and the `tts` image exist, carry the installed nao-sim version (image label `io.nao-sim.version`) and were verified by `fetch_and_build_images` (see "Images"). `start()` never downloads or builds;
+   - the images are there: the version's NAOqi image and the `tts` image exist, carry the installed nao-sim version (image label `io.nao-sim.version`), were built from the recipes as they are now (`io.nao-sim.recipes`) and were verified by `fetch_and_build_images` (see "Images"). `start()` never downloads or builds;
    - the `viewer` extra is installed when the config needs it (`headless = false`, or `camera.source = "render"`; the error names the extra);
    - every configured source is built (see [config.md](config.md), "Sources not built yet") and its file exists (`audio.wav`);
    - ports 9559 and 9562 are free (another nao-sim, a hand-started stack or speaker).
@@ -66,12 +66,12 @@ If any step fails, everything already started is stopped, in reverse order, and 
 Everything slow or downloaded happens once, before any start, in `await fetch_and_build_images(versions=None)` (CLI: `nao-sim fetch-and-build-images [2.1] [2.8]`, [cli.md](cli.md)); with no versions, both. For each version, in order:
 
 1. **Fetch** the vendor files: the pinned suite and `animations.pkg`, with the rules of [container.md](container.md) ("Fetching the vendor files": kept when the hash matches, `.part` downloads, extraction from the robot image). It replaces the former `nao-sim-fetch-suite` command.
-2. **Build** the version's NAOqi image and the `tts` image with the installed nao-sim version as build argument (`NAO_SIM_VERSION`) and as the label `io.nao-sim.version`. Docker's cache keeps a rebuild cheap.
+2. **Build** the version's NAOqi image and the `tts` image with the installed nao-sim version as build argument (`NAO_SIM_VERSION`) and as the label `io.nao-sim.version`, and the digest of the recipes as the label `io.nao-sim.recipes`: SHA-256 over every file under `docker/` with its relative path, leaving out `vendor/` (pinned by hash already), hidden files and Python caches. Docker's cache keeps a rebuild cheap.
 3. **Verify**: boot the version's containers (compose project `nao-sim`) until the NAOqi one is `healthy` (within 240 s) and the `tts` engine answers its `/health`, then take them down, whatever happened. The verified image IDs are recorded (`images.json`, see "Files on disk"). A build that does not boot is reported with the end of its log and not recorded.
 
 An unknown version is a `ValueError`. Docker is checked first (`DockerUnavailableError`), and each verification needs port 9559 free (`PortInUseError`); the speaker's 9562 is not used by a boot, so a running speaker does not stop it.
 
-So `start()` only checks: an image missing or not verified raises `ImagesMissingError`, an image built by another nao-sim version raises `ImagesOutdatedError` (its override modules are stale); both name the command to run. Working on `docker/modules/` means rerunning `fetch-and-build-images`; the live tier runs it once per session. 
+So `start()` only checks: an image missing or not verified raises `ImagesMissingError`, an image built by another nao-sim version or from other recipes raises `ImagesOutdatedError` (its override modules are stale, or `docker/` was edited since); both name the command to run. Working on `docker/modules/` means rerunning `fetch-and-build-images`; the live tier runs it only for a version whose images fail `check_images`.
 
 ### Files on disk
 

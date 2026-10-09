@@ -8,7 +8,9 @@ in the repository or a pushed image.
 A file already there with the pinned hash is kept, so the command is cheap to re-run. A file with
 the expected name but another hash (a Git LFS pointer, a truncated copy) is an error and is left
 alone. Downloads and extractions go to `<file>.part`, are hashed on the fly and only take the
-final name once the hash matches.
+final name once the hash matches. Each verified file's size, modification time and hash are
+recorded in `<vendor>/hashes.json`, so a file that has not changed since is not hashed again
+(the 2.8 suite alone is 1.3 GB).
 
 The robot image (`.opn`) is a 4096-byte `ALDIMAGE` header, an installer shell script whose
 variables locate the payload, then the compressed ext3 root filesystem (bzip2 on 2.1, gzip on
@@ -18,6 +20,7 @@ writes the package to stdout: no ext3 tooling or mount is needed on the host.
 
 import bz2
 import hashlib
+import json
 import re
 import subprocess
 import sys
@@ -103,15 +106,54 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+HASHES = "hashes.json"  # in the vendor folder
+
+
+def _record_path(path: Path) -> tuple[Path, str]:
+    """The vendor folder's hash record and the file's key in it (`<version>/<name>`)."""
+    return path.parent.parent / HASHES, f"{path.parent.name}/{path.name}"
+
+
+def _load_record(record: Path) -> dict[str, dict]:
+    try:
+        data = json.loads(record.read_text())
+    except (OSError, ValueError):  # absent or unreadable: hash everything again
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _stamp(path: Path) -> dict:
+    st = path.stat()
+    return {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def _remember(path: Path, sha256: str) -> None:
+    """Record that `path`, as it is now, has hash `sha256`."""
+    record, key = _record_path(path)
+    entries = _load_record(record)
+    entries[key] = {**_stamp(path), "sha256": sha256}
+    record.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
+
+
+def _unchanged(path: Path, sha256: str) -> bool:
+    """True if `path` was verified with hash `sha256` and its size and time have not changed."""
+    record, key = _record_path(path)
+    return _load_record(record).get(key) == {**_stamp(path), "sha256": sha256}
+
+
 def _present(path: Path, sha256: str) -> bool:
     """True if `path` holds the pinned file, False if absent; any other file is an error."""
     if not path.exists():
         return False
+    if _unchanged(path, sha256):
+        _log(f"{path.name}: already present (unchanged since verified)")
+        return True
     if _sha256(path) != sha256:
         raise FetchError(
             f"{path} is not the pinned file (SHA-256 mismatch; a Git LFS pointer or a "
             "partial copy?). Delete it to fetch it again."
         )
+    _remember(path, sha256)
     _log(f"{path.name}: already present")
     return True
 
@@ -132,6 +174,7 @@ def _write(chunks: Iterable[bytes], dest: Path, sha256: str, source: str) -> Non
         part.rename(dest)
     finally:
         part.unlink(missing_ok=True)
+    _remember(dest, sha256)
     _log(f"{dest} verified")
 
 

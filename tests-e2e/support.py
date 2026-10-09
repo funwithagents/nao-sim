@@ -1,7 +1,8 @@
 """Helpers for the opt-in live tier: the nao-sim stacks and the host speaker.
 
 The live tests drive their own stack: they build and verify a version's images with
-`fetch_and_build_images`, start its containers with `docker compose`, wait for the entrypoint's
+`fetch_and_build_images` when `check_images` finds them missing or outdated (an edit under
+docker/ included), start its containers with `docker compose`, wait for the entrypoint's
 ready line, and take them down afterwards. A version whose suite (or image) is missing, or a
 machine without Docker, skips, never fails.
 """
@@ -21,7 +22,7 @@ import pytest
 import qi
 
 from nao_sim import docker_images, suite
-from nao_sim.errors import NaoSimError
+from nao_sim.errors import ImagesMissingError, ImagesOutdatedError, NaoSimError
 
 REPO = Path(__file__).resolve().parent.parent
 COMPOSE = REPO / "docker" / "compose.yaml"
@@ -121,22 +122,23 @@ class Stack:
         folder = VENDOR / v.name
         if _port_taken(9559):
             pytest.fail("127.0.0.1:9559 is taken: stop the running nao-sim stack first")
-        if (folder / vendored.suite.filename).exists() and (
-            folder / suite.PACKAGE
-        ).exists():
+        try:
+            # Current images (this nao-sim, these recipes, verified) are used as they are.
+            docker_images.check_images(v.name)
+        except (ImagesMissingError, ImagesOutdatedError) as stale:
+            if not (
+                (folder / vendored.suite.filename).exists()
+                and (folder / suite.PACKAGE).exists()
+            ):
+                pytest.skip(
+                    f"NAOqi {v.name}: no suite and package in docker/vendor/{v.name}/ "
+                    f"and no usable images ({stale})"
+                )
             # The one slow step, as a user runs it: build from the checkout and verify.
             try:
                 asyncio.run(docker_images.fetch_and_build_images([v.name]))
             except NaoSimError as e:
                 pytest.fail(f"fetch-and-build-images failed for {v.name}: {e}")
-        else:
-            try:
-                docker_images.check_images(v.name)
-            except NaoSimError as e:
-                pytest.skip(
-                    f"NAOqi {v.name}: no suite and package in docker/vendor/{v.name}/ "
-                    f"and no usable images ({e})"
-                )
         since = str(int(time.time()))
         res = _run(*self._compose, "up", "-d", "tts", v.service, timeout=600)
         if res.returncode != 0:

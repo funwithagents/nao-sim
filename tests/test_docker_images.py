@@ -2,7 +2,8 @@
 fake `docker` first on PATH.
 
 The fake keeps its state in a JSON file: the images (ID and labels, set by `compose build` from
-the environment's `NAO_SIM_VERSION`, the same ID for the same inputs, as Docker's cache), the
+the environment's `NAO_SIM_VERSION` and `NAO_SIM_RECIPES`, the same ID for the same inputs, as
+Docker's cache), the
 running containers and how the NAOqi one boots (`boot`: healthy, starting, exited), whether the
 tts engine answers, and whether Docker is up or a build fails. Every invocation is logged.
 """
@@ -65,13 +66,16 @@ FAKE_DOCKER = textwrap.dedent(
             if state.get("build_fails"):
                 print("failed to solve: boom", file=sys.stderr)
                 done(1)
-            label = os.environ.get("NAO_SIM_VERSION", "dev")
+            labels = {
+                "io.nao-sim.version": os.environ.get("NAO_SIM_VERSION", "dev"),
+                "io.nao-sim.recipes": os.environ.get("NAO_SIM_RECIPES", ""),
+            }
             for s in services:
                 tag = state["services"][s]["image"]
-                digest = hashlib.sha256((tag + label + state.get("source", "")).encode())
+                inputs = tag + json.dumps(labels, sort_keys=True) + state.get("source", "")
                 state["images"][tag] = {
-                    "Id": "sha256:" + digest.hexdigest(),
-                    "Labels": {"io.nao-sim.version": label},
+                    "Id": "sha256:" + hashlib.sha256(inputs.encode()).hexdigest(),
+                    "Labels": labels,
                 }
         elif verb == "up":
             for s in services:
@@ -181,11 +185,11 @@ def test_built_and_verified_images_pass_the_check(docker, vendor):
 
     check_images("2.1", vendor)
     labels = {tag: image["Labels"] for tag, image in docker.read()["images"].items()}
-    version = docker_images.nao_sim_version()
-    assert labels == {
-        "nao-sim/naoqi:2.1.4.13": {"io.nao-sim.version": version},
-        TTS_IMAGE: {"io.nao-sim.version": version},
+    built = {
+        "io.nao-sim.version": docker_images.nao_sim_version(),
+        "io.nao-sim.recipes": docker_images.recipes_digest(),
     }
+    assert labels == {"nao-sim/naoqi:2.1.4.13": built, TTS_IMAGE: built}
     # The verification boot was taken down again.
     assert docker.read()["containers"] == {}
     # 2.8 was not asked for: it is neither built nor verified.
@@ -246,6 +250,30 @@ def test_images_rebuilt_from_changed_sources_need_a_new_verification(docker, ven
     with pytest.raises(ImagesMissingError, match="not verified"):
         check_images("2.1", vendor)
 
+    build("2.1", vendor=vendor)
+    check_images("2.1", vendor)
+
+
+def test_an_edit_under_docker_makes_the_images_outdated(
+    docker, vendor, tmp_path, monkeypatch
+):
+    recipes = tmp_path / "recipes"
+    (recipes / "modules" / "__pycache__").mkdir(parents=True)
+    (recipes / "vendor").mkdir()
+    module = recipes / "modules" / "nao_sim_tts_core.py"
+    module.write_text("# version 1\n")
+    monkeypatch.setattr(docker_images, "DOCKER", recipes)
+    build("2.1", vendor=vendor)
+
+    # Vendor files, caches and hidden files are not recipes: the images stay current.
+    (recipes / "vendor" / "images.json").write_text("{}")
+    (recipes / "modules" / "__pycache__" / "x.pyc").write_bytes(b"cache")
+    (recipes / ".DS_Store").write_bytes(b"finder")
+    check_images("2.1", vendor)
+
+    module.write_text("# version 2\n")
+    with pytest.raises(ImagesOutdatedError, match="docker/ changed since"):
+        check_images("2.1", vendor)
     build("2.1", vendor=vendor)
     check_images("2.1", vendor)
 

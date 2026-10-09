@@ -1,6 +1,7 @@
 import bz2
 import gzip
 import hashlib
+import json
 import re
 import threading
 from collections.abc import Callable, Iterable
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from nao_sim import suite
 from nao_sim.errors import FetchError
 from nao_sim.suite import (
     PACKAGE,
@@ -165,6 +167,37 @@ def test_downloads_nothing_when_everything_is_there(origin, tmp_path):
     fetch(version(origin), tmp_path, echo_cat)
     fetch(version(origin), tmp_path, echo_cat)
     assert len(origin.requests) == 2  # the suite and the robot image, once each
+
+
+def test_unchanged_files_are_not_hashed_again(origin, tmp_path, monkeypatch):
+    fetch(version(origin), tmp_path, echo_cat)
+    hashed: list[Path] = []
+    real = suite._sha256
+    monkeypatch.setattr(suite, "_sha256", lambda p: hashed.append(p) or real(p))
+
+    fetch(version(origin), tmp_path, echo_cat)
+    assert hashed == []
+    assert len(origin.requests) == 2  # and nothing was downloaded again
+
+
+def test_a_file_changed_since_its_verification_is_hashed_again(origin, tmp_path):
+    fetch(version(origin), tmp_path, echo_cat)
+    suite_file = tmp_path / "2.1" / "suite.tar.gz"
+    suite_file.write_bytes(b"truncated")  # another size and time than recorded
+
+    with pytest.raises(FetchError, match="Delete it"):
+        fetch(version(origin), tmp_path, echo_cat)
+
+
+def test_a_lost_hash_record_only_costs_a_rehash(origin, tmp_path):
+    fetch(version(origin), tmp_path, echo_cat)
+    (tmp_path / suite.HASHES).write_text("not json")
+
+    fetch(version(origin), tmp_path, echo_cat)
+    assert len(origin.requests) == 2
+    assert json.loads((tmp_path / suite.HASHES).read_text())["2.1/suite.tar.gz"][
+        "sha256"
+    ] == sha(SUITE)
 
 
 def test_uses_and_keeps_a_robot_image_the_user_put_there(origin, tmp_path):
