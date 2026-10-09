@@ -7,11 +7,11 @@ tests:
 
 # Project
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
-Structure and tooling for the nao-sim project itself: Python version, dependency/packaging management with `uv`, repo layout conventions, and development tooling.
+Structure and tooling for the nao-sim project itself: Python version, dependency/packaging management with `uv`, repo layout conventions, development tooling, and how nao-sim is distributed.
 
 ## Decided
 
@@ -30,8 +30,19 @@ Structure and tooling for the nao-sim project itself: Python version, dependency
   - `tests/` at repo root, one test file per module under test.
   - `tests-e2e/` at repo root, for the live tier above — not collected by the default `pytest` run.
   - `docker/` — container recipes, Python 2.7 override modules (`modules/`), the `tts` engine container (`tts/`), and the gitignored `vendor/` for user-supplied suite tarballs.
+  - `examples/configs/` — ready-to-use config files ([config.md](runtime/config.md), "Example files"), once the config is built.
+  - `.github/workflows/` — CI ([ci.md](testing/ci.md)), once built.
 - **No Aldebaran assets in git** (see [_overview.md](_overview.md), "Licensing"): `.gitignore` covers suite tarballs, `docker/vendor/`, meshes and textures. An automated asset guard is not built yet.
+
+### Distribution
+
+- **Install**: `pip install nao-sim` runs the simulated NAO with no window (servers); `pip install nao-sim[viewer]` adds nao-viewer for the sim window and the render camera ([viewer.md](host/viewer.md)). nao-bridge's `[sim]` extra pulls `nao-sim[viewer]`. Docker, the suite download and the images are never pip's job: `nao-sim fetch-and-build-images` does them once ([api.md](runtime/api.md), "Images").
+- **The wheel** holds `nao_sim` and the container recipes as package data: everything under `docker/` but `vendor/` (Dockerfiles, compose, entrypoints, healthcheck, `modules/`, `tts/`), none of it an Aldebaran file. They are found with `importlib.resources`; a checkout uses `docker/` directly. `fetch_and_build_images` assembles the build context in the user data directory, next to the vendor files ([api.md](runtime/api.md), "Files on disk"); the `io.nao-sim.recipes` digest is computed the same way from either place.
+- **Runtime dependencies**: `numpy`, `qi`, `sounddevice`, `platformdirs`; the `viewer` extra adds nao-viewer. The webcam's OpenCV is decided with [video-input.md](host/video-input.md).
+- **Versions**: the package version is the version baked into the images (`io.nao-sim.version`, `NaoSim/Version`), so an upgrade makes `start()` ask for a rebuild. Downstream packages pin a compatible range (`nao-sim>=X.Y,<X+1`), and the README carries the compatibility matrix (nao-sim, nao-viewer, NAOqi versions).
+- **As built**: the package installs from a checkout with `uv sync` only; the wheel has no recipes and the vendor files live in `docker/vendor/`. The package data and the user data directory are the gap this spec's `Updated` status marks.
 
 ## Open questions
 
-None currently.
+1. **libqi wheels for pip users.** uv resolves `qi` from the fork's GitHub Releases through `[tool.uv.sources]`, which a published package's metadata does not carry, so a plain `qi` would resolve to Aldebaran's older `qi` 3.1.5 on PyPI. Options: a find-links URL, a package index on GitHub Pages, or PyPI under a distinct name. The same question holds for nao-viewer behind the `viewer` extra. Until it is settled, nao-sim installs with `uv` from a checkout.
+2. **Release channel.** PyPI or GitHub Releases only, decided with the question above.

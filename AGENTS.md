@@ -28,7 +28,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 
 | Module | Role | Spec |
 |---|---|---|
-| `src/nao_sim/speaker.py` | The speaker device: TCP PCM player the containers stream into, run by `NaoSim` (`nao-sim-speaker` until then) | [devices.md](specs/host/devices.md) |
+| `src/nao_sim/speaker.py` | The audio output device: TCP PCM player the containers stream into, run by `NaoSim` (`nao-sim-speaker` until then); becomes `audio_output.py` with the audio sinks | [audio-output.md](specs/host/audio-output.md), [devices.md](specs/host/devices.md) |
 | `src/nao_sim/__init__.py` | Front door: re-exports `fetch_and_build_images`, `check_images` and the errors | [api.md](specs/runtime/api.md) |
 | `src/nao_sim/cli.py` | The `nao-sim` command, a thin shell over the library (`fetch-and-build-images` so far) | [cli.md](specs/runtime/cli.md) |
 | `src/nao_sim/errors.py` | `NaoSimError` and its subclasses, shared by the modules | [api.md](specs/runtime/api.md) |
@@ -66,7 +66,7 @@ This is the **spec → code/tests** mapping — the inverse of the module → sp
 
 The mapping is **many-to-many**: a file can be governed by several specs, so the same path legitimately appears in more than one spec's frontmatter.
 
-**Keep it current** (same discipline as statuses): when you move, rename, or delete a file a spec governs — or add a new `src/nao_sim/` module — update the affected spec's `code:`/`tests:` in the same change. `tests/test_project_map.py` enforces three invariants: every listed path exists, every spec declares a non-empty `code:` list, and every concept module in `src/nao_sim/` is named by at least one spec (`__init__.py` is exempt as package glue).
+**Keep it current** (same discipline as statuses): when you move, rename, or delete a file a spec governs — or add a new `src/nao_sim/` module — update the affected spec's `code:`/`tests:` in the same change. `tests/test_project_map.py` enforces these invariants: every listed path exists, every spec has a `**Status:**` line and declares a non-empty `code:` list (a `Draft` or `Not started` spec may leave it empty until its code exists, rather than list files it does not govern), and every concept module in `src/nao_sim/` is named by at least one spec (`__init__.py` is exempt as package glue).
 
 ## Testing
 

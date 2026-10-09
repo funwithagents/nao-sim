@@ -25,8 +25,8 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 | `nao-sim cleanup` | Removes what a run that died without stopping left behind (see "Foreground runs") |
 | `nao-sim status` | The containers' health, the `NaoSim` service's versions and readiness, the attached device sources |
 | `nao-sim logs` | The containers' logs (`docker compose logs` on the `nao-sim` project) |
-| `nao-sim probe` | The capability report ([_overview.md](../_overview.md), "Capability probe"; specified in its own spec) |
 
+- `nao-sim probe` (the capability report, [_overview.md](../_overview.md), "Capability probe") is deferred with the probe: it gets its spec when the 2.8 validation milestone needs committed reports.
 - The API is async: each command runs its coroutine with `asyncio.run`; Ctrl-C cancels it, and `run` still awaits `stop()` on the way out.
 - `run` starts nothing itself: every check (Docker, the images, the `viewer` extra, ports) happens in `NaoSim.start()` ([api.md](api.md), "Lifecycle"), and the CLI prints the error's message.
 - **Exit codes**, as nao-bridge's CLIs: a `ConfigError` exits 2 with its message (it names the key path); any other `NaoSimError` exits 1 with its message; Ctrl-C after a successful start exits 0 once `stop()` has run.
@@ -38,14 +38,14 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 
 ### Foreground runs
 
-`run` stays in the foreground: the host side of the robot (the speaker, later the microphone, the camera feeder and the viewer window, which on macOS must stay in a process the user launched) lives in its process, and Ctrl-C stops everything in that same process with `NaoSim.stop()`, logs in view. There is no detached mode and no pid file. A caller that needs nao-sim in the background uses the API ([api.md](api.md)), or a shell's `&`, tmux and the like. The name says it: `run`, as `docker run` or `uv run`, not compose's `up`/`down` pair, which suggests a detached stack.
+`run` stays in the foreground: the host side of the robot (the audio output, later the audio and video inputs and the viewer window, which on macOS must stay in a process the user launched) lives in its process, and Ctrl-C stops everything in that same process with `NaoSim.stop()`, logs in view. There is no detached mode and no pid file. A caller that needs nao-sim in the background uses the API ([api.md](api.md)), or a shell's `&`, tmux and the like. The name says it: `run`, as `docker run` or `uv run`, not compose's `up`/`down` pair, which suggests a detached stack.
 
-- **`nao-sim cleanup`** is for a run that died without stopping (killed, crashed, laptop closed): it removes the `nao-sim` compose project's containers, every profile (`docker compose --profile '*' down`, keeping the package store volumes). If a run is still alive (port 9562, the speaker's, is taken), it changes nothing and says to press Ctrl-C in that run's terminal.
+- **`nao-sim cleanup`** is for a run that died without stopping (killed, crashed, laptop closed): it removes the `nao-sim` compose project's containers, every profile (`docker compose --profile '*' down`, keeping the package store volumes). If a run is still alive (port 9562, the audio output's, is taken), it changes nothing and says to press Ctrl-C in that run's terminal.
 - **`nao-sim status` and `nao-sim logs`** work from any terminal: they read Docker and the `NaoSim` service, so they need no pid file either.
 
 ### Existing commands
 
-The former `nao-sim-fetch-suite` is now `nao-sim fetch-and-build-images`, the only subcommand built so far. `nao-sim-speaker` ([devices.md](../host/devices.md)) is not a user command: it exists only because the `NaoSim` object, which runs the speaker in-process ([api.md](api.md)), is not built yet. When `NaoSim` lands, it leaves `[project.scripts]` and does not become a `nao-sim` subcommand; `python -m nao_sim.speaker` stays for the rare stack started by hand with `docker compose` (debugging).
+The former `nao-sim-fetch-suite` is now `nao-sim fetch-and-build-images`, the only subcommand built so far. `nao-sim-speaker` ([audio-output.md](../host/audio-output.md)) is not a user command: it exists only because the `NaoSim` object, which runs the audio output in-process ([api.md](api.md)), is not built yet. When `NaoSim` lands, it leaves `[project.scripts]` and does not become a `nao-sim` subcommand; `python -m nao_sim.audio_output` stays for the rare stack started by hand with `docker compose` (debugging).
 
 ## Open questions
 

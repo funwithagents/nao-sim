@@ -91,17 +91,39 @@ def _parse_frontmatter(path: Path) -> dict[str, list[str]]:
     return result
 
 
+_STATUS = re.compile(r"^\*\*Status:\*\*\s*(.+?)\s*$", re.MULTILINE)
+
+# A spec still being designed may have no code yet: its `code:` list fills as files land.
+_PRE_CODE_STATUSES = {"Not started", "Draft"}
+
+
+def _status(path: Path) -> str | None:
+    match = _STATUS.search(path.read_text(encoding="utf-8"))
+    return match.group(1) if match else None
+
+
 def test_every_spec_declares_the_code_it_governs():
     missing: list[str] = []
     for spec in _spec_files():
+        if _status(spec) in _PRE_CODE_STATUSES:
+            continue
         front = _parse_frontmatter(spec)
         if not front.get("code"):
             missing.append(str(spec.relative_to(_SPECS_DIR)))
     assert not missing, (
         f"specs missing a non-empty `code:` frontmatter list: {missing}. "
         "Add a frontmatter block naming the files this spec governs so the "
-        "spec-drift checks know what to check."
+        "spec-drift checks know what to check (only a Draft or Not started spec may leave it empty)."
     )
+
+
+def test_every_spec_has_a_status():
+    missing = [
+        str(spec.relative_to(_SPECS_DIR))
+        for spec in _spec_files()
+        if _status(spec) is None
+    ]
+    assert not missing, f"specs without a `**Status:**` line: {missing}."
 
 
 def test_spec_frontmatter_paths_all_exist():

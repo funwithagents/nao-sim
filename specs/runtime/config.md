@@ -25,10 +25,10 @@ This config is the **host-level** description. The container keeps its own inter
 {
   "naoqi": { "version": "2.1", "ready_timeout_s": 240 },
   "speech": { "engine": "piper" },
-  "speaker": { "mode": "play", "record": null },
-  "viewer": { "headless": false, "scene": "empty", "variant": "auto" },
-  "camera": { "source": "none", "device": 0 },
-  "audio": { "source": "none", "wav": null, "mono": "duplicate" }
+  "audio_output": { "mode": "play", "record": null },
+  "audio_input": { "source": "none", "wav": null, "mono": "duplicate", "gate_tail_s": 0.3 },
+  "video_input": { "source": "none", "device": 0 },
+  "viewer": { "headless": false, "scene": "empty", "variant": "auto" }
 }
 ```
 
@@ -37,10 +37,10 @@ This config is the **host-level** description. The container keeps its own inter
 class NaoSimConfig:
     naoqi: NaoqiSettings = field(default_factory=NaoqiSettings)
     speech: SpeechSettings = field(default_factory=SpeechSettings)
-    speaker: SpeakerSettings = field(default_factory=SpeakerSettings)
+    audio_output: AudioOutputSettings = field(default_factory=AudioOutputSettings)
+    audio_input: AudioInputSettings = field(default_factory=AudioInputSettings)
+    video_input: VideoInputSettings = field(default_factory=VideoInputSettings)
     viewer: ViewerSettings = field(default_factory=ViewerSettings)
-    camera: CameraSettings = field(default_factory=CameraSettings)
-    audio: AudioSettings = field(default_factory=AudioSettings)
 
 
 @dataclass
@@ -58,13 +58,37 @@ class SpeechSettings:
 
 
 @dataclass
-class SpeakerSettings:
-    """The host speaker (devices.md, "Speaker")."""
+class AudioOutputSettings:
+    """The audio output (audio-output.md)."""
 
     # "play" | "silent" | "record"
-    mode: SpeakerMode = "play"
+    mode: AudioOutputMode = "play"
     # WAV file, required by "record"
     record: Path | None = None
+
+
+@dataclass
+class AudioInputSettings:
+    """The audio input, feeding the ALAudioDevice replacement (audio-input.md)."""
+
+    # "none" | "mic" | "wav"
+    source: AudioInputSource = "none"
+    # required by "wav"
+    wav: Path | None = None
+    # "duplicate" | "silence", published as NaoSim/Audio/Channels
+    mono: MonoPolicy = "duplicate"
+    # the microphone gate's tail after the robot's audio ends, in seconds
+    gate_tail_s: float = 0.3
+
+
+@dataclass
+class VideoInputSettings:
+    """The video input, injected into ALVideoDevice (video-input.md)."""
+
+    # "none" | "render" | "webcam"
+    source: VideoInputSource = "none"
+    # webcam index, used by "webcam"
+    device: int = 0
 
 
 @dataclass
@@ -77,55 +101,35 @@ class ViewerSettings:
     # "auto" | "placeholder" | "aldebaran" (nao-viewer's world.variant)
     variant: ViewerVariant = "auto"
 
-
-@dataclass
-class CameraSettings:
-    """Video injection into ALVideoDevice."""
-
-    # "none" | "webcam" | "render"
-    source: CameraSource = "none"
-    # webcam index, used by "webcam"
-    device: int = 0
-
-
-@dataclass
-class AudioSettings:
-    """The ALAudioDevice replacement's input."""
-
-    # "none" | "mic" | "wav"
-    source: AudioSource = "none"
-    # required by "wav"
-    wav: Path | None = None
-    # "duplicate" | "silence", published as NaoSim/Audio/Channels
-    mono: MonoPolicy = "duplicate"
 ```
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
-- **`NaoSimConfig()` is valid and useful**: NAOqi 2.1 with speech on the host loudspeaker, the viewer window on the `empty` scene, and no camera or microphone source (each `NaoSim/*/Source` key stays `none`).
-- The `speaker` block picks the speaker's audio sink when the caller passes none ([devices.md](../host/devices.md), "Audio sinks"; [api.md](api.md)): `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A sink passed in code (`MemorySink` in tests) wins over the block.
-- Paths (`speaker.record`, `audio.wav`, and `viewer.scene` when it ends in `.xml`) are resolved relative to the config file when loaded with `from_json_file`, and relative to the working directory otherwise.
+- **The device blocks are named after the device** ([devices.md](../host/devices.md)): `audio_output`, `audio_input`, `video_input`, each specified in its own spec under `host/`.
+- **`NaoSimConfig()` is valid and useful**: NAOqi 2.1 with speech on the host loudspeaker, the viewer window on the `empty` scene, and no video or audio input (each `NaoSim/*/Source` key stays `none`).
+- The `audio_output` block picks the audio output's sink when the caller passes none ([audio-output.md](../host/audio-output.md), "Audio sinks"; [api.md](api.md)): `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A sink passed in code (`MemorySink` in tests) wins over the block.
+- Paths (`audio_output.record`, `audio_input.wav`, and `viewer.scene` when it ends in `.xml`) are resolved relative to the config file when loaded with `from_json_file`, and relative to the working directory otherwise.
 
 ### Constructors and validation
 
 - Every config class has the same three constructors: `from_dict(data)`, `from_json(text)` (parses, then calls `from_dict`), and `from_json_file(path)` (reads, then calls `from_json`; an invalid-JSON error names the path). All three share one validation path.
-- Errors raise `ConfigError(ValueError)`, with a message that names the offending key path (e.g. `audio.wav`). A block's own checks raise `ConfigError(message, key=<field>)`, and each enclosing loader prefixes `key` with its own path; the message is never parsed to find the key.
+- Errors raise `ConfigError(ValueError)`, with a message that names the offending key path (e.g. `audio_input.wav`). A block's own checks raise `ConfigError(message, key=<field>)`, and each enclosing loader prefixes `key` with its own path; the message is never parsed to find the key.
 - **Unknown keys are errors**, so a typo fails when the config loads.
-- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; `device` is a non-negative integer; `viewer.scene` is a non-empty string.
-- **Cross-field checks at load:** `speaker.mode = "record"` needs `speaker.record`; `audio.source = "wav"` needs `audio.wav`. Other fields that do not apply (`device` without a webcam, `wav` with `mic`) are validated but not applied, so switching a source is a one-word change.
+- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; `gate_tail_s` is a non-negative, finite number; `device` is a non-negative integer; `viewer.scene` is a non-empty string.
+- **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`; `audio_input.source = "wav"` needs `audio_input.wav`. Other fields that do not apply (`device` without a webcam, `wav` with `mic`) are validated but not applied, so switching a source is a one-word change.
 - **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a WAV file exists: `NaoSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
 - `config.py` imports neither `qi`, nor `nao_viewer`, nor `sounddevice`.
 
-### The viewer and the camera
+### The viewer and the video input
 
-`viewer.headless` and `camera.source` together decide whether the simulated world runs, as in the overview ("Simulated world"):
+`viewer.headless` and `video_input.source` together decide whether the simulated world runs ([viewer.md](../host/viewer.md), "Which viewer runs"):
 
-| `viewer.headless` | `camera.source` | Sim process | Needs `nao-sim[viewer]` |
+| `viewer.headless` | `video_input.source` | Sim process | Needs `nao-sim[viewer]` |
 | --- | --- | --- | --- |
 | `false` | any | `NaoViewer` in sim mode, with its window | Yes |
 | `true` | `render` | `NaoViewer` in sim mode, headless | Yes |
 | `true` | `none` or `webcam` | None | No |
 
-So a CI or server config is `{"viewer": {"headless": true}}`, and it needs no extra.
+So a server config is `{"viewer": {"headless": true}}`, and it needs no extra; CI runs a headless viewer with the render camera instead ([ci.md](../testing/ci.md)).
 
 The `viewer` block is nao-sim's own, not an embedded `NaoViewerConfig`: `NaoSim` builds the viewer's config from it as `NaoViewerConfig(mode="sim", headless=headless, naoqi=NaoqiSettings(url=sim.url), world=WorldSettings(scene=scene, variant=variant))`. The mode and the NAOqi URL follow from running nao-sim, so they are not settings; nao-viewer's other fields (`ghost`, `naoqi.rate_hz`, `launch_timeout_s`) keep nao-viewer's defaults. `scene` and `variant` take nao-viewer's values and defaults (`empty`, `auto`); this module only checks their form (a non-empty string; one of the three variants), and an unknown bundled scene or missing meshes surface when the viewer launches ([api.md](api.md), "Lifecycle"), since `config.py` does not import `nao_viewer`).
 
@@ -144,11 +148,11 @@ The config accepts every source value from the start (`webcam`, `render`, `mic`,
 
 - `default.json`: 2.1, window, speech only;
 - `2.8.json`: the same on 2.8;
-- `headless.json`: 2.1, no window, silent speaker (CI, servers);
-- `wav-replay.json`: headless, `audio.source = "wav"` (once `ALAudioDevice` is built).
+- `headless.json`: 2.1, no window, silent audio output (servers);
+- `ci.json`: 2.1, headless viewer with the placeholder variant, `video_input.source = "render"`, silent audio output (the live tier and CI, once the viewer is built);
+- `wav-replay.json`: headless, `audio_input.source = "wav"` (once `ALAudioDevice` is built).
 
 ## Open questions
 
-1. **More blocks.** Candidates, each deferred until its spec needs it: `gate` (the microphone gate's tail, default 300 ms), `speech.language` and voice, the speaker's output device and volume ([devices.md](../host/devices.md), open questions), a vendor directory other than the default ([api.md](api.md), "Files on disk"), ports (today 9559 and 9562 are fixed, so one nao-sim runs per machine). Adding a block does not break existing files.
+1. **More blocks.** Candidates, each deferred until its spec needs it: `speech.language` and voice, the audio output's device and volume ([audio-output.md](../host/audio-output.md), open questions), the microphone's device ([audio-input.md](../host/audio-input.md), open questions), a vendor directory other than the default ([api.md](api.md), "Files on disk"), ports (today 9559, 9562 and the host link's 9563 are fixed, so one nao-sim runs per machine). Adding a block does not break existing files.
 2. **File format.** JSON, as nao-bridge. TOML would allow comments in example files; switching later would mean a second loader, so decide before the CLI ships.
-3. **Webcam selection.** An index (`device: 0`) is what OpenCV takes, but indices are not stable across reboots or USB changes; a name match may be needed. Decide with the video-injection spec.

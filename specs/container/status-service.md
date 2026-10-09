@@ -52,10 +52,10 @@ The module writes these at load. All values are plain strings except `NaoSim/Rea
 | `NaoSim/Version` | nao-sim version | Nobody |
 | `NaoSim/NaoqiVersion` | `2.1.4.13` or `2.8.7.4` | Nobody |
 | `NaoSim/Ready` | `0`; `1` after `setReady()`. Raised as an event, so a client can wait on it | The entrypoint, through `setReady()` |
-| `NaoSim/Camera/Source` | `none` | The host camera feeder (`webcam`, `render`), when the video spec is built |
-| `NaoSim/Audio/Source` | `none` | The host microphone device (`mic`, `wav`), when the `ALAudioDevice` spec is built |
+| `NaoSim/Camera/Source` | `none` | The video input (`render`, `webcam`), [video-input.md](../host/video-input.md) |
+| `NaoSim/Audio/Source` | `none` | The audio input (`wav`, `mic`), [audio-input.md](../host/audio-input.md) |
 
-- `none` means no host device is attached to that service, so it serves nothing (no frames, no audio). The device specs own the other values and may add keys under the same prefixes (for example the mono policy under `NaoSim/Audio/`); the host writes them as an ordinary qi client, as the overview's "Host services" prescribes.
+- `none` means no host device is attached to that service, so it serves nothing (no frames, no audio). The device specs own the other values and may add keys under the same prefixes (the audio input's `NaoSim/Audio/Channels`); the host writes them as an ordinary qi client, as the overview's "Host services" prescribes.
 
 ### Readiness
 
@@ -85,5 +85,5 @@ Both Dockerfiles declare it: `HEALTHCHECK --interval=5s --timeout=5s --start-per
 ## Open questions
 
 1. **Boot timing.** `NaoSim` does not publish how long boot took (`NaoSim/BootSeconds`); the capability probe would record it. Add when the probe exists.
-2. **Device sources on disconnect.** Whether the host resets a source key to `none` when its device stops is for each device spec to decide.
+2. **A touch source.** Whether the touch input publishes `NaoSim/Touch/Source` ([touch-input.md](../host/touch-input.md), open question 2), which would extend this contract. (A device writes its source key back to `none` when it stops: [devices.md](../host/devices.md), "The device contract".)
 3. **`setReady` is public.** Any client can call it. Acceptable on a simulator; a hidden `_setReady` would first need the `ALModule` autobind behaviour for underscore names measured on 2.1.
