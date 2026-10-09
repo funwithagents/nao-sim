@@ -10,6 +10,7 @@ GET  /health
 Markers are exact: every text item is synthesized on its own and concatenated, so a mark's
 offset is the sum of the durations before it.
 """
+
 import io
 import json
 import os
@@ -39,7 +40,10 @@ def piper_voice(lang):
     with _lock:
         if name not in _piper_voices:
             from piper import PiperVoice
-            _piper_voices[name] = PiperVoice.load(os.path.join(VOICE_DIR, name + ".onnx"))
+
+            _piper_voices[name] = PiperVoice.load(
+                os.path.join(VOICE_DIR, name + ".onnx")
+            )
     return name, _piper_voices[name]
 
 
@@ -49,6 +53,7 @@ def synth_piper(text, lang, rate):
     chunks = []
     try:
         from piper import SynthesisConfig
+
         cfg = SynthesisConfig(length_scale=100.0 / max(rate, 20))
         for ch in voice.synthesize(text, cfg):
             chunks.append(np.frombuffer(ch.audio_int16_bytes, dtype=np.int16))
@@ -62,8 +67,21 @@ def synth_piper(text, lang, rate):
 def synth_espeak(text, lang, rate, pitch):
     v = ESPEAK_LANG.get(lang.lower(), "en-us")
     wpm = int(175 * rate / 100.0)
-    out = subprocess.run(["espeak-ng", "-v", v, "-s", str(wpm), "-p", str(int(pitch / 2)), "--stdout", text],
-                         capture_output=True, check=True).stdout
+    out = subprocess.run(
+        [
+            "espeak-ng",
+            "-v",
+            v,
+            "-s",
+            str(wpm),
+            "-p",
+            str(int(pitch / 2)),
+            "--stdout",
+            text,
+        ],
+        capture_output=True,
+        check=True,
+    ).stdout
     with wave.open(io.BytesIO(out)) as w:
         sr = w.getframerate()
         pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
@@ -126,13 +144,20 @@ def stream_to_soundcard(pcm, sr):
     s = soundcard_connect()
     _current["sock"] = s
     try:
-        s.sendall((json.dumps({"cmd": "play", "rate": sr, "channels": 1, "format": "s16le"}) + "\n").encode())
+        s.sendall(
+            (
+                json.dumps(
+                    {"cmd": "play", "rate": sr, "channels": 1, "format": "s16le"}
+                )
+                + "\n"
+            ).encode()
+        )
         data = pcm.tobytes()
         chunk = sr * 2 // 10  # 100 ms
         for i in range(0, len(data), chunk):
             if _stop.is_set():
                 break
-            s.sendall(data[i:i + chunk])
+            s.sendall(data[i : i + chunk])
     finally:
         try:
             s.shutdown(socket.SHUT_WR)
@@ -162,7 +187,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self._json(200, {"ok": True, "engine": DEFAULT_ENGINE, "voices": VOICES, "soundcard": SOUNDCARD})
+            return self._json(
+                200,
+                {
+                    "ok": True,
+                    "engine": DEFAULT_ENGINE,
+                    "voices": VOICES,
+                    "soundcard": SOUNDCARD,
+                },
+            )
         self._json(404, {"error": "not found"})
 
     def do_POST(self):
@@ -186,7 +219,16 @@ class Handler(BaseHTTPRequestHandler):
         th = threading.Thread(target=self._safe_stream, args=(pcm, sr), daemon=True)
         th.start()
         print(f"say: {used} {duration:.2f}s audio, synth {synth:.2f}s, marks {marks}")
-        self._json(200, {"duration": round(duration, 4), "marks": marks, "rate": sr, "engine": used, "synth_time": round(synth, 3)})
+        self._json(
+            200,
+            {
+                "duration": round(duration, 4),
+                "marks": marks,
+                "rate": sr,
+                "engine": used,
+                "synth_time": round(synth, 3),
+            },
+        )
 
     def _safe_stream(self, pcm, sr):
         try:
@@ -200,7 +242,9 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print(f"nao-sim tts: engine={DEFAULT_ENGINE} soundcard={SOUNDCARD} voices={VOICES}")
-    if DEFAULT_ENGINE == "piper":  # pre-load the voices so the first say() does not pay for it
+    if (
+        DEFAULT_ENGINE == "piper"
+    ):  # pre-load the voices so the first say() does not pay for it
         for lang, name in VOICES.items():
             t = time.time()
             piper_voice(lang)

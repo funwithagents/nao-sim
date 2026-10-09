@@ -6,6 +6,7 @@ A connection whose header is {"cmd": "stop"} stops the current playback.
 Options: --record FILE appends everything played to a WAV file (tests, CI); --silent skips
 the audio device. Playback state is exposed on stdout as one JSON line per start/stop.
 """
+
 import argparse
 import json
 import socketserver
@@ -36,13 +37,17 @@ class SoundCard:
             if self._wav:
                 self._wav.close()
             self._wav = wave.open(self.record, "wb")  # noqa: SIM115 (long-lived, closed on rate change or exit)
-            self._wav.setnchannels(1); self._wav.setsampwidth(2); self._wav.setframerate(rate)
+            self._wav.setnchannels(1)
+            self._wav.setsampwidth(2)
+            self._wav.setframerate(rate)
             self._wav_rate = rate
 
     def play_stream(self, rfile, header):
-        rate = int(header.get("rate", 22050)); channels = int(header.get("channels", 1))
+        rate = int(header.get("rate", 22050))
+        channels = int(header.get("channels", 1))
         with self._lock:
-            self._gen += 1; gen = self._gen
+            self._gen += 1
+            gen = self._gen
             self._stop.clear()
         self._log(event="start", rate=rate, channels=channels)
         self._open_wav(rate)
@@ -50,7 +55,10 @@ class SoundCard:
         stream = None
         if not self.silent:
             import sounddevice as sd
-            stream = sd.RawOutputStream(samplerate=rate, channels=channels, dtype="int16", blocksize=0)
+
+            stream = sd.RawOutputStream(
+                samplerate=rate, channels=channels, dtype="int16", blocksize=0
+            )
             stream.start()
         try:
             while True:
@@ -58,7 +66,10 @@ class SoundCard:
                 if not data:
                     break
                 if self._stop.is_set() or gen != self._gen:
-                    self._log(event="interrupted", played_s=round(total / (2.0 * channels * rate), 3))
+                    self._log(
+                        event="interrupted",
+                        played_s=round(total / (2.0 * channels * rate), 3),
+                    )
                     break
                 total += len(data)
                 if self._wav:
@@ -69,7 +80,8 @@ class SoundCard:
                     time.sleep(len(data) / (2.0 * channels * rate))
         finally:
             if stream:
-                stream.stop(); stream.close()
+                stream.stop()
+                stream.close()
             self._log(event="end", played_s=round(total / (2.0 * channels * rate), 3))
 
     def stop(self):
@@ -93,7 +105,8 @@ class Handler(socketserver.StreamRequestHandler):
         assert isinstance(self.server, Server)
         card = self.server.card
         if header.get("cmd") == "stop":
-            card.stop(); return
+            card.stop()
+            return
         if header.get("cmd") == "play":
             card.play_stream(self.rfile, header)
 
@@ -111,11 +124,23 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="nao-sim host sound card")
     ap.add_argument("--listen", default="0.0.0.0:9562")
     ap.add_argument("--record", help="WAV file to append everything played to")
-    ap.add_argument("--silent", action="store_true", help="do not open the audio device")
+    ap.add_argument(
+        "--silent", action="store_true", help="do not open the audio device"
+    )
     a = ap.parse_args(argv)
     host, port = a.listen.rsplit(":", 1)
     srv = Server((host, int(port)), SoundCard(record=a.record, silent=a.silent))
-    print(json.dumps({"event": "listening", "addr": a.listen, "record": a.record, "silent": a.silent}), flush=True)
+    print(
+        json.dumps(
+            {
+                "event": "listening",
+                "addr": a.listen,
+                "record": a.record,
+                "silent": a.silent,
+            }
+        ),
+        flush=True,
+    )
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
