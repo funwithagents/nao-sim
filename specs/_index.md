@@ -18,7 +18,7 @@ How the repository is built and laid out.
 
 | Spec | Description | Status |
 |---|---|---|
-| [project.md](project.md) | Project structure and tooling: Python version, packaging with uv, layout conventions; distribution as a uv git dependency (recipes as package data in the wheel, vendor files in the user data directory, the `viewer` extra, versions) | Implemented |
+| [project.md](project.md) | Project structure and tooling: Python version, packaging with uv, layout conventions; distribution as a uv git dependency (recipes as package data in the wheel, image data in the user data directory, the `viewer` extra, versions) | Implemented |
 
 ### Runtime: `runtime/`
 

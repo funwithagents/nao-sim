@@ -1,16 +1,16 @@
-"""Fetch what the NAOqi images are built from into the vendor folder's <version>/ (`files.VENDOR`:
-docker/vendor/ in a checkout, the user data directory when installed): the pinned Choregraphe
+"""Fetch what the NAOqi images are built from into the image data folder's <version>/ (`files.IMAGE_DATA`:
+docker/image-data/ in a checkout, the user data directory when installed): the pinned Choregraphe
 suite, and the robot's `animations` package extracted from the public robot image.
 
 These are Aldebaran's files, downloaded from Aldebaran's own GitHub repositories (Git LFS) to
-this machine only: they stay in the vendor folder (gitignored in a checkout, never in the wheel)
+this machine only: they stay in the image data folder (gitignored in a checkout, never in the wheel)
 and in locally built images, never in the repository or a pushed image.
 
 A file already there with the pinned hash is kept, so the command is cheap to re-run. A file with
 the expected name but another hash (a Git LFS pointer, a truncated copy) is an error and is left
 alone. Downloads and extractions go to `<file>.part`, are hashed on the fly and only take the
 final name once the hash matches. Each verified file's size, modification time and hash are
-recorded in `<vendor>/hashes.json`, so a file that has not changed since is not hashed again
+recorded in `<image-data>/hashes.json`, so a file that has not changed since is not hashed again
 (the 2.8 suite alone is 1.3 GB).
 
 The robot image (`.opn`) is a 4096-byte `ALDIMAGE` header, an installer shell script whose
@@ -36,7 +36,7 @@ from pathlib import Path
 from nao_sim import files
 from nao_sim.errors import FetchError
 
-VENDOR = files.VENDOR
+IMAGE_DATA = files.IMAGE_DATA
 CHUNK = 1 << 20
 PACKAGE = "animations.pkg"
 
@@ -46,7 +46,7 @@ _V6 = "https://media.githubusercontent.com/media/aldebaran/nao6-binaries/master/
 
 
 @dataclass(frozen=True)
-class VendorFile:
+class PinnedFile:
     url: str
     sha256: str
 
@@ -58,8 +58,8 @@ class VendorFile:
 @dataclass(frozen=True)
 class Version:
     name: str
-    suite: VendorFile
-    image: VendorFile  # the robot system image the package is extracted from
+    suite: PinnedFile
+    image: PinnedFile  # the robot system image the package is extracted from
     package_path: str  # animations.pkg inside the image's root filesystem
     package_sha256: str
 
@@ -67,12 +67,12 @@ class Version:
 VERSIONS = {
     "2.1": Version(
         "2.1",
-        VendorFile(
+        PinnedFile(
             _V5
             + "Choregraphe/Linux/Binaries/choregraphe-suite-2.1.4.13-linux64.tar.gz",
             "bad0212956e2223f36736cff33bdc1e008311b8bf9efd81a52dcf05895c8abce",
         ),
-        VendorFile(
+        PinnedFile(
             _V5
             + "NAOqi%202.1.4.13/NAOqi%20Images/opennao-atom-system-image-2.1.4.13_2015-08-27.opn",
             "5d18427ba6f5199d30cf29941b20ad5fa6a06b8f64a29126953cdfa33dbb9a24",
@@ -82,11 +82,11 @@ VERSIONS = {
     ),
     "2.8": Version(
         "2.8",
-        VendorFile(
+        PinnedFile(
             _V6 + "choregraphe-suite-2.8.7.4-linux64.tar.gz",
             "edf95da2ae8ec7573e3a590b6db47a472f9d2733280a4a597841fbf0c1e6c63c",
         ),
-        VendorFile(
+        PinnedFile(
             _V6 + "nao-x86-2.8.7.4_20210820_094013.opn",
             "d82e5dd221712555f20c430f3ebcbe46825d5179f1bc0e2594629489855e24a4",
         ),
@@ -108,11 +108,11 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-HASHES = "hashes.json"  # in the vendor folder
+HASHES = "hashes.json"  # in the image data folder
 
 
 def _record_path(path: Path) -> tuple[Path, str]:
-    """The vendor folder's hash record and the file's key in it (`<version>/<name>`)."""
+    """The image data folder's hash record and the file's key in it (`<version>/<name>`)."""
     return path.parent.parent / HASHES, f"{path.parent.name}/{path.name}"
 
 
@@ -192,7 +192,7 @@ def _download(url: str) -> Iterator[bytes]:
                 _log(f"  {pct}% of {total // 1_000_000} MB")
 
 
-def fetch_file(f: VendorFile, folder: Path) -> Path:
+def fetch_file(f: PinnedFile, folder: Path) -> Path:
     """Make sure `folder` holds the pinned file; download it if absent. Returns its path."""
     dest = folder / f.filename
     if not _present(dest, f.sha256):
@@ -331,9 +331,11 @@ def docker_cat(rootfs: Iterable[bytes], path: str) -> Iterator[bytes]:
 Cat = Callable[[Iterable[bytes], str], Iterable[bytes]]
 
 
-def fetch(version: Version, vendor: Path = VENDOR, cat: Cat = docker_cat) -> Path:
-    """Make sure `<vendor>/<version>/` holds the suite and `animations.pkg`. Returns the folder."""
-    folder = vendor / version.name
+def fetch(
+    version: Version, image_data: Path = IMAGE_DATA, cat: Cat = docker_cat
+) -> Path:
+    """Make sure `<image-data>/<version>/` holds the suite and `animations.pkg`. Returns the folder."""
+    folder = image_data / version.name
     _log(f"NAOqi {version.name}")
     fetch_file(version.suite, folder)
     package = folder / PACKAGE

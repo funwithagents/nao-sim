@@ -22,6 +22,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 | [202610091734_naosim-run.md](202610091734_naosim-run.md) | `NaoSimConfig`, the `NaoSim` object with the sim window, `read_status`/`cleanup`, `nao-sim run`/`cleanup`/`status`/`logs`; the audio output becomes internal (no command); live tier through `NaoSim` with a `MemorySink` | Done |
 | [202610091947_ci-workflow.md](202610091947_ci-workflow.md) | `.github/workflows/ci.yml` (`check`, `fast-tier`, `e2e-sim` over 2.1 and 2.8 with a cached `docker save` of the images), `NAO_SIM_E2E_VERSION` making a version required in the live tier, the Python 2.7 compile check as a live test | Done |
 | [202610092106_git-dependency.md](202610092106_git-dependency.md) | nao-sim as a uv git dependency: recipes as package data in the wheel (vendor excluded), `files.py` locating recipes and the vendor folder (`NAO_SIM_VENDOR`, user data directory), the vendor folder as a named build context, a live test installing nao-sim in a scratch project; README for depending projects | Done |
+| [202610092201_image-data-rename.md](202610092201_image-data-rename.md) | The vendor folder becomes the image data everywhere: `NAO_SIM_IMAGE_DATA`, `--image-data`, `docker/image-data/`, `<user data>/nao-sim/image-data/`, the `image-data` build context, `PinnedFile` | Done |
 
 ## Status legend
 

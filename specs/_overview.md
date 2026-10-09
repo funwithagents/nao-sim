@@ -73,13 +73,13 @@ The code is MIT. Nothing from Aldebaran is in the repository, a package or a pub
 
 | Asset | Source | How nao-sim uses it |
 | --- | --- | --- |
-| Choregraphe suite (`naoqi-bin`, the Python 2.7 SDK) | Aldebaran's downloads and GitHub repositories, under Aldebaran's terms | Downloaded from Aldebaran's GitHub repositories into `docker/vendor/<version>/` (gitignored) by `nao-sim fetch-and-build-images`, or placed there by the user, hash-pinned; the image is built and tagged locally and never pushed |
-| `animations` package | Only inside the robot system images (`.opn`, public in the same two repositories) | Extracted from the image by `nao-sim fetch-and-build-images` into `docker/vendor/<version>/`, hash-pinned, built into the local image; never in the repository |
+| Choregraphe suite (`naoqi-bin`, the Python 2.7 SDK) | Aldebaran's downloads and GitHub repositories, under Aldebaran's terms | Downloaded from Aldebaran's GitHub repositories into `docker/image-data/<version>/` (gitignored) by `nao-sim fetch-and-build-images`, or placed there by the user, hash-pinned; the image is built and tagged locally and never pushed |
+| `animations` package | Only inside the robot system images (`.opn`, public in the same two repositories) | Extracted from the image by `nao-sim fetch-and-build-images` into `docker/image-data/<version>/`, hash-pinned, built into the local image; never in the repository |
 | Sound set and other robot packages | The user's own robot (the store that sold them is gone) | Installed by the user into the running sim as on a robot; kept in a local Docker volume |
 | NAO meshes and textures (CC BY-NC-ND 4.0) | `ros-naoqi/nao_meshes` installer | Never touched by nao-sim: nao-viewer fetches them after a typed license acceptance and keeps them in the user's data directory |
 | libqi and its Python 3 bindings (BSD-3-Clause) | [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python), a fork of Aldebaran's libqi | Prebuilt wheels from the fork's GitHub Releases, a runtime dependency |
 
-- `.gitignore` covers suite tarballs, `docker/vendor/`, meshes and textures. An automated asset guard (tree, wheel, sdist and Docker build context) is planned and deferred: it gets its spec when packaging starts.
+- `.gitignore` covers suite tarballs, `docker/image-data/`, meshes and textures. An automated asset guard (tree, wheel, sdist and Docker build context) is planned and deferred: it gets its spec when packaging starts.
 - The suite download fetches Aldebaran's own public files to the user's machine, as the user would by hand; nothing is redistributed. See [container.md](container/container.md).
 
 ## NAOqi 2.1 and 2.8
@@ -169,7 +169,7 @@ Specified in [cli.md](runtime/cli.md).
 
 | Command | Purpose |
 | --- | --- |
-| `nao-sim fetch-and-build-images [2.1] [2.8]` | Fetch the vendor files, build and verify the images: the one slow step, before `run` ([api.md](runtime/api.md), "Images") |
+| `nao-sim fetch-and-build-images [2.1] [2.8]` | Fetch the image data, build and verify the images: the one slow step, before `run` ([api.md](runtime/api.md), "Images") |
 | `nao-sim run [--config FILE]` | Load a `NaoSimConfig` ([config.md](runtime/config.md); none: the defaults), start a `NaoSim` ([api.md](runtime/api.md)) and stay in the foreground until Ctrl-C, which stops everything |
 | `nao-sim cleanup` | Remove the containers a run that died without stopping left behind |
 | `nao-sim status` / `nao-sim logs` | Health of the containers, the overrides and the host link |
@@ -199,7 +199,7 @@ The spike scripts (`spike/`, local only) cover these checks by hand today.
 
 ## Packaging and platforms
 
-Built as [project.md](project.md) ("Distribution") specifies: another project depends on nao-sim from GitHub with uv, pinned to a commit or tag; the container recipes ship as package data in the wheel and the vendor files go to the user data directory; the `viewer` extra; versions baked into the images.
+Built as [project.md](project.md) ("Distribution") specifies: another project depends on nao-sim from GitHub with uv, pinned to a commit or tag; the container recipes ship as package data in the wheel and the image data go to the user data directory; the `viewer` extra; versions baked into the images.
 
 - The libqi wheels exist for macOS 15+ arm64 and Linux x86_64 (glibc 2.34+), Python 3.10–3.13. Installation elsewhere fails by design: nao-sim's host side cannot work without qi. v1 targets these two platforms only; Windows, Intel macOS, Linux arm64 and older systems are on the roadmap, each waiting on wheels from the libqi fork.
 - pip is not supported: it ignores uv's sources, and how it would find the libqi wheels is deferred ([project.md](project.md), open questions).

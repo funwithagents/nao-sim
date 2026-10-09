@@ -4,7 +4,7 @@
 The scratch project depends on this checkout as a non-editable path, which uv builds and installs
 exactly as it does a git dependency, without pushing a commit. It then runs nao-sim from that
 project's environment: the recipes it reads from its package, the commands it installs, and a
-`nao-sim run` booting the images this checkout built, through `NAO_SIM_VENDOR`.
+`nao-sim run` booting the images this checkout built, through `NAO_SIM_IMAGE_DATA`.
 """
 
 import json
@@ -17,7 +17,7 @@ from pathlib import Path
 import platformdirs
 import pytest
 from conftest import live_config
-from support import REPO, VENDOR, unavailable
+from support import IMAGE_DATA, REPO, unavailable
 
 from nao_sim import docker_images
 
@@ -47,7 +47,7 @@ print(json.dumps({
     "package": package,
     "installed": files.INSTALLED,
     "recipes": str(files.RECIPES),
-    "vendor": str(files.VENDOR),
+    "image_data": str(files.IMAGE_DATA),
     "digest": docker_images.recipes_digest(),
     "bundled": sorted(
         os.path.relpath(os.path.join(d, f), package)
@@ -65,11 +65,11 @@ class Project:
         self.bin = root / ".venv" / "bin"
 
     def env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
-        # Neither this checkout's venv nor a vendor folder set for the test run leaks in.
+        # Neither this checkout's venv nor a image data folder set for the test run leaks in.
         env = {
             k: v
             for k, v in os.environ.items()
-            if k not in ("VIRTUAL_ENV", "NAO_SIM_VENDOR")
+            if k not in ("VIRTUAL_ENV", "NAO_SIM_IMAGE_DATA")
         }
         return {**env, **(extra or {})}
 
@@ -114,7 +114,7 @@ def project(tmp_path_factory) -> Project:
     return project
 
 
-def test_the_package_carries_the_recipes_and_no_vendor_file(project):
+def test_the_package_carries_the_recipes_and_no_image_data(project):
     where = project.where()
 
     assert where["installed"]
@@ -129,7 +129,7 @@ def test_the_package_carries_the_recipes_and_no_vendor_file(project):
         "docker/tts/server.py",
     } <= set(where["bundled"])
     assert not any(
-        "vendor" in path or path.endswith(".pyc") for path in where["bundled"]
+        "image-data" in path or path.endswith(".pyc") for path in where["bundled"]
     )
 
 
@@ -138,12 +138,12 @@ def test_the_installed_recipes_are_the_checkouts(project):
     assert project.where()["digest"] == docker_images.recipes_digest()
 
 
-def test_the_vendor_files_go_to_the_user_data_directory(project):
+def test_the_image_data_goes_to_the_user_data_directory(project):
     user_data = Path(platformdirs.user_data_dir("nao-sim", appauthor=False))
 
-    assert project.where()["vendor"] == str(user_data / "vendor")
-    assert project.where({"NAO_SIM_VENDOR": str(VENDOR)})["vendor"] == str(
-        VENDOR.resolve()
+    assert project.where()["image_data"] == str(user_data / "image-data")
+    assert project.where({"NAO_SIM_IMAGE_DATA": str(IMAGE_DATA)})["image_data"] == str(
+        IMAGE_DATA.resolve()
     )
 
 
@@ -157,7 +157,7 @@ def test_nao_sim_run_from_the_project(project, nao, tmp_path):
     config = tmp_path / "sim.json"
     config.write_text(json.dumps(live_config(nao.version.name).to_dict()))
     shared = {
-        "NAO_SIM_VENDOR": str(VENDOR)
+        "NAO_SIM_IMAGE_DATA": str(IMAGE_DATA)
     }  # the images this checkout built and verified
     check = project.run(
         "python",

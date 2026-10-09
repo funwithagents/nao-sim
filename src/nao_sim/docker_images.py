@@ -1,10 +1,10 @@
 """The Docker images a simulated NAO runs on: fetched, built and verified once, checked at every start.
 
 `fetch_and_build_images` does everything slow or downloaded, per NAOqi version: it fetches the
-vendor files (`suite.fetch`), builds the version's NAOqi image and the `tts` image with the
+image data (`suite.fetch`), builds the version's NAOqi image and the `tts` image with the
 installed nao-sim version and the digest of the `docker/` recipes as labels, then boots them until the NAOqi container
 is healthy and the `tts` engine answers, and takes them down. Only the image IDs that booted are
-recorded, in `images.json` next to the vendor files.
+recorded, in `images.json` next to the image data.
 
 `check_images` is what a start runs instead: the images exist, carry this nao-sim's version,
 were built from the recipes as they are now (so an edit under `docker/` asks for a rebuild) and
@@ -41,8 +41,8 @@ DOCKER = (
     files.RECIPES
 )  # the package data when installed, the checkout's docker/ otherwise
 COMPOSE = DOCKER / "compose.yaml"
-VENDOR = files.VENDOR
-RECORD = "images.json"  # in the vendor folder, gitignored with it
+IMAGE_DATA = files.IMAGE_DATA
+RECORD = "images.json"  # in the image data folder, gitignored with it
 LABEL = "io.nao-sim.version"
 RECIPES_LABEL = "io.nao-sim.recipes"
 TTS_IMAGE = "nao-sim/tts:dev"
@@ -91,8 +91,8 @@ def run(
 
 
 def recipes_digest(docker: Path | None = None) -> str:
-    """SHA-256 of what the images are built from, besides the vendor files (pinned by hash):
-    every file under `docker/` with its relative path, skipping `vendor/`, hidden files and
+    """SHA-256 of what the images are built from, besides the image data (pinned by hash):
+    every file under `docker/` with its relative path, skipping `image-data/`, hidden files and
     Python caches."""
     root = docker or DOCKER
     h = hashlib.sha256()
@@ -100,7 +100,7 @@ def recipes_digest(docker: Path | None = None) -> str:
         rel = path.relative_to(root)
         if (
             not path.is_file()
-            or rel.parts[0] == "vendor"
+            or rel.parts[0] == "image-data"
             or any(part.startswith(".") or part == "__pycache__" for part in rel.parts)
             or path.suffix == ".pyc"
         ):
@@ -127,27 +127,29 @@ def _inspect(tag: str) -> _Found | None:
     return _Found(info["Id"], labels.get(LABEL), labels.get(RECIPES_LABEL))
 
 
-def _verified(vendor: Path) -> dict[str, str]:
+def _verified(image_data: Path) -> dict[str, str]:
     """Image tag to the ID that last passed verification."""
-    path = vendor / RECORD
+    path = image_data / RECORD
     if not path.exists():
         return {}
     return json.loads(path.read_text())["verified"]
 
 
-def _record(vendor: Path, verified: dict[str, str]) -> None:
-    vendor.mkdir(parents=True, exist_ok=True)
-    (vendor / RECORD).write_text(json.dumps({"verified": verified}, indent=2) + "\n")
+def _record(image_data: Path, verified: dict[str, str]) -> None:
+    image_data.mkdir(parents=True, exist_ok=True)
+    (image_data / RECORD).write_text(
+        json.dumps({"verified": verified}, indent=2) + "\n"
+    )
 
 
-def check_images(version: str, vendor: Path = VENDOR) -> None:
+def check_images(version: str, image_data: Path = IMAGE_DATA) -> None:
     """Raise unless the version's NAOqi image and the tts image are built by this nao-sim
     version, from the recipes as they are now, and verified. Needs Docker; downloads and
     builds nothing."""
     images = IMAGES[version]
     want = nao_sim_version()
     recipes = recipes_digest()
-    verified = _verified(vendor)
+    verified = _verified(image_data)
     for tag in (images.image, TTS_IMAGE):
         found = _inspect(tag)
         if found is None:
@@ -255,34 +257,32 @@ def _verify(images: Images, env: dict[str, str]) -> None:
         run(*images.compose(), "down", timeout=300, env=env)
 
 
-def _fetch_build_verify(images: Images, vendor: Path) -> None:
+def _fetch_build_verify(images: Images, image_data: Path) -> None:
     try:
-        suite.fetch(suite.VERSIONS[images.version], vendor)
+        suite.fetch(suite.VERSIONS[images.version], image_data)
     except OSError as e:  # network or disk; hash failures are FetchError already
-        raise FetchError(
-            f"fetching the NAOqi {images.version} vendor files: {e}"
-        ) from e
+        raise FetchError(f"fetching the NAOqi {images.version} image data: {e}") from e
     env = {
         **files.compose_env(
-            vendor
-        ),  # the vendor folder is the build's `vendor` context
+            image_data
+        ),  # the image data folder is the build's `image-data` context
         "NAO_SIM_VERSION": nao_sim_version(),
         "NAO_SIM_RECIPES": recipes_digest(),
     }
     _build(images, env)
     _verify(images, env)
-    verified = _verified(vendor)
+    verified = _verified(image_data)
     for tag in (images.image, TTS_IMAGE):
         found = _inspect(tag)
         if found is None:  # removed while verifying
             raise ImagesMissingError(f"{tag} disappeared: {_command(images.version)}")
         verified[tag] = found.id
-    _record(vendor, verified)
+    _record(image_data, verified)
     log.info("NAOqi %s: images built and verified", images.version)
 
 
 async def fetch_and_build_images(
-    versions: Iterable[str] | None = None, *, vendor: Path = VENDOR
+    versions: Iterable[str] | None = None, *, image_data: Path = IMAGE_DATA
 ) -> None:
     """Fetch, build and verify the images of each version (default: all), in order."""
     names = list(versions or IMAGES)
@@ -292,4 +292,4 @@ async def fetch_and_build_images(
         )
     await asyncio.to_thread(require_docker)
     for name in names:
-        await asyncio.to_thread(_fetch_build_verify, IMAGES[name], vendor)
+        await asyncio.to_thread(_fetch_build_verify, IMAGES[name], image_data)

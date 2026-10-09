@@ -5,7 +5,7 @@ the environment's `NAO_SIM_VERSION` and `NAO_SIM_RECIPES`, the same ID for the s
 Docker's cache), the containers and how the NAOqi one boots (`boot`: healthy, starting,
 unhealthy, exited), whether the tts engine answers, and whether Docker is up or a build fails.
 Every invocation is logged, and `up` records the `NAO_SIM_TTS_ENGINE` it was given. A NAOqi build
-reads its `vendor` context as compose does, from `$NAO_SIM_VENDOR/<version>`: it records the
+reads its `image-data` context as compose does, from `$NAO_SIM_IMAGE_DATA/<version>`: it records the
 folder, and fails as BuildKit does when the folder is not there.
 """
 
@@ -56,11 +56,11 @@ FAKE_DOCKER = textwrap.dedent(
             for s in services:
                 version = state["services"][s].get("version")
                 if version is not None:
-                    context = os.path.join(os.environ.get("NAO_SIM_VENDOR", "./vendor"), version)
+                    context = os.path.join(os.environ.get("NAO_SIM_IMAGE_DATA", "./image-data"), version)
                     if not os.path.isdir(context):
                         print(f"failed to solve: {context}: no such directory", file=sys.stderr)
                         done(1)
-                    state.setdefault("vendor_contexts", {})[s] = context
+                    state.setdefault("image_data_contexts", {})[s] = context
                 tag = state["services"][s]["image"]
                 inputs = tag + json.dumps(labels, sort_keys=True) + state.get("source", "")
                 state["images"][tag] = {

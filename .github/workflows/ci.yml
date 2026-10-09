@@ -90,14 +90,14 @@ jobs:
           echo "key=naoqi-${{ matrix.version }}-$stamp-${{ hashFiles('src/nao_sim/suite.py') }}" >> "$GITHUB_OUTPUT"
       # The version's NAOqi image and the tts image, saved with `docker save`, and the record
       # of their verified IDs. The images contain Aldebaran's software: a cache only this
-      # repository's workflows read, never a registry. The vendor files are never cached.
+      # repository's workflows read, never a registry. The image data are never cached.
       - name: Images (restore)
         id: images
         uses: actions/cache/restore@v6
         with:
           path: |
             ${{ runner.temp }}/images.tar
-            docker/vendor/images.json
+            docker/image-data/images.json
           key: ${{ steps.key.outputs.key }}
       - name: Load the cached images
         if: steps.images.outputs.cache-hit == 'true'
@@ -110,7 +110,7 @@ jobs:
           uv run nao-sim fetch-and-build-images ${{ matrix.version }}
           image=$(uv run python -c "from nao_sim.docker_images import IMAGES; print(IMAGES['${{ matrix.version }}'].image)")
           docker save -o "$RUNNER_TEMP/images.tar" "$image" nao-sim/tts:dev
-          rm -rf docker/vendor/${{ matrix.version }}
+          rm -rf docker/image-data/${{ matrix.version }}
       # Saved right after the build, not at the end of the job, so a failing live tier
       # doesn't build again on the next run.
       - name: Images (save)
@@ -119,7 +119,7 @@ jobs:
         with:
           path: |
             ${{ runner.temp }}/images.tar
-            docker/vendor/images.json
+            docker/image-data/images.json
           key: ${{ steps.key.outputs.key }}
       - name: Drop the saved archive
         if: steps.images.outputs.cache-hit != 'true'

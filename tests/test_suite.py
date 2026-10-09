@@ -15,7 +15,7 @@ from nao_sim.errors import FetchError
 from nao_sim.suite import (
     PACKAGE,
     VERSIONS,
-    VendorFile,
+    PinnedFile,
     Version,
     fetch,
     opn_payload,
@@ -147,8 +147,8 @@ def version(
 ) -> Version:
     return Version(
         "2.1",
-        VendorFile(f"{origin.base}/suite.tar.gz", sha(suite_body)),
-        VendorFile(f"{origin.base}/nao%20image.opn", sha(OPN)),
+        PinnedFile(f"{origin.base}/suite.tar.gz", sha(suite_body)),
+        PinnedFile(f"{origin.base}/nao%20image.opn", sha(OPN)),
         "/usr/share/naoqi/apps/animations.pkg",
         package_sha256,
     )
@@ -240,15 +240,15 @@ def test_the_dockerfile_builds_from_the_fetched_files(name):
     assert re.search(
         rf"^ARG SUITE={re.escape(v.suite.filename)}$", dockerfile, re.MULTILINE
     )
-    # Both files come from the `vendor` build context, which compose points at the version's
-    # folder of the vendor folder fetch() fills.
-    assert "COPY --from=vendor ${SUITE} " in dockerfile
+    # Both files come from the `image-data` build context, which compose points at the version's
+    # folder of the image data folder fetch() fills.
+    assert "COPY --from=image-data ${SUITE} " in dockerfile
     assert (
-        f"COPY --from=vendor {PACKAGE} /opt/naoqi/share/naoqi/apps/{PACKAGE}"
+        f"COPY --from=image-data {PACKAGE} /opt/naoqi/share/naoqi/apps/{PACKAGE}"
         in dockerfile
     )
     compose = (DOCKER / "compose.yaml").read_text()
-    assert f"vendor: ${{NAO_SIM_VENDOR:-./vendor}}/{name}\n" in compose
+    assert f"image-data: ${{NAO_SIM_IMAGE_DATA:-./image-data}}/{name}\n" in compose
     for f in (v.suite, v.image):
         assert f.url.startswith("https://media.githubusercontent.com/media/aldebaran/")
         assert re.fullmatch(r"[0-9a-f]{64}", f.sha256)

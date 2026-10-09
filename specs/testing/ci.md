@@ -13,7 +13,7 @@ tests:
 
 ## Purpose
 
-Both test tiers ([testing.md](testing.md)) run on GitHub's hosted runners for every pull request and every push to `main`, so the verification gate of [AGENTS.md](../../AGENTS.md) (lint, type check, tests) is a machine's verdict on each change and not only a local command. The live tier runs against real NAOqi stacks that the runner fetches, builds and verifies itself, since the vendor files are Aldebaran's public downloads. Like [testing.md](testing.md), this is a cross-cutting practice, not a runtime concept: it is implemented by `.github/workflows/ci.yml` and by the live tier's switch from skipping to failing (`tests-e2e/support.py`, `tests-e2e/conftest.py`).
+Both test tiers ([testing.md](testing.md)) run on GitHub's hosted runners for every pull request and every push to `main`, so the verification gate of [AGENTS.md](../../AGENTS.md) (lint, type check, tests) is a machine's verdict on each change and not only a local command. The live tier runs against real NAOqi stacks that the runner fetches, builds and verifies itself, since the image data are Aldebaran's public downloads. Like [testing.md](testing.md), this is a cross-cutting practice, not a runtime concept: it is implemented by `.github/workflows/ci.yml` and by the live tier's switch from skipping to failing (`tests-e2e/support.py`, `tests-e2e/conftest.py`).
 
 Three jobs side by side: a static gate, the fast tier and a live matrix. The image cache follows nao-viewer's CI, which already builds nao-sim's 2.1 images on its runners.
 
@@ -49,8 +49,8 @@ In order:
 1. **Disk.** The 2.8 image is about 6.3 GB, its `docker save` archive as much again, and the suite 1.3 GB on a cold build: the entry first deletes the runner's preinstalled toolchains nao-sim never uses (Android SDK, .NET, GHC, CodeQL), which frees about 25 GB. Both entries do it, so they stay alike.
 2. **Sync**: `uv sync --locked`.
 3. **The cache key**, computed by nao-sim itself: `naoqi-<version>-<nao-sim version>-<recipes digest>-<hash of src/nao_sim/suite.py>`. The first two parts are what `check_images` compares to the image labels ([api.md](../runtime/api.md), "Images"), so the key changes exactly when a start would find the images outdated; the suite pins' hash covers a new suite or package, which the labels do not see.
-4. **Restore** (`actions/cache/restore`): one archive per version, `docker save` of the version's NAOqi image and the `tts` image, together with `docker/vendor/images.json`, the record of the verified image IDs. On a hit, `docker load` and the archive is deleted at once to free its space: the image IDs survive the save and load, so `check_images` accepts the images as verified.
-5. **On a miss**: `uv run nao-sim fetch-and-build-images <version>`, which fetches the pinned vendor files, builds the images and verifies they boot, as on a user's machine; then `docker save` and **save** (`actions/cache/save`) right away, before the tests, so a failing live tier does not rebuild on the next run. The vendor files are never cached, as in nao-viewer's CI: they are needed only on a miss, and a miss downloads them from Aldebaran's repositories.
+4. **Restore** (`actions/cache/restore`): one archive per version, `docker save` of the version's NAOqi image and the `tts` image, together with `docker/image-data/images.json`, the record of the verified image IDs. On a hit, `docker load` and the archive is deleted at once to free its space: the image IDs survive the save and load, so `check_images` accepts the images as verified.
+5. **On a miss**: `uv run nao-sim fetch-and-build-images <version>`, which fetches the pinned image data, builds the images and verifies they boot, as on a user's machine; then `docker save` and **save** (`actions/cache/save`) right away, before the tests, so a failing live tier does not rebuild on the next run. The image data are never cached, as in nao-viewer's CI: they are needed only on a miss, and a miss downloads them from Aldebaran's repositories.
 6. **The live tier**: `uv run pytest tests-e2e -rs` with `NAO_SIM_E2E_VERSION`, under `xvfb-run` with Mesa's GL (`xvfb`, `xauth`, `libgl1`, `libglx-mesa0`, `libegl1`, `libgl1-mesa-dri`), so the sim-window test runs on the 2.1 entry instead of skipping for want of a display. Warnings and errors are logged live (`-o log_cli=true --log-cli-level=WARNING`).
 7. **On failure**: the end of the NAOqi and `tts` containers' logs, if any are still there (`nao-sim logs` needs a running stack, so the step uses `docker logs` on the containers the test left behind, and prints nothing when the `NaoSim` stopped cleanly).
 
@@ -68,7 +68,7 @@ The tests that skip by design on a runner; any other skip in a CI log is a fault
 
 ### Licensing
 
-The runner downloads Aldebaran's suites and robot images from their public repositories and builds images from them, as a user does on their machine. The images go to the repository's private Actions cache only; nothing is pushed to a registry or attached to a release, and no workflow artifact contains a vendor file or an image. This is the same practice as nao-viewer's CI, under the rule of [AGENTS.md](../../AGENTS.md): images built from the suite are never pushed.
+The runner downloads Aldebaran's suites and robot images from their public repositories and builds images from them, as a user does on their machine. The images go to the repository's private Actions cache only; nothing is pushed to a registry or attached to a release, and no workflow artifact contains a file of the image data or an image. This is the same practice as nao-viewer's CI, under the rule of [AGENTS.md](../../AGENTS.md): images built from the suite are never pushed.
 
 ### Secrets and protection
 

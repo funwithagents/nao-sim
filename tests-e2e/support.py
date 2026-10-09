@@ -28,7 +28,7 @@ from nao_sim.errors import ImagesMissingError, ImagesOutdatedError, NaoSimError
 
 REPO = Path(__file__).resolve().parent.parent
 COMPOSE = REPO / "docker" / "compose.yaml"
-VENDOR = REPO / "docker" / "vendor"
+IMAGE_DATA = REPO / "docker" / "image-data"
 URL = "tcp://127.0.0.1:9559"
 AUDIO_OUTPUT_PORT = 9562
 REQUIRED = os.environ.get("NAO_SIM_E2E_VERSION") or None  # CI: this version must run
@@ -125,19 +125,19 @@ def require_docker() -> None:
 
 def ensure_images(version: Version) -> None:
     """Use the version's images if current; build and verify them from the checkout if not,
-    when its vendor files are there; skip (or fail, see `unavailable`) otherwise."""
-    vendored = suite.VERSIONS[version.name]
-    folder = VENDOR / version.name
+    when its image data are there; skip (or fail, see `unavailable`) otherwise."""
+    pinned = suite.VERSIONS[version.name]
+    folder = IMAGE_DATA / version.name
     try:
         # Current images (this nao-sim, these recipes, verified) are used as they are.
         docker_images.check_images(version.name)
     except (ImagesMissingError, ImagesOutdatedError) as stale:
         if not (
-            (folder / vendored.suite.filename).exists()
+            (folder / pinned.suite.filename).exists()
             and (folder / suite.PACKAGE).exists()
         ):
             unavailable(
-                f"NAOqi {version.name}: no suite and package in docker/vendor/{version.name}/ "
+                f"NAOqi {version.name}: no suite and package in docker/image-data/{version.name}/ "
                 f"and no usable images ({stale})"
             )
         # The one slow step, as a user runs it: build from the checkout and verify.

@@ -1,5 +1,5 @@
 # Aldebaran assets never enter git (see spec: Licensing)
-docker/vendor/
+docker/image-data/
 *.run
 *.tar.gz
 *.whl

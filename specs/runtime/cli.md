@@ -23,7 +23,7 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 
 | Command | Does |
 | --- | --- |
-| `nao-sim fetch-and-build-images [2.1] [2.8]` | Runs `fetch_and_build_images` ([api.md](api.md), "Images"): fetches the vendor files, builds and verifies the images (default: both versions). The one slow step, run once before `run` and again after changing `docker/` |
+| `nao-sim fetch-and-build-images [2.1] [2.8]` | Runs `fetch_and_build_images` ([api.md](api.md), "Images"): fetches the image data, builds and verifies the images (default: both versions). The one slow step, run once before `run` and again after changing `docker/` |
 | `nao-sim run [--config FILE]` | Loads the config (no `--config`: `NaoSimConfig()`), runs `NaoSim.start()`, prints `sim.url` and the `NaoSim` service's versions once ready, then stays in the foreground until Ctrl-C (or `SIGTERM`), which runs `NaoSim.stop()` |
 | `nao-sim cleanup` | Removes what a run that died without stopping left behind (see "Foreground runs") |
 | `nao-sim status` | Prints `read_status()` ([api.md](api.md), "Without a `NaoSim` object"): each container's state and health, then the `NaoSim` service's versions, readiness and device sources |

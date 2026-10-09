@@ -162,4 +162,4 @@ JSON, as nao-bridge: a `sim` block is pasted between a nao-sim file and a nao-br
 
 ## Open questions
 
-1. **More blocks.** Candidates, each deferred until its spec needs it: `speech.language` and voice, the audio output's device and volume ([audio-output.md](../host/audio-output.md), open questions), the microphone's device ([audio-input.md](../host/audio-input.md), open questions), a vendor directory other than the default ([api.md](api.md), "Files on disk"), ports (today 9559, 9562 and the host link's 9563 are fixed, so one nao-sim runs per machine). Adding a block does not break existing files.
+1. **More blocks.** Candidates, each deferred until its spec needs it: `speech.language` and voice, the audio output's device and volume ([audio-output.md](../host/audio-output.md), open questions), the microphone's device ([audio-input.md](../host/audio-input.md), open questions), an image data folder other than the default ([api.md](api.md), "Files on disk"), ports (today 9559, 9562 and the host link's 9563 are fixed, so one nao-sim runs per machine). Adding a block does not break existing files.

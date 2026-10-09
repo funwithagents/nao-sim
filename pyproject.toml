@@ -25,9 +25,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 # The package, and the container recipes as its package data (specs/project.md, "Distribution"):
-# all of docker/ but the vendor files, which are Aldebaran's and never leave the machine.
+# all of docker/ but the image data, which are Aldebaran's and never leave the machine.
 only-include = ["src/nao_sim", "docker"]
-exclude = ["docker/vendor", "__pycache__", "*.pyc"]
+exclude = ["docker/image-data", "__pycache__", "*.pyc"]
 # hatch cannot make an editable install from a remapped path: a checkout puts src/ on the path
 # and uses docker/ where it is.
 dev-mode-dirs = ["src"]

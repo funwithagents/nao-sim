@@ -38,7 +38,7 @@ class BootError(NaoSimError):
 
 
 class FetchError(NaoSimError):
-    """A vendor file could not be fetched or does not have its pinned hash."""
+    """A file of the image data could not be fetched or does not have its pinned hash."""
 
 
 class ImageBuildError(NaoSimError):

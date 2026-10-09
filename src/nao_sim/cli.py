@@ -24,7 +24,7 @@ def _parser() -> argparse.ArgumentParser:
     commands = ap.add_subparsers(dest="command", required=True)
     build = commands.add_parser(
         "fetch-and-build-images",
-        help="fetch the vendor files, build the images and verify they boot",
+        help="fetch the image data, build the images and verify they boot",
         description="Fetch the pinned Choregraphe suite and the robot's animations package "
         "(Aldebaran's software, from Aldebaran's GitHub repositories, hash-checked), build "
         "the NAOqi and tts images, and verify they boot. Run once before starting nao-sim, "
@@ -37,7 +37,10 @@ def _parser() -> argparse.ArgumentParser:
         help=f"{', '.join(docker_images.IMAGES)} (default: all)",
     )
     build.add_argument(
-        "--vendor", type=Path, default=docker_images.VENDOR, help="default: %(default)s"
+        "--image-data",
+        type=Path,
+        default=docker_images.IMAGE_DATA,
+        help="default: %(default)s",
     )
     run = commands.add_parser(
         "run",
@@ -129,7 +132,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if a.command == "fetch-and-build-images":
             asyncio.run(
-                docker_images.fetch_and_build_images(a.versions, vendor=a.vendor)
+                docker_images.fetch_and_build_images(
+                    a.versions, image_data=a.image_data
+                )
             )
         elif a.command == "run":
             config = (

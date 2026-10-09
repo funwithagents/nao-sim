@@ -1,5 +1,5 @@
 # Build context for Dockerfile.naoqi-2.8 (BuildKit reads <Dockerfile>.dockerignore): the recipes
-# only. The vendor files come from the `vendor` build context, never from this one.
-vendor/
+# only. The image data come from the `image-data` build context, never from this one.
+image-data/
 tts/
 **/__pycache__/

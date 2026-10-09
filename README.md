@@ -16,9 +16,9 @@ Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4, see [spike/RESULTS.
 - `docker/tts/`: the speech engine container (Piper + eSpeak NG, `POST /say`, streams PCM to the host audio output).
 - `src/nao_sim/sim.py`, `config.py`, `stack.py`, `viewer.py`, `cli.py`: the `NaoSim` object, its `NaoSimConfig` (JSON, examples in `examples/configs/`), the containers, the sim window (nao-viewer, the `viewer` extra) and the `nao-sim` command.
 - `src/nao_sim/audio_output.py`: the host audio output a `NaoSim` runs, a dumb PCM player whose audio goes to a sink: the output device, nothing (`silent`), a WAV file (`record`) or memory (tests).
-- `src/nao_sim/files.py`: where the recipes (`docker/`, shipped in the wheel as package data) and the vendor files are, in a checkout or installed.
-- `src/nao_sim/docker_images.py` and `src/nao_sim/suite.py`: `nao-sim fetch-and-build-images`, which fills the vendor folder (`docker/vendor/<version>/` in a checkout) with the pinned Choregraphe suite and the `animations` package extracted from the public robot image (all from Aldebaran's GitHub repositories and hash-checked; keeps what is already there), builds the images with the nao-sim version as label, and boots them once to verify them (`docker/vendor/images.json`).
-- `docker/vendor/`: gitignored; `2.1/` and `2.8/` each hold the suite tarball and `animations.pkg`; `images.json` lists the verified images.
+- `src/nao_sim/files.py`: where the recipes (`docker/`, shipped in the wheel as package data) and the image data are, in a checkout or installed.
+- `src/nao_sim/docker_images.py` and `src/nao_sim/suite.py`: `nao-sim fetch-and-build-images`, which fills the image data folder (`docker/image-data/<version>/` in a checkout) with the pinned Choregraphe suite and the `animations` package extracted from the public robot image (all from Aldebaran's GitHub repositories and hash-checked; keeps what is already there), builds the images with the nao-sim version as label, and boots them once to verify them (`docker/image-data/images.json`).
+- `docker/image-data/`: gitignored; `2.1/` and `2.8/` each hold the suite tarball and `animations.pkg`; `images.json` lists the verified images.
 - `docker/compose.yaml`: also a package store volume per version, so packages installed over qi or Choregraphe (the sound set) survive `docker compose down`; `down -v` resets them.
 - `tests/`, `tests-e2e/`: the fast tier and the live tier, which starts the containers itself.
 
@@ -69,10 +69,10 @@ uv run nao-viewer fetch-meshes          # optional: Aldebaran's meshes in the wi
 uv run nao-sim run                      # or a NaoSim in the project's code
 ```
 
-An installed nao-sim reads its recipes from its package and keeps the vendor files (1.8 GB for
+An installed nao-sim reads its recipes from its package and keeps the image data (1.8 GB for
 both versions), `hashes.json` and `images.json` in the user data directory
-(`~/Library/Application Support/nao-sim/vendor` on macOS, `~/.local/share/nao-sim/vendor` on
-Linux). `NAO_SIM_VENDOR=<folder>` points it, or a checkout, at another vendor folder, so a
+(`~/Library/Application Support/nao-sim/image-data` on macOS, `~/.local/share/nao-sim/image-data` on
+Linux). `NAO_SIM_IMAGE_DATA=<folder>` points it, or a checkout, at another image data folder, so a
 checkout and the projects depending on nao-sim can share one copy. nao-viewer's meshes are shared
 by every environment on the machine already. pip is not supported: it ignores uv's sources and
 finds no `qi` 3.1.6 on PyPI.
