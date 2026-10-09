@@ -5,48 +5,92 @@
 # fast tier uses here — tests-e2e/ isn't a package that can import from tests/, so the
 # few lines are duplicated rather than shared.
 #
-# The tests start and stop the stacks themselves: each test runs once per NAOqi version,
-# and pytest tears one version's stack down before it brings up the next (both publish 9559).
+# The tests run the simulated NAO the way any caller does, with a `NaoSim`: each test runs
+# once per NAOqi version, and pytest stops one version's NaoSim before it starts the next
+# (both publish 9559). Its audio goes to a MemorySink, so a test asserts on what was played.
+import asyncio
 from collections.abc import Iterator
-from dataclasses import dataclass
 
 import pytest
 import qi
 from support import (
     VERSIONS,
-    AudioOutputProcess,
-    Stack,
+    Container,
     Version,
     connect,
+    ensure_images,
     require_docker,
+    require_free_ports,
+)
+
+from nao_sim import MemorySink, NaoSim
+from nao_sim.config import (
+    AudioOutputSettings,
+    NaoqiSettings,
+    NaoSimConfig,
+    ViewerSettings,
 )
 
 
-@dataclass
+def live_config(version: str, **blocks) -> NaoSimConfig:
+    """Headless and silent: what the live tier runs, unless a test asks for more."""
+    settings = {
+        "naoqi": NaoqiSettings(version=version),  # type: ignore[arg-type]
+        "audio_output": AudioOutputSettings(mode="silent"),
+        "viewer": ViewerSettings(headless=True),
+        **blocks,
+    }
+    return NaoSimConfig(**settings)
+
+
 class Nao:
-    version: Version
-    stack: Stack
-    session: qi.Session
+    """A running simulated NAO of one version, and a qi session to it."""
+
+    def __init__(self, version: Version, runner: asyncio.Runner):
+        self.version = version
+        self.runner = runner
+        self.sink = MemorySink()
+        self.sim = NaoSim(live_config(version.name), sink=self.sink)
+        self.container = Container(version)
+        self._session: qi.Session | None = None
+
+    def start(self) -> None:
+        self.runner.run(self.sim.start())
+        self._session = connect(self.sim.url)
+
+    def stop(self) -> None:
+        if self._session is not None:
+            self._session.close()
+            self._session = None
+        self.runner.run(self.sim.stop())
+
+    def restart(self) -> None:
+        self.stop()
+        self.start()
+
+    @property
+    def session(self) -> qi.Session:
+        assert self._session is not None, "the NaoSim is stopped"
+        return self._session
 
     def service(self, name: str):
         return self.session.service(name)
 
-
-@pytest.fixture(scope="session")
-def audio_output() -> Iterator[AudioOutputProcess]:
-    process = AudioOutputProcess()
-    yield process
-    process.close()
+    def played(self, after: float, timeout: float = 10.0) -> float:
+        """Seconds of audio in the first stream that started after `after` (time.monotonic())."""
+        return self.sink.wait_for(lambda p: p.started_at >= after, timeout).duration_s
 
 
 @pytest.fixture(scope="session", params=sorted(VERSIONS))
-def nao(request, audio_output) -> Iterator[Nao]:
+def nao(request) -> Iterator[Nao]:
     require_docker()
-    stack = Stack(VERSIONS[request.param])
-    try:
-        stack.up()
-        session = connect()
-        yield Nao(stack.version, stack, session)
-        session.close()
-    finally:
-        stack.down()
+    version = VERSIONS[request.param]
+    ensure_images(version)
+    require_free_ports()
+    with asyncio.Runner() as runner:
+        nao = Nao(version, runner)
+        try:
+            nao.start()
+            yield nao
+        finally:
+            nao.stop()

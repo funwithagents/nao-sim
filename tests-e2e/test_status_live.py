@@ -5,7 +5,7 @@ learns the target is nao-sim, its versions and device sources, and the Docker he
 def test_the_target_identifies_as_nao_sim(nao):
     naosim = nao.service("NaoSim")
     memory = nao.service("ALMemory")
-    built_with = nao.stack.image_env()["NAO_SIM_VERSION"]
+    built_with = nao.container.image_env()["NAO_SIM_VERSION"]
 
     assert "NaoSim" in {s["name"] for s in nao.session.services()}
     assert naosim.getVersion() == built_with
@@ -25,4 +25,4 @@ def test_ready_means_the_replacements_answer(nao):
 
 
 def test_the_container_turns_healthy(nao):
-    assert nao.stack.wait_healthy(timeout=30) == "healthy"
+    assert nao.container.wait_healthy(timeout=30) == "healthy"

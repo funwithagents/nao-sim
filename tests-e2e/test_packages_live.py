@@ -4,8 +4,6 @@ into the image, and the package store volume that keeps what a user installs ove
 import stat
 import zipfile
 
-from support import connect
-
 GESTURE = "animations/Stand/Gestures/Hey_1"
 UUID = "nao-sim-e2e"
 MANIFEST = f"""<?xml version='1.0' encoding='UTF-8'?>
@@ -33,20 +31,17 @@ def test_animations_is_installed_at_boot(nao):
     assert len(gestures) >= 224
 
 
-def test_packages_survive_down_and_up(nao, tmp_path):
+def test_packages_survive_a_restart(nao, tmp_path):
     pkg = tmp_path / f"{UUID}.pkg"
     make_package(pkg)
-    nao.stack.copy_in(pkg, f"/tmp/{UUID}.pkg")
+    nao.container.copy_in(pkg, f"/tmp/{UUID}.pkg")
     pm = nao.service("PackageManager")
     assert pm.install(f"/tmp/{UUID}.pkg")
     # A system package missing from the store comes back from the image at the next boot.
     pm.removePkg("animations")
     assert not pm.hasPackage("animations")
 
-    nao.session.close()
-    nao.stack.down()
-    nao.stack.up()
-    nao.session = connect()
+    nao.restart()
 
     pm = nao.service("PackageManager")
     try:

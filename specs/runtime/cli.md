@@ -1,14 +1,17 @@
 ---
 code:
   - src/nao_sim/cli.py
+  - src/nao_sim/stack.py
   - pyproject.toml
 tests:
+  - tests/test_cli.py
   - tests/test_docker_images.py
+  - tests-e2e/test_naosim_live.py
 ---
 
 # CLI (`nao-sim`)
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 
@@ -47,7 +50,7 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 
 ### Existing commands
 
-The former `nao-sim-fetch-suite` is now `nao-sim fetch-and-build-images`, the only subcommand built so far. `nao-sim-speaker` ([audio-output.md](../host/audio-output.md)) is not a user command: it exists only because the `NaoSim` object, which runs the audio output in-process ([api.md](api.md)), is not built yet. When `NaoSim` lands, it leaves `[project.scripts]` and does not become a `nao-sim` subcommand; `python -m nao_sim.audio_output` stays for the rare stack started by hand with `docker compose` (debugging).
+The former `nao-sim-fetch-suite` is now `nao-sim fetch-and-build-images`. The former `nao-sim-speaker` is gone: the audio output is part of a running `NaoSim` ([audio-output.md](../host/audio-output.md)) and has no command of its own. Recording what the robot says is `audio_output.mode = "record"` in the config, and debugging a stack is `nao-sim run` with `nao-sim logs`.
 
 ## Open questions
 

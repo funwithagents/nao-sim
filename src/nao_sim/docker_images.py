@@ -81,7 +81,7 @@ def _command(version: str) -> str:
     return f"run `nao-sim fetch-and-build-images {version}`"
 
 
-def _run(
+def run(
     *args: str, timeout: float = 120, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -118,7 +118,7 @@ class _Found:
 
 def _inspect(tag: str) -> _Found | None:
     """The image's ID and nao-sim labels, or None if there is no such image."""
-    res = _run("docker", "image", "inspect", tag)
+    res = run("docker", "image", "inspect", tag)
     if res.returncode != 0:
         return None
     info = json.loads(res.stdout)[0]
@@ -165,14 +165,14 @@ def check_images(version: str, vendor: Path = VENDOR) -> None:
             raise ImagesMissingError(f"{tag} was not verified: {_command(version)}")
 
 
-def _require_docker() -> None:
-    if shutil.which("docker") is None or _run("docker", "info").returncode != 0:
+def require_docker() -> None:
+    if shutil.which("docker") is None or run("docker", "info").returncode != 0:
         raise DockerUnavailableError(
             "Docker is not available: install it or start it (Docker Desktop, OrbStack)"
         )
 
 
-def _require_free(port: int) -> None:
+def require_free(port: int) -> None:
     with socket.socket() as s:
         s.settimeout(0.5)
         if s.connect_ex(("127.0.0.1", port)) == 0:
@@ -182,15 +182,18 @@ def _require_free(port: int) -> None:
             )
 
 
-def _logs(container: str) -> str:
-    res = _run("docker", "logs", "--tail", "60", container)
+def container_logs(container: str) -> str:
+    res = run("docker", "logs", "--tail", "60", container)
     return (res.stdout + res.stderr).strip()
 
 
-def _wait_healthy(images: Images) -> None:
-    end = time.monotonic() + READY_TIMEOUT
+def wait_healthy(images: Images, timeout: float | None = None) -> None:
+    """Until the version's NAOqi container is healthy; `BootError` if it exits, turns
+    unhealthy or takes longer than `timeout` (default `READY_TIMEOUT`), with the end of its log."""
+    timeout = READY_TIMEOUT if timeout is None else timeout
+    end = time.monotonic() + timeout
     while True:
-        res = _run(
+        res = run(
             "docker",
             "inspect",
             "-f",
@@ -203,12 +206,12 @@ def _wait_healthy(images: Images) -> None:
         if state[0] != "running" or state[1:] == ["unhealthy"]:
             raise BootError(
                 f"NAOqi {images.version} did not boot ({' '.join(state)}):\n"
-                + _logs(images.container)
+                + container_logs(images.container)
             )
         if time.monotonic() > end:
             raise BootError(
-                f"NAOqi {images.version} not healthy after {READY_TIMEOUT:.0f} s:\n"
-                + _logs(images.container)
+                f"NAOqi {images.version} not healthy after {timeout:.0f} s:\n"
+                + container_logs(images.container)
             )
         time.sleep(POLL)
 
@@ -218,15 +221,17 @@ _TTS_HEALTH = "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8
 
 def _wait_tts() -> None:
     end = time.monotonic() + TTS_TIMEOUT
-    while _run("docker", "exec", TTS_CONTAINER, "python", "-c", _TTS_HEALTH).returncode:
+    while run("docker", "exec", TTS_CONTAINER, "python", "-c", _TTS_HEALTH).returncode:
         if time.monotonic() > end:
-            raise BootError(f"the tts engine does not answer:\n{_logs(TTS_CONTAINER)}")
+            raise BootError(
+                f"the tts engine does not answer:\n{container_logs(TTS_CONTAINER)}"
+            )
         time.sleep(POLL)
 
 
 def _build(images: Images, env: dict[str, str]) -> None:
     log.info("NAOqi %s: building %s and %s", images.version, images.image, TTS_IMAGE)
-    res = _run(*images.compose(), "build", "tts", images.service, timeout=3600, env=env)
+    res = run(*images.compose(), "build", "tts", images.service, timeout=3600, env=env)
     if res.returncode != 0:
         raise ImageBuildError(
             f"docker compose build failed for NAOqi {images.version}:\n"
@@ -236,17 +241,17 @@ def _build(images: Images, env: dict[str, str]) -> None:
 
 def _verify(images: Images, env: dict[str, str]) -> None:
     log.info("NAOqi %s: verifying the images boot", images.version)
-    _require_free(NAOQI_PORT)
+    require_free(NAOQI_PORT)
     try:
-        res = _run(*images.compose(), "up", "-d", "tts", images.service, env=env)
+        res = run(*images.compose(), "up", "-d", "tts", images.service, env=env)
         if res.returncode != 0:
             raise BootError(
                 f"docker compose up failed for NAOqi {images.version}:\n{res.stderr[-3000:]}"
             )
-        _wait_healthy(images)
+        wait_healthy(images)
         _wait_tts()
     finally:
-        _run(*images.compose(), "down", timeout=300, env=env)
+        run(*images.compose(), "down", timeout=300, env=env)
 
 
 def _fetch_build_verify(images: Images, vendor: Path) -> None:
@@ -282,6 +287,6 @@ async def fetch_and_build_images(
         raise ValueError(
             f"unknown NAOqi version(s) {', '.join(unknown)}; choose from {', '.join(IMAGES)}"
         )
-    await asyncio.to_thread(_require_docker)
+    await asyncio.to_thread(require_docker)
     for name in names:
         await asyncio.to_thread(_fetch_build_verify, IMAGES[name], vendor)

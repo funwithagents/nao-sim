@@ -20,7 +20,7 @@ def test_the_images_are_built_by_this_nao_sim_and_verified(nao):
     version = docker_images.nao_sim_version()
     assert _label(nao.version.image) == version
     assert _label(docker_images.TTS_IMAGE) == version
-    assert nao.stack.image_env()["NAO_SIM_VERSION"] == version
+    assert nao.container.image_env()["NAO_SIM_VERSION"] == version
     docker_images.check_images(
         nao.version.name
     )  # raises if missing, outdated or unverified

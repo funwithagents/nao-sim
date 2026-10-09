@@ -1,0 +1,4 @@
+{
+  "viewer": { "headless": true },
+  "audio_output": { "mode": "silent" }
+}

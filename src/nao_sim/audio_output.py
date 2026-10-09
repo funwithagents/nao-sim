@@ -5,10 +5,10 @@ Protocol (TCP, one connection per stream): a JSON header line, then raw PCM unti
 sender closes.  {"cmd": "play", "rate": 22050, "channels": 1, "format": "s16le"}
 A connection whose header is {"cmd": "stop"} stops the current playback.
 Where the audio goes is an `AudioSink`: the output device, nothing, a WAV file or memory.
-The audio output paces every sink in real time, so stop and timing behave the same.
+The audio output paces every sink in real time, so stop and timing behave the same. A running
+`NaoSim` owns it; there is no command to start it on its own.
 """
 
-import argparse
 import dataclasses
 import io
 import json
@@ -301,42 +301,3 @@ class Server(socketserver.ThreadingTCPServer):
     def __init__(self, addr, audio_output: AudioOutput):
         super().__init__(addr, Handler)
         self.audio_output = audio_output
-
-
-def print_event(event: dict) -> None:
-    """The command's report: one JSON line per event on stdout, with a `t` timestamp."""
-    print(json.dumps({**event, "t": round(time.time(), 3)}), flush=True)
-
-
-def main(argv=None):
-    ap = argparse.ArgumentParser(
-        description="nao-sim audio output (normally run by NaoSim; this entry point is for debugging)"
-    )
-    ap.add_argument("--listen", default="0.0.0.0:9562")
-    ap.add_argument("--record", help="WAV file to write everything played to")
-    ap.add_argument(
-        "--silent", action="store_true", help="do not open the audio device"
-    )
-    a = ap.parse_args(argv)
-    if a.record:
-        sink: AudioSink = WavSink(a.record)
-    elif a.silent:
-        sink = NullSink()
-    else:
-        sink = DevicePlayer()
-    host, port = a.listen.rsplit(":", 1)
-    srv = Server((host, int(port)), AudioOutput(sink, on_event=print_event))
-    print_event(
-        {"event": "listening", "addr": a.listen, "record": a.record, "silent": a.silent}
-    )
-    try:
-        srv.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        if isinstance(sink, WavSink):
-            sink.close()
-
-
-if __name__ == "__main__":
-    main()

@@ -1,7 +1,12 @@
 ---
 code:
+  - src/nao_sim/viewer.py
+  - src/nao_sim/sim.py
   - pyproject.toml
 tests:
+  - tests/test_viewer.py
+  - tests/test_sim.py
+  - tests-e2e/test_naosim_live.py
 ---
 
 # Viewer: the simulated world
@@ -66,6 +71,10 @@ Through the `nao-sim[viewer]` extra, which pulls nao-viewer and with it MuJoCo. 
 The live tier runs the viewer from the start, headless, with the render camera and the placeholder variant: `{"viewer": {"headless": true, "variant": "placeholder"}, "video_input": {"source": "render"}}`. That tests the whole camera loop (a client subscribes, the viewer renders, `putImage` injects, the client reads the frame back) on a runner with no display ([ci.md](../testing/ci.md)). The placeholder visuals are enough to assert frames, and CI never accepts the meshes' license.
 
 Until the render camera is built (milestone 4), a headless config with no render source runs no viewer, so the live tier has none; the window itself needs a display and is checked by a live test that skips without one.
+
+### As built
+
+The window is built: `NaoSim` launches the viewer for `headless = false`, closes it on `stop()`, and logs a window closed by the user. The headless viewer comes with the render camera ([video-input.md](video-input.md)): until then `video_input.source = "render"` is refused at start, and this spec stays `Stable`.
 
 ## Open questions
 

@@ -18,7 +18,6 @@ from nao_sim.audio_output import (
     NullSink,
     Server,
     WavSink,
-    print_event,
 )
 
 RATE = 8000  # small streams, same code path as 22050
@@ -348,12 +347,3 @@ def test_device_player_plays_each_stream_and_cuts_on_interruption(fake_sounddevi
     assert finished.written == b"abcd"
     assert finished.calls == ["start", "stop", "close"]  # drained
     assert cut.calls == ["start", "abort", "close"]  # cut at once
-
-
-def test_command_events_are_json_lines_with_a_timestamp(capsys):
-    print_event({"event": "end", "played_s": 0.5})
-
-    [line] = capsys.readouterr().out.splitlines()
-    event = json.loads(line)
-    assert event["event"] == "end" and event["played_s"] == 0.5
-    assert event["t"] == pytest.approx(time.time(), abs=5)

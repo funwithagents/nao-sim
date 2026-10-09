@@ -12,7 +12,7 @@ services:
     container_name: nao-sim-tts
     environment:
       NAO_SIM_SOUNDCARD: host.docker.internal:9562
-      NAO_SIM_TTS_ENGINE: piper
+      NAO_SIM_TTS_ENGINE: ${NAO_SIM_TTS_ENGINE:-piper}
     extra_hosts:
       - "host.docker.internal:host-gateway"
   naoqi21:

@@ -5,6 +5,10 @@ class NaoSimError(RuntimeError):
     """The base of nao-sim's own errors."""
 
 
+class NotRunningError(NaoSimError):
+    """A `NaoSim` member that needs it running was used before `start()` or after `stop()`."""
+
+
 class DockerUnavailableError(NaoSimError):
     """Docker is not installed or does not answer."""
 
@@ -19,6 +23,14 @@ class ImagesMissingError(NaoSimError):
 
 class ImagesOutdatedError(NaoSimError):
     """A version's images were built by another nao-sim version: their override modules are stale."""
+
+
+class MissingExtraError(NaoSimError):
+    """The config needs an optional dependency that is not installed (`nao-sim[viewer]`)."""
+
+
+class DeviceNotBuiltError(NaoSimError):
+    """The config asks for a host device source that is not built yet."""
 
 
 class BootError(NaoSimError):

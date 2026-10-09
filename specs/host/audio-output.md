@@ -21,16 +21,12 @@ It is named after its role, not after a loudspeaker: where the audio ends up is 
 ### Naming
 
 - Module `src/nao_sim/audio_output.py`, class `AudioOutput`, config block `audio_output` ([config.md](../runtime/config.md)).
-- It was first built as the "speaker" (class `Speaker`, command `nao-sim-speaker`), and before that the "sound card"; the `nao-sim-speaker` script stays, pointing at this module, until `NaoSim` lands.
+- It was first built as the "speaker" (class `Speaker`, command `nao-sim-speaker`), and before that the "sound card".
 - The `tts` container's `NAO_SIM_SOUNDCARD` setting keeps its name: it is internal to the container recipes.
 
-### Command
+### Run by `NaoSim`
 
-`python -m nao_sim.audio_output [--listen HOST:PORT] [--record FILE] [--silent]`. It is not meant to be started directly: a `NaoSim` runs the audio output in-process ([api.md](../runtime/api.md)). It stays for a stack started by hand with `docker compose` (debugging). The `nao-sim-speaker` script leaves `[project.scripts]` when `NaoSim` lands ([cli.md](../runtime/cli.md), "Existing commands"). It listens on `0.0.0.0:9562` by default; the containers reach it at `host.docker.internal:9562`.
-
-- `--record FILE` writes everything played to a mono 16-bit WAV (a `WavSink`). The file is reopened (overwritten) when the sample rate changes.
-- `--silent` opens no audio device but paces the data in real time (a `NullSink`), so timing and stop behave as with a device. Used for tests and CI.
-- State is reported on stdout as one JSON line per event: `listening`, `start` (`rate`, `channels`), `interrupted` (`played_s`), `end` (`played_s`), `stop-request`. Each line carries a `t` timestamp.
+The audio output has no command of its own: a running `NaoSim` ([api.md](../runtime/api.md)) starts it in-process, listening on `0.0.0.0:9562`, before the containers, and stops it after them. The containers reach it at `host.docker.internal:9562`. Its events (`start`, `interrupted`, `end`, `stop-request`) go to the debug log.
 
 ### Protocol (TCP)
 
@@ -69,12 +65,12 @@ class AudioSink(Protocol):
   | Sink | Does | Chosen by |
   | --- | --- | --- |
   | `DevicePlayer(device=None)` | Plays on the output device (`sounddevice`, imported lazily at the first `begin`, so a host without PortAudio can use the other sinks) | `audio_output.mode = "play"`, the default |
-  | `NullSink()` | Discards | `"silent"`, `--silent` |
-  | `WavSink(path)` | Writes mono 16-bit WAV, reopened when the rate changes | `"record"`, `--record FILE` |
+  | `NullSink()` | Discards | `"silent"` |
+  | `WavSink(path)` | Writes mono 16-bit WAV, reopened when the rate changes; `close()` finishes the file (`NaoSim.stop()` calls it) | `"record"` |
   | `MemorySink()` | Keeps each stream as a `Playback(rate, channels, pcm, started_at, ended_at, interrupted)`; `playbacks`, `wait_for(predicate, timeout)` | Tests, passed as `NaoSim(config, sink=MemorySink())` |
 
-- `AudioOutput(sink)` takes one sink. The command builds it from its flags, a `NaoSim` from its `sink=` argument or the config's `audio_output` block ([api.md](../runtime/api.md), "Construction").
-- The stdout JSON lines stay for the command; the live tier moves from them to a `MemorySink` once it runs through `NaoSim`.
+- `AudioOutput(sink)` takes one sink. A `NaoSim` builds it from its `sink=` argument or the config's `audio_output` block ([api.md](../runtime/api.md), "Construction").
+- The live tier runs its `NaoSim` with a `MemorySink` and asserts on the playbacks.
 
 ### Playing state
 

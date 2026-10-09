@@ -1,6 +1,7 @@
 ---
 code:
   - tests/conftest.py
+  - tests/fake_docker.py
   - tests-e2e/conftest.py
   - tests-e2e/support.py
 tests:
@@ -49,11 +50,11 @@ If the package holds process-global or singleton state, both tiers carry an iden
 
 nao-sim is tested as what it is: containers that behave like a NAO in their API, reached over qi on `127.0.0.1:9559`. The live tests bring that stack up themselves; there is no target to configure.
 
-- **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it first runs `check_images` ([api.md](../runtime/api.md), "Images"): current images are used as they are; missing or outdated ones (an edit under `docker/` included) are built and verified with `fetch_and_build_images` when the vendor files are in `docker/vendor/`, and the version skips otherwise. Then it runs `docker compose --profile <version> up -d` on `tts` and that version's NAOqi service, waits for `[entrypoint] nao-sim ready` in the container log, connects, and runs `docker compose down` at the end. Versions run one after the other, since both publish 9559.
+- **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it first runs `check_images` ([api.md](../runtime/api.md), "Images"): current images are used as they are; missing or outdated ones (an edit under `docker/` included) are built and verified with `fetch_and_build_images` when the vendor files are in `docker/vendor/`, and the version skips otherwise. Then it starts a `NaoSim` for that version, headless and silent, as any caller does ([api.md](../runtime/api.md)), connects, and stops it at the end; a test that needs another configuration (`nao-sim run`, the window) stops it and starts it again. Versions run one after the other, since both publish 9559.
 - **Skip, never fail, without the means.** No Docker, or neither the version's suite tarball nor its image: that version's tests skip. A contributor (or CI) without the suites is never broken.
-- **Fail loudly on a conflict.** If 9559 or the audio output's 9562 is already taken (a stack or an audio output started by hand), the tests fail with that message rather than test someone else's stack.
+- **Fail loudly on a conflict.** If 9559 or the audio output's 9562 is already taken (a nao-sim, or a stack started by hand), the tests fail with that message rather than test someone else's stack.
 - **Connect with a retry**: the libqi 3 wheel fails about one connect in three against NAOqi 2.1, instantly, with `disconnected` (`support.connect`).
-- **What was played.** The tests run the audio output with a null sink (`python -m nao_sim.audio_output --silent`: real-time pacing, no audio device) on 9562, where the `tts` container streams, and read its JSON events: `played_s` is the audio actually played. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
+- **What was played.** The `NaoSim` runs with a `MemorySink` ([audio-output.md](../host/audio-output.md), "Audio sinks"): the tests assert on each playback's audio, its timing and whether it was cut. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
 
 ## Tooling
 

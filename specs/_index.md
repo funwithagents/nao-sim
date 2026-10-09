@@ -6,7 +6,7 @@ nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe su
 - **Host**: dumb devices named after their role (the audio output today; audio, video and touch inputs planned), Python 3.12–3.13 with libqi. Perception and speech recognition are the clients' job, not nao-sim's.
 - **Simulated world** (planned, optional): the `nao-sim[viewer]` extra pulls nao-viewer, whose sim mode poses the NAO model from nao-sim's NAOqi in a scene and renders the head cameras that nao-sim injects into `ALVideoDevice`.
 
-Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement, `tts` engine, audio output) and the `NaoSim` status service with the Docker healthcheck. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
+Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement, `tts` engine, audio output) the `NaoSim` status service with the Docker healthcheck, and `nao-sim run`: the `NaoSim` object with its config, the sim window and the CLI. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
 
 ## Specs
 
@@ -26,9 +26,9 @@ The host-side front door: the config, the `NaoSim` object and the `nao-sim` comm
 
 | Spec | Description | Status |
 |---|---|---|
-| [config.md](runtime/config.md) | `NaoSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input`, viewer with its scene and variant), nao-bridge's loader conventions (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embedded as nao-bridge's `sim` block, JSON | Stable |
-| [api.md](runtime/api.md) | The `NaoSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images` (built), `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and nao-bridge's `sim` backend | Stable |
-| [cli.md](runtime/cli.md) | The `nao-sim` command: `fetch-and-build-images` (built), foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Stable |
+| [config.md](runtime/config.md) | `NaoSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input`, viewer with its scene and variant), nao-bridge's loader conventions (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embedded as nao-bridge's `sim` block, JSON | Implemented |
+| [api.md](runtime/api.md) | The `NaoSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and nao-bridge's `sim` backend | Implemented |
+| [cli.md](runtime/cli.md) | The `nao-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Implemented |
 
 ### Containers: `container/`
 

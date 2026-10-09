@@ -1,20 +1,26 @@
 ---
 code:
-  - docker/compose.yaml
+  - src/nao_sim/sim.py
+  - src/nao_sim/stack.py
   - src/nao_sim/__init__.py
   - src/nao_sim/errors.py
   - src/nao_sim/docker_images.py
   - src/nao_sim/audio_output.py
+  - docker/compose.yaml
+  - tests-e2e/conftest.py
   - tests-e2e/support.py
 tests:
+  - tests/test_sim.py
+  - tests/test_stack.py
   - tests/test_docker_images.py
+  - tests-e2e/test_naosim_live.py
   - tests-e2e/test_docker_images_live.py
   - tests-e2e/test_speech_live.py
 ---
 
 # API: the simulated NAO (`NaoSim`)
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 
@@ -84,7 +90,7 @@ So `start()` only checks: an image missing or not verified raises `ImagesMissing
 | Build context | `docker/` | The same user data directory: `fetch_and_build_images` assembles the context there, recipes copied next to the vendor files |
 | `images.json` (verified image IDs) | `docker/vendor/images.json` (gitignored with the vendor files) | Next to the vendor files |
 
-The checkout layout is today's. The wheel layout, and how the recipes become package data, are detailed in [project.md](../project.md), "Distribution".
+The checkout layout is today's. The wheel layout, and how the recipes become package data, are detailed in [project.md](../project.md), "Distribution", and built with it (that spec is `Updated` until then).
 
 ### What a running `NaoSim` offers
 

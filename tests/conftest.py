@@ -8,6 +8,8 @@
 import sys
 from pathlib import Path
 
+from fake_docker import docker  # noqa: F401  (the fixture, for every test file)
+
 # The container code is not a package: the NAOqi override modules (docker/modules, Python 2.7
 # code kept importable under Python 3) and the speech engine (docker/tts) are imported by name.
 _DOCKER = Path(__file__).resolve().parent.parent / "docker"

@@ -11,9 +11,12 @@ dependencies = [
     "sounddevice",
 ]
 
+[project.optional-dependencies]
+# The sim window and the render camera (specs/host/viewer.md).
+viewer = ["nao-viewer"]
+
 [project.scripts]
 nao-sim = "nao_sim.cli:main"
-nao-sim-speaker = "nao_sim.audio_output:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -24,6 +27,7 @@ packages = ["src/nao_sim"]
 
 [dependency-groups]
 dev = [
+    "nao-sim[viewer]",  # the viewer code type-checks against nao-viewer's real API
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
@@ -38,6 +42,8 @@ environments = [
 ]
 
 [tool.uv.sources]
+# nao-viewer is not on PyPI yet (specs/project.md, open question 1): its repository, pinned.
+nao-viewer = { git = "https://github.com/funwithagents/nao-viewer", rev = "bac227102efbf0e4d9bb17741540d595bda7e63d" }
 qi = [
     { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp312-cp312-macosx_15_0_arm64.whl", marker = "sys_platform == 'darwin' and python_version == '3.12'" },
     { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp313-cp313-macosx_15_0_arm64.whl", marker = "sys_platform == 'darwin' and python_version == '3.13'" },

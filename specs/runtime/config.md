@@ -1,13 +1,18 @@
 ---
 code:
+  - src/nao_sim/config.py
   - docker/compose.yaml
+  - examples/configs/default.json
+  - examples/configs/2.8.json
+  - examples/configs/headless.json
 tests:
+  - tests/test_config.py
   - tests/test_project_map.py
 ---
 
 # Configuration
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 

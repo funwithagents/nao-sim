@@ -20,6 +20,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | `tests/` | Fast, deterministic, no-network tests; mirrors the `src/nao_sim/` module structure |
 | `tests-e2e/` | Opt-in live tests that start the nao-sim containers themselves, once per NAOqi version (not collected by default `pytest`) |
 | `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint-2.1.sh`/`entrypoint-2.8.sh` and the `entrypoint-lib.sh` they share ([container.md](specs/container/container.md)), `healthcheck.sh` ([status-service.md](specs/container/status-service.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/container/service-replacement.md), [speech.md](specs/services/speech.md), [status-service.md](specs/container/status-service.md)); `tts/`, the speech engine container ([tts-engine.md](specs/container/tts-engine.md)); `vendor/<version>/`, the suite tarball and `animations.pkg` fetched by `nao-sim fetch-and-build-images`, and `vendor/images.json`, the verified image IDs (gitignored) |
+| `examples/configs/` | Ready-to-use `NaoSimConfig` files for `nao-sim run --config` ([config.md](specs/runtime/config.md), "Example files") |
 | `spike/` | Local-only investigation scripts and measurement log (untracked, not committed); findings are folded into the specs |
 
 ### `src/nao_sim/` modules
@@ -28,9 +29,13 @@ Where things live. This is a coarse, module-level map — for the full file inve
 
 | Module | Role | Spec |
 |---|---|---|
-| `src/nao_sim/audio_output.py` | The audio output device: TCP PCM player the containers stream into, its audio sinks (device, null, WAV, memory) and playing state; run by `NaoSim` (`nao-sim-speaker` until then) | [audio-output.md](specs/host/audio-output.md), [devices.md](specs/host/devices.md) |
-| `src/nao_sim/__init__.py` | Front door: re-exports `fetch_and_build_images`, `check_images` and the errors | [api.md](specs/runtime/api.md) |
-| `src/nao_sim/cli.py` | The `nao-sim` command, a thin shell over the library (`fetch-and-build-images` so far) | [cli.md](specs/runtime/cli.md) |
+| `src/nao_sim/audio_output.py` | The audio output device: TCP PCM player the containers stream into, its audio sinks (device, null, WAV, memory) and playing state; run in-process by `NaoSim`, no command of its own | [audio-output.md](specs/host/audio-output.md), [devices.md](specs/host/devices.md) |
+| `src/nao_sim/__init__.py` | Front door: re-exports `NaoSim`, the config classes, the audio sinks, `read_status`, `cleanup`, the image functions and the errors | [api.md](specs/runtime/api.md) |
+| `src/nao_sim/cli.py` | The `nao-sim` command, a thin shell over the library: `fetch-and-build-images`, `run`, `status`, `cleanup`, `logs` | [cli.md](specs/runtime/cli.md) |
+| `src/nao_sim/config.py` | `NaoSimConfig` and its blocks, `ConfigError`, the JSON loaders | [config.md](specs/runtime/config.md) |
+| `src/nao_sim/sim.py` | The `NaoSim` object: `start()`/`stop()` over the audio output, the containers and the viewer, with one teardown | [api.md](specs/runtime/api.md) |
+| `src/nao_sim/stack.py` | The running containers: compose up/down, readiness, `read_status` and `cleanup` for other terminals, the logs | [api.md](specs/runtime/api.md), [cli.md](specs/runtime/cli.md) |
+| `src/nao_sim/viewer.py` | The simulated world: when a config needs nao-viewer, its sim-mode config, the window's launch, watch and close | [viewer.md](specs/host/viewer.md) |
 | `src/nao_sim/errors.py` | `NaoSimError` and its subclasses, shared by the modules | [api.md](specs/runtime/api.md) |
 | `src/nao_sim/docker_images.py` | `fetch_and_build_images` (fetch, build with the version label, verify the boot, record) and `check_images` (what a start checks) | [api.md](specs/runtime/api.md), [container.md](specs/container/container.md) |
 | `src/nao_sim/suite.py` | Fetches the pinned Choregraphe suites and the robot image's `animations` package into `docker/vendor/<version>/` (first step of `fetch-and-build-images`) | [container.md](specs/container/container.md) |
@@ -76,7 +81,7 @@ The mapping is **many-to-many**: a file can be governed by several specs, so the
 
 ### Live/e2e tests
 
-Some tests need the nao-sim containers running (built from the user's Choregraphe suite). They live in `tests-e2e/`, a directory separate from `tests/`, so the default `uv run pytest` never runs them — no Docker or suite is needed for the normal dev loop. Run them explicitly with `uv run pytest tests-e2e`: the tests bring up each NAOqi version's stack with `docker compose`, test it over qi on `127.0.0.1:9559` and take it down, so stop any stack (or audio output) you started by hand first. A version whose suite or image is missing, or a machine without Docker, **skips**, not fails. Remember that libqi 3 `connect()` against NAOqi 2.1 fails about one time in three: live tests connect with a retry (`tests-e2e/support.connect`). nao-sim's job is to behave like a NAO in its API; the tests check that, and never target a real robot.
+Some tests need the nao-sim containers running (built from the user's Choregraphe suite). They live in `tests-e2e/`, a directory separate from `tests/`, so the default `uv run pytest` never runs them — no Docker or suite is needed for the normal dev loop. Run them explicitly with `uv run pytest tests-e2e`: the tests run each NAOqi version with a `NaoSim` (headless, audio into a `MemorySink`), test it over qi on `127.0.0.1:9559` and stop it, so stop any nao-sim you started first. A version whose suite or image is missing, or a machine without Docker, **skips**, not fails. Remember that libqi 3 `connect()` against NAOqi 2.1 fails about one time in three: live tests connect with a retry (`tests-e2e/support.connect`). nao-sim's job is to behave like a NAO in its API; the tests check that, and never target a real robot.
 
 ## Code that is not linted here
 
