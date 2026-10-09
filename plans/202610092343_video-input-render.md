@@ -1,6 +1,6 @@
 # Video input: the render camera
 
-**Status:** In progress
+**Status:** Done
 
 Implements [video-input.md](../specs/host/video-input.md) for the `render` source ("Sources", "Frames: fixed rate, VGA, top camera, whoever subscribes", "In a running `NaoSim`"), the `video_input.fps` field of [config.md](../specs/runtime/config.md), the new start and stop order of [api.md](../specs/runtime/api.md) ("Lifecycle": simulated world before the host devices), and the headless viewer with the render camera in the live tier of [viewer.md](../specs/host/viewer.md) ("In the live tier and CI"). Left out: the `webcam` source (still refused at start with `DeviceNotBuiltError`), the bottom camera, and anything driven by `ALVideoDevice`'s subscribers.
 
