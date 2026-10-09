@@ -38,16 +38,15 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 
 ### Foreground runs
 
-`run` stays in the foreground: the host side of the robot (the sound card, later the microphone, the camera feeder and the viewer window, which on macOS must stay in a process the user launched) lives in its process, and Ctrl-C stops everything in that same process with `NaoSim.stop()`, logs in view. There is no detached mode and no pid file. A caller that needs nao-sim in the background uses the API ([api.md](api.md)), or a shell's `&`, tmux and the like. The name says it: `run`, as `docker run` or `uv run`, not compose's `up`/`down` pair, which suggests a detached stack.
+`run` stays in the foreground: the host side of the robot (the speaker, later the microphone, the camera feeder and the viewer window, which on macOS must stay in a process the user launched) lives in its process, and Ctrl-C stops everything in that same process with `NaoSim.stop()`, logs in view. There is no detached mode and no pid file. A caller that needs nao-sim in the background uses the API ([api.md](api.md)), or a shell's `&`, tmux and the like. The name says it: `run`, as `docker run` or `uv run`, not compose's `up`/`down` pair, which suggests a detached stack.
 
-- **`nao-sim cleanup`** is for a run that died without stopping (killed, crashed, laptop closed): it removes the `nao-sim` compose project's containers, every profile (`docker compose --profile '*' down`, keeping the package store volumes). If a run is still alive (port 9562, the sound card's, is taken), it changes nothing and says to press Ctrl-C in that run's terminal.
+- **`nao-sim cleanup`** is for a run that died without stopping (killed, crashed, laptop closed): it removes the `nao-sim` compose project's containers, every profile (`docker compose --profile '*' down`, keeping the package store volumes). If a run is still alive (port 9562, the speaker's, is taken), it changes nothing and says to press Ctrl-C in that run's terminal.
 - **`nao-sim status` and `nao-sim logs`** work from any terminal: they read Docker and the `NaoSim` service, so they need no pid file either.
 
 ### Existing commands
 
-`nao-sim-soundcard` ([soundcard.md](soundcard.md)) is a separate script in `[project.scripts]`; the former `nao-sim-fetch-suite` is now `nao-sim fetch-and-build-images`. Only that subcommand is built so far. Once `run` runs the sound card in-process ([api.md](api.md)), `nao-sim-soundcard` is only needed for a stack started by hand with `docker compose`.
+The former `nao-sim-fetch-suite` is now `nao-sim fetch-and-build-images`, the only subcommand built so far. `nao-sim-speaker` ([devices.md](devices.md)) is not a user command: it exists only because the `NaoSim` object, which runs the speaker in-process ([api.md](api.md)), is not built yet. When `NaoSim` lands, it leaves `[project.scripts]` and does not become a `nao-sim` subcommand; `python -m nao_sim.speaker` stays for the rare stack started by hand with `docker compose` (debugging).
 
 ## Open questions
 
-1. **The sound card command.** Whether `nao-sim-soundcard` becomes `nao-sim soundcard`, keeping one command name, or stays a separate script.
-2. **A detached mode** (`run --detach`, with a pid file in the user's runtime directory) is deferred until a real need appears; it would not change the foreground default.
+1. **A detached mode** (`run --detach`, with a pid file in the user's runtime directory) is deferred until a real need appears; it would not change the foreground default.

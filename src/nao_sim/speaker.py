@@ -1,4 +1,5 @@
-"""The host sound card: a dumb PCM player the containers stream into.
+"""The speaker: the simulated robot's loudspeaker on the host, a dumb PCM player the
+containers stream into (specs/devices.md, "Speaker").
 
 Protocol (TCP, one connection per stream): a JSON header line, then raw PCM until the
 sender closes.  {"cmd": "play", "rate": 22050, "channels": 1, "format": "s16le"}
@@ -15,7 +16,7 @@ import time
 import wave
 
 
-class SoundCard:
+class Speaker:
     def __init__(self, record=None, silent=False):
         self.record = record
         self.silent = silent
@@ -103,25 +104,27 @@ class Handler(socketserver.StreamRequestHandler):
         except ValueError:
             return
         assert isinstance(self.server, Server)
-        card = self.server.card
+        speaker = self.server.speaker
         if header.get("cmd") == "stop":
-            card.stop()
+            speaker.stop()
             return
         if header.get("cmd") == "play":
-            card.play_stream(self.rfile, header)
+            speaker.play_stream(self.rfile, header)
 
 
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, addr, card):
+    def __init__(self, addr, speaker):
         super().__init__(addr, Handler)
-        self.card = card
+        self.speaker = speaker
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="nao-sim host sound card")
+    ap = argparse.ArgumentParser(
+        description="nao-sim speaker (normally run by NaoSim; this entry point is for debugging)"
+    )
     ap.add_argument("--listen", default="0.0.0.0:9562")
     ap.add_argument("--record", help="WAV file to append everything played to")
     ap.add_argument(
@@ -129,7 +132,7 @@ def main(argv=None):
     )
     a = ap.parse_args(argv)
     host, port = a.listen.rsplit(":", 1)
-    srv = Server((host, int(port)), SoundCard(record=a.record, silent=a.silent))
+    srv = Server((host, int(port)), Speaker(record=a.record, silent=a.silent))
     print(
         json.dumps(
             {
@@ -146,7 +149,7 @@ def main(argv=None):
     except KeyboardInterrupt:
         pass
     finally:
-        srv.card.close()
+        srv.speaker.close()
 
 
 if __name__ == "__main__":

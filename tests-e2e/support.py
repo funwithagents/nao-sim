@@ -1,4 +1,4 @@
-"""Helpers for the opt-in live tier: the nao-sim stacks and the host sound card.
+"""Helpers for the opt-in live tier: the nao-sim stacks and the host speaker.
 
 The live tests drive their own stack: they build and verify a version's images with
 `fetch_and_build_images`, start its containers with `docker compose`, wait for the entrypoint's
@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parent.parent
 COMPOSE = REPO / "docker" / "compose.yaml"
 VENDOR = REPO / "docker" / "vendor"
 URL = "tcp://127.0.0.1:9559"
-SOUNDCARD_PORT = 9562
+SPEAKER_PORT = 9562
 
 
 @dataclass(frozen=True)
@@ -214,22 +214,20 @@ class Stack:
         ]
 
 
-class SoundCardProcess:
-    """`nao-sim-soundcard --silent` on the port the tts container streams to.
+class SpeakerProcess:
+    """`nao-sim-speaker --silent` on the port the tts container streams to.
 
     Its stdout events (`start`, `end` with `played_s`, ...) say what was actually played."""
 
-    def __init__(self, port: int = SOUNDCARD_PORT):
+    def __init__(self, port: int = SPEAKER_PORT):
         if _port_taken(port):
-            pytest.fail(
-                f"port {port} is taken: stop the running nao-sim-soundcard first"
-            )
+            pytest.fail(f"port {port} is taken: stop the running nao-sim-speaker first")
         self.events: list[dict] = []
         self._proc = subprocess.Popen(
             [
                 sys.executable,
                 "-m",
-                "nao_sim.soundcard",
+                "nao_sim.speaker",
                 "--silent",
                 "--listen",
                 f"0.0.0.0:{port}",
@@ -257,7 +255,7 @@ class SoundCardProcess:
                 if pred(e):
                     return e
             time.sleep(0.05)
-        raise AssertionError(f"no matching sound card event; got {self.events[after:]}")
+        raise AssertionError(f"no matching speaker event; got {self.events[after:]}")
 
     def played(self, after: int, timeout: float = 5.0) -> float:
         """Seconds of audio played by the first stream that ends after `after`."""

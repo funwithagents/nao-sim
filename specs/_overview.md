@@ -32,14 +32,14 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | NAOqi container | Docker, `linux/amd64` | `naoqi-bin` from the user's suite, one image per version, built locally; publishes 9559 only | [container.md](container.md) |
 | Override modules | Inside NAOqi (Python 2.7) | Replace or add NAOqi services in-process, so in-process callers (`ALAnimatedSpeech`, `ALDialog`) and host clients both reach them | [service-replacement.md](service-replacement.md) |
 | `tts` container | Docker, native architecture | Turns text, marker and pause items into audio with exact marker offsets (Piper, eSpeak NG) and streams it to the host | [tts-engine.md](tts-engine.md) |
-| Host sound card | Host (Python 3) | Plays the PCM it receives; `--silent`/`--record` for tests | [soundcard.md](soundcard.md) |
+| Host devices | Host (Python 3), owned by a running `NaoSim` | Speaker (plays the PCM it receives); microphone, camera and perception feed planned | [devices.md](devices.md) |
 | `NaoSim` object and config (planned) | Host (Python 3), in the caller's process | Built from a `NaoSimConfig`; `start()`/`stop()` run the containers, the host devices and the simulated world. Behind the CLI, the live tests and nao-bridge's `sim` backend | [api.md](api.md), [config.md](config.md) |
-| Host services (planned) | Host (Python 3), owned by a running `NaoSim` | Microphone, camera, perception feed, link to the containers | [Host services](#host-services) |
+| Host link (planned) | Containers to host, one TCP port | Carries microphone PCM, camera subscriptions and playback state between the containers and the host devices | [Host services](#host-services) |
 | Simulated world (planned) | Host, its own process (`nao-viewer sim`) | The NAO model posed from nao-sim's NAOqi in a scene, the window, head-camera renders | [Simulated world: nao-viewer](#simulated-world-nao-viewer) |
 | `nao-sim` CLI (planned) | Host | `fetch-and-build-images`, `run`, `cleanup`, `status`, `logs`, `probe`, over the `NaoSim` object | [cli.md](cli.md) |
 
 - Clients reach every NAOqi service, built-in or replaced, on `127.0.0.1:9559`, as on a NAO. On 2.8, the suite's own `qi-secure-gateway` serves that port and relays the service processes, as on a NAO 6.
-- The containers reach the host through `host.docker.internal` (`host-gateway` on Linux). Today only the `tts` container does, to stream speech to the sound card on 9562.
+- The containers reach the host through `host.docker.internal` (`host-gateway` on Linux). Today only the `tts` container does, to stream speech to the speaker on 9562.
 - Host code that talks to NAOqi uses `qi.Session` and `session.service()` from the libqi Python 3 wheels, never `ALProxy`. One exception lives inside the container: an override module that calls a service a host client registered goes through the broker with `naoqi.ALProxy` (see [service-replacement.md](service-replacement.md)).
 
 ## Status
@@ -50,10 +50,10 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | Service replacement mechanism | Built and tested, used by the speech path ([service-replacement.md](service-replacement.md)) |
 | `ALTextToSpeech` replacement | Built and tested on both versions; microphone gate and subtitles not built ([speech.md](speech.md)) |
 | `tts` container | Built and tested ([tts-engine.md](tts-engine.md)) |
-| Host sound card | Built and tested ([soundcard.md](soundcard.md)) |
+| Host speaker | Built and tested ([devices.md](devices.md)) |
 | `NaoSim` status service, healthcheck | Built and tested ([status-service.md](status-service.md)) |
 | `NaoSim` object and `NaoSimConfig` | Draft ([api.md](api.md), [config.md](config.md)) |
-| Host link and host services | Planned; the sound card's protocol predates the design |
+| Host link and host services | Planned; the speaker's protocol predates the design |
 | `ALAudioDevice` replacement | Planned |
 | Video injection | Measured (`putImage` works on both versions), not built |
 | `ALAudioPlayer` shim and replacement | Measured (shim approach), not built |
@@ -101,12 +101,12 @@ The **`NaoSim` status service** ([status-service.md](status-service.md)) is the 
 
 ## Host services
 
-- Owned by a running `NaoSim` object ([api.md](api.md)), in the process that started it (`nao-sim run`, a test, nao-bridge): webcam capture, microphone capture or WAV replay, the sound card, the camera feeder (webcam or sim renders into `ALVideoDevice`), optional local speech recognition. It launches and drives the simulated world as a separate process (see [Simulated world: nao-viewer](#simulated-world-nao-viewer)).
+- Owned by a running `NaoSim` object ([api.md](api.md)), in the process that started it (`nao-sim run`, a test, nao-bridge): webcam capture, microphone capture or WAV replay, the speaker, the camera feeder (webcam or sim renders into `ALVideoDevice`), optional local speech recognition. It launches and drives the simulated world as a separate process (see [Simulated world: nao-viewer](#simulated-world-nao-viewer)).
 - The host knows nothing about NAOqi: no tags, no events, no `say()` semantics. It is a set of devices. Where the host does need NAOqi (camera injection, the perception feed; the sim process reading joint state), it is an ordinary qi client.
 - **Host link** (design, not built): the override modules and the `tts` container connect out to the host on one TCP port, with length-prefixed messages (`u32 header_len | u32 payload_len | JSON header | raw payload`, the framing nao-viewer's sim protocol already uses):
   - host to container: microphone PCM chunks, camera frames already in NAO format;
   - container to host: PCM to play (speech, later sound files), subscription changes (which camera, rate and resolution are wanted; whether audio is subscribed), stop-playback requests, playing state for the microphone gate.
-- As built, speech output does not use this link: the `tts` container streams to the sound card with its own one-connection-per-stream protocol ([soundcard.md](soundcard.md)). Whether the link replaces it or sits next to it is the first decision of the host-link spec.
+- As built, speech output does not use this link: the `tts` container streams to the speaker with its own one-connection-per-stream protocol ([devices.md](devices.md)). Whether the link replaces it or sits next to it is the first decision of the host-link spec.
 - Webcam and microphone are off by default, enabled by explicit options, with an indicator in the sim window while live.
 
 ## Simulated world: nao-viewer
@@ -138,7 +138,7 @@ nao-viewer is a separate package (its own repository) that owns the NAO MuJoCo m
 
 ## Speech
 
-`ALTextToSpeech.say()` is served by a replacement loaded inside NAOqi. It sends each sentence to the `tts` container, which synthesizes it and streams the PCM to the host sound card, and it raises the NAOqi events itself, on its own clock, from the timings the engine returns. Specified in [speech.md](speech.md), [tts-engine.md](tts-engine.md) and [soundcard.md](soundcard.md). Kept here: the fallback and the microphone gate.
+`ALTextToSpeech.say()` is served by a replacement loaded inside NAOqi. It sends each sentence to the `tts` container, which synthesizes it and streams the PCM to the host speaker, and it raises the NAOqi events itself, on its own clock, from the timings the engine returns. Specified in [speech.md](speech.md), [tts-engine.md](tts-engine.md) and [devices.md](devices.md). Kept here: the fallback and the microphone gate.
 
 ### Fallback: listening to TTS events
 
@@ -152,7 +152,7 @@ No such version is known: the replacement works on 2.1 and 2.8. The probe's TTS 
 
 ### Microphone gate
 
-The host has both the microphone and the exact audio it plays, on one clock. The default is a gate: the microphone is muted while speech plays, plus a 300 ms tail (configurable). Real echo cancellation is possible later for the same reason. The gate needs the playing state from the sound card and the host link (see [soundcard.md](soundcard.md), open questions).
+The host has both the microphone and the exact audio it plays, on one clock. The default is a gate: the microphone is muted while speech plays, plus a 300 ms tail (configurable). Real echo cancellation is possible later for the same reason. The gate needs the playing state from the speaker and the host link (see [devices.md](devices.md), open questions).
 
 ## Media: camera and microphone
 
@@ -184,10 +184,10 @@ The desktop NAOqi has no audio input, and neither version registers `ALAudioDevi
 ### Sound files: ALAudioPlayer
 
 - The desktop `ALAudioPlayer` is a stub on 2.1 and 2.8 alike: `playFile`, `playFileInLoop`, `playFileFromPosition` (each with a volume and pan overload) and `pause(id)`; no `loadFile`/`play`, `stop(id)`, `stopAll`, `playSine` or sound sets.
-- It plays by spawning `/opt/naoqi/bin/sndfile-play <file>` and blocks until that process exits; in Docker the binary fails for lack of a sound device. nao-sim installs a shim at that path that streams the file to the host sound card and exits when playback ends, so `playFile` blocks for the real duration with no NAOqi change (measured with a sleep stand-in).
+- It plays by spawning `/opt/naoqi/bin/sndfile-play <file>` and blocks until that process exits; in Docker the binary fails for lack of a sound device. nao-sim installs a shim at that path that streams the file to the host speaker and exits when playback ends, so `playFile` blocks for the real duration with no NAOqi change (measured with a sleep stand-in).
 - The Choregraphe box library only calls `playFileFromPosition`, `playFileInLoop` and `stop(id)` (the Play Sound File box, embedded by every sound-playing box); animations never touch `ALAudioPlayer`. The shim covers the library except `stop(id)`.
 - A full `ALAudioPlayer` replacement (same pattern as `ALAudioDevice`, PCM over the host link) comes later, for `stop(id)`, `loadFile`/`play`, `playSine` and the sound sets that `^runSound`/`^startSound` in animated speech need.
-- The sound card plays one stream at a time, so speech and sound files do not mix yet ([soundcard.md](soundcard.md), open questions).
+- The speaker plays one stream at a time, so speech and sound files do not mix yet ([devices.md](devices.md), open questions).
 
 ## Perception
 
@@ -270,7 +270,7 @@ Two tiers ([testing.md](testing.md)): a fast, deterministic `tests/` tier with n
 ## Milestones
 
 1. **Validation spike** (done, Oct 8, 2026): a module loaded into NAOqi serves a host client; a host-registered service is called back from the container; the built-in `ALTextToSpeech` is replaced, with `ALAnimatedSpeech` using the replacement. On 2.1 and 2.8.
-2. **Speech path** (done except gate and subtitles): `ALTextToSpeech` replacement, `tts` container, host sound card, under test on both versions (plan [202610081257](../plans/202610081257_baseline-tests-speech-path.md)).
+2. **Speech path** (done except gate and subtitles): `ALTextToSpeech` replacement, `tts` container, host speaker, under test on both versions (plan [202610081257](../plans/202610081257_baseline-tests-speech-path.md)).
    - Still to exit: a Choregraphe behaviour with animated speech and the `animations` package runs with gestures on their words; sound files play through the `ALAudioPlayer` shim; reference sentences within the agreed duration tolerance.
 3. **Container and probe** (started): `NaoSim` status service, healthcheck and entrypoint hardening (done, [status-service.md](status-service.md)); `NaoSimConfig` and the `NaoSim` object ([config.md](config.md), [api.md](api.md)), `nao-sim run`/`cleanup` over them, the host-link spec, the probe with committed reports for 2.1 and 2.8.
    - Exit: `nao-sim run` works on Linux and macOS; capability reports committed.

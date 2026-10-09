@@ -4,7 +4,7 @@ code:
   - src/nao_sim/__init__.py
   - src/nao_sim/errors.py
   - src/nao_sim/docker_images.py
-  - src/nao_sim/soundcard.py
+  - src/nao_sim/speaker.py
   - tests-e2e/support.py
 tests:
   - tests/test_docker_images.py
@@ -32,7 +32,7 @@ It replaces the overview's "one host process started by `nao-sim up`" (now `nao-
 ### Construction
 
 - `NaoSim(config: NaoSimConfig | NaoqiVersion | None = None, *, sink: AudioSink | None = None)`. With no config it uses `NaoSimConfig()` ([config.md](config.md)). A bare version string is shorthand for `NaoSimConfig(naoqi=NaoqiSettings(version=...))`, so `NaoSim("2.8")` is the one-liner.
-- `sink` is where the speaker's audio goes ([soundcard.md](soundcard.md), "Audio sinks"). Without one, the config's `speaker` block picks it: `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A test passes a `MemorySink` and asserts on the audio actually played. As in tts-engine, the sink is fixed for the object's lifetime.
+- `sink` is where the speaker's audio goes ([devices.md](devices.md), "Audio sinks"). Without one, the config's `speaker` block picks it: `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A test passes a `MemorySink` and asserts on the audio actually played. As in tts-engine, the sink is fixed for the object's lifetime.
 - `NaoSim.from_dict(data)`, `from_json(text)` and `from_json_file(path)` build the config, then the object (they take the same `sink=`).
 - Constructing it does nothing else: no Docker call, no thread, no port opened.
 - `config` (read-only) and `running: bool`.
@@ -48,8 +48,8 @@ The API is **async**, as `NaoBridge`: `await sim.start()`, `await sim.stop()`, `
    - the images are there: the version's NAOqi image and the `tts` image exist, carry the installed nao-sim version (image label `io.nao-sim.version`) and were verified by `fetch_and_build_images` (see "Images"). `start()` never downloads or builds;
    - the `viewer` extra is installed when the config needs it (`headless = false`, or `camera.source = "render"`; the error names the extra);
    - every configured source is built (see [config.md](config.md), "Sources not built yet") and its file exists (`audio.wav`);
-   - ports 9559 and 9562 are free (another nao-sim, a hand-started stack or sound card).
-2. **Speaker**: start the host sound card ([soundcard.md](soundcard.md)) in-process, feeding the sink.
+   - ports 9559 and 9562 are free (another nao-sim, a hand-started stack or speaker).
+2. **Speaker**: start the host speaker ([devices.md](devices.md)) in-process, feeding the sink.
 3. **Containers**: `docker compose up -d` (no build) for the `tts` service and the version's NAOqi service, with the environment generated from the config (`NAO_SIM_TTS_ENGINE` = `speech.engine`, the version's profile, `2.1` or `2.8`). The compose project is always `nao-sim`.
 4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error. Verified images can still fail here (a volume, the host), so this wait happens on every start.
 5. **Host devices**: the camera feeder, the microphone and the perception feed, as the config's sources ask (each specified by its own device spec). Each writes its `NaoSim/*/Source` key.
@@ -69,7 +69,7 @@ Everything slow or downloaded happens once, before any start, in `await fetch_an
 2. **Build** the version's NAOqi image and the `tts` image with the installed nao-sim version as build argument (`NAO_SIM_VERSION`) and as the label `io.nao-sim.version`. Docker's cache keeps a rebuild cheap.
 3. **Verify**: boot the version's containers (compose project `nao-sim`) until the NAOqi one is `healthy` (within 240 s) and the `tts` engine answers its `/health`, then take them down, whatever happened. The verified image IDs are recorded (`images.json`, see "Files on disk"). A build that does not boot is reported with the end of its log and not recorded.
 
-An unknown version is a `ValueError`. Docker is checked first (`DockerUnavailableError`), and each verification needs port 9559 free (`PortInUseError`); the sound card's 9562 is not used by a boot, so a running sound card does not stop it.
+An unknown version is a `ValueError`. Docker is checked first (`DockerUnavailableError`), and each verification needs port 9559 free (`PortInUseError`); the speaker's 9562 is not used by a boot, so a running speaker does not stop it.
 
 So `start()` only checks: an image missing or not verified raises `ImagesMissingError`, an image built by another nao-sim version raises `ImagesOutdatedError` (its override modules are stale); both name the command to run. Working on `docker/modules/` means rerunning `fetch-and-build-images`; the live tier runs it once per session. 
 

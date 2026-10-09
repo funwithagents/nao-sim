@@ -4,7 +4,7 @@ code:
   - tests-e2e/conftest.py
   - tests-e2e/support.py
 tests:
-  - tests/test_soundcard.py
+  - tests/test_speaker.py
   - tests/test_tts_core.py
   - tests/test_tts_engine.py
   - tests/test_status_core.py
@@ -51,9 +51,9 @@ nao-sim is tested as what it is: containers that behave like a NAO in their API,
 
 - **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it runs `docker compose up -d` on `tts` and that version's NAOqi service (with `--build` when the suite tarball is in `docker/vendor/`), waits for `[entrypoint] nao-sim ready` in the container log, connects, and runs `docker compose down` at the end. Versions run one after the other, since both publish 9559.
 - **Skip, never fail, without the means.** No Docker, or neither the version's suite tarball nor its image: that version's tests skip. A contributor (or CI) without the suites is never broken.
-- **Fail loudly on a conflict.** If 9559 or the sound card's 9562 is already taken (a stack or a `nao-sim-soundcard` started by hand), the tests fail with that message rather than test someone else's stack.
+- **Fail loudly on a conflict.** If 9559 or the speaker's 9562 is already taken (a stack or a `nao-sim-speaker` started by hand), the tests fail with that message rather than test someone else's stack.
 - **Connect with a retry**: the libqi 3 wheel fails about one connect in three against NAOqi 2.1, instantly, with `disconnected` (`support.connect`).
-- **What was played.** The tests run `nao-sim-soundcard --silent` (real-time pacing, no audio device) on 9562, where the `tts` container streams, and read its JSON events: `played_s` is the audio actually played. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
+- **What was played.** The tests run `nao-sim-speaker --silent` (real-time pacing, no audio device) on 9562, where the `tts` container streams, and read its JSON events: `played_s` is the audio actually played. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
 
 ## Tooling
 

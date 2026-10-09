@@ -13,7 +13,7 @@ tests:
 
 ## Purpose
 
-A small speech engine container that turns a list of text, marker and pause items into audio. It streams the PCM to the host sound card ([soundcard.md](soundcard.md)) and replies with the exact timings. It knows nothing about NAOqi: tags, events and `say()` semantics stay in the `ALTextToSpeech` replacement ([speech.md](speech.md)).
+A small speech engine container that turns a list of text, marker and pause items into audio. It streams the PCM to the host speaker ([devices.md](devices.md)) and replies with the exact timings. It knows nothing about NAOqi: tags, events and `say()` semantics stay in the `ALTextToSpeech` replacement ([speech.md](speech.md)).
 
 It is its own container because:
 - the NAOqi images (glibc 2.19 on 2.1, Python 2.7, amd64 emulation on Apple Silicon) rule out every current engine;
@@ -36,7 +36,7 @@ It is its own container because:
   - `{"type": "pause", "ms": N}`
 
   The reply is `{"duration": s, "marks": {"N": offset_s}, "rate": sample_rate, "engine": name, "synth_time": s}`. On a synthesis error: 500 `{"error": ...}`.
-- `POST /stop`: stops the stream in progress and sends a stop to the sound card. Returns `{"stopped": true}`.
+- `POST /stop`: stops the stream in progress and sends a stop to the speaker. Returns `{"stopped": true}`.
 - `GET /health`: `{"ok": true, "engine", "voices", "soundcard"}`.
 
 ### Rendering
@@ -48,13 +48,13 @@ It is its own container because:
   - eSpeak NG: `-s 175 * rate / 100` words per minute.
 - `pitch` (percent) is passed to eSpeak NG as `-p pitch/2`; Piper ignores it.
 - The output is mono s16le at the first text item's sample rate (22050 Hz for both Piper voices; 22050 when there is no text). Other parts are resampled by linear interpolation.
-- The reply is sent as soon as synthesis is done. The PCM is streamed to the sound card in a background thread, in 100 ms chunks, so the caller's clock starts with the audio.
+- The reply is sent as soon as synthesis is done. The PCM is streamed to the speaker in a background thread, in 100 ms chunks, so the caller's clock starts with the audio.
 - Synthesis takes 0.1–0.2 s per sentence with Piper once the voices are loaded.
 
 ### Failure behaviour
 
-- If the sound card is unreachable, the audio is dropped (logged) and `/say` still returns the timings, so callers keep their clock.
-- A new `/say` while one is still streaming starts a new stream. The sound card plays only the newest one (see [soundcard.md](soundcard.md)).
+- If the speaker is unreachable, the audio is dropped (logged) and `/say` still returns the timings, so callers keep their clock.
+- A new `/say` while one is still streaming starts a new stream. The speaker plays only the newest one (see [devices.md](devices.md)).
 
 ## Open questions
 

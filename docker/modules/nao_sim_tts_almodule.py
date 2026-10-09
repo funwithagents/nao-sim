@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """ALTextToSpeech replacement for NAOqi 2.1, registered through naoqi-bin's broker (ALModule).
-Speech itself is done by nao_sim_tts_core (tts container + host sound card)."""
+Speech itself is done by nao_sim_tts_core (tts container + host speaker)."""
 import json
 import sys
 import time

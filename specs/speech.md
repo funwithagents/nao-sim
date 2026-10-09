@@ -18,7 +18,7 @@ On nao-sim, `ALTextToSpeech.say()` speaks with a real voice and keeps NAOqi's co
 
 The desktop virtual robot's built-in TTS is a simulator, so it is replaced inside NAOqi ([service-replacement.md](service-replacement.md)) rather than listened to. The replacement:
 - parses NAOqi's tags;
-- asks the engine ([tts-engine.md](tts-engine.md)) to speak; the engine streams to the host sound card ([soundcard.md](soundcard.md));
+- asks the engine ([tts-engine.md](tts-engine.md)) to speak; the engine streams to the host speaker ([devices.md](devices.md));
 - raises the events on its own clock, from the timings the engine returns.
 
 Only one request and one reply cross from the NAOqi container per sentence, and no events travel back. Clients call `say()` and listen to the events exactly as on a NAO: nothing in them is nao-sim-specific.
