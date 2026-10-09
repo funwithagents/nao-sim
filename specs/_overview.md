@@ -62,7 +62,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | `ALAudioPlayer` shim and replacement | Draft; shim approach measured ([audio-player.md](services/audio-player.md)) |
 | Simulated world (nao-viewer sim mode) | Built on the nao-viewer side (`NaoViewer` in sim mode, windowed and headless, `camera_frame`); the window is wired into nao-sim, the headless render camera is not ([viewer.md](host/viewer.md), Stable) |
 | Distribution (wheel with the recipes, user data directory) | Specified, not built ([project.md](project.md), "Distribution") |
-| CI | Stable, workflow written, first runs pending ([ci.md](testing/ci.md)) |
+| CI | Implemented ([ci.md](testing/ci.md)) |
 | Capability probe | Spike scripts only; deferred (see [below](#capability-probe)) |
 | Asset guard | Planned, deferred (see [Licensing](#licensing)) |
 | Perception, speech recognition | Not nao-sim's: clients (nao-bridge, planned) |
@@ -216,7 +216,7 @@ The toolkit document numbers the milestones across the three packages; nao-sim's
 1. **Validation spike** (done, Oct 8, 2026; toolkit 1): a module loaded into NAOqi serves a host client; a host-registered service is called back from the container; the built-in `ALTextToSpeech` is replaced, with `ALAnimatedSpeech` using the replacement. On 2.1 and 2.8.
 2. **Speech path** (done except the gate and subtitles; toolkit 7): `ALTextToSpeech` replacement, `tts` container, audio output, under test on both versions (plan [202610081257](../plans/202610081257_baseline-tests-speech-path.md)).
    - Still to exit: a Choregraphe behaviour with animated speech and the `animations` package runs with gestures on their words; sound files play through the `ALAudioPlayer` shim; reference sentences within the agreed duration tolerance.
-3. **nao-sim run and CI** (started; toolkit 2 and 4): status service, healthcheck and `fetch-and-build-images`; `NaoSimConfig` and the `NaoSim` object with the audio sinks and the sim window, `nao-sim run`/`cleanup`/`status`/`logs` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md), [audio-output.md](host/audio-output.md), [viewer.md](host/viewer.md)) (all done); CI ([ci.md](testing/ci.md)); the distribution ([project.md](project.md)).
+3. **nao-sim run and CI** (started; toolkit 2 and 4): status service, healthcheck and `fetch-and-build-images`; `NaoSimConfig` and the `NaoSim` object with the audio sinks and the sim window, `nao-sim run`/`cleanup`/`status`/`logs` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md), [audio-output.md](host/audio-output.md), [viewer.md](host/viewer.md)), CI on both versions ([ci.md](testing/ci.md)) (all done); the distribution ([project.md](project.md)).
    - Exit: `nao-sim run` works on Linux and macOS; CI green on both versions.
 4. **Media** (toolkit 6), in this order: the render camera ([video-input.md](host/video-input.md), the viewer's headless renders), so CI tests the camera loop from the start; the host link, `ALAudioDevice` and the audio input with WAV replay and the microphone gate ([devices.md](host/devices.md), [audio-device.md](services/audio-device.md), [audio-input.md](host/audio-input.md)); the `ALAudioPlayer` shim ([audio-player.md](services/audio-player.md)); then the webcam, the host microphone and touch ([touch-input.md](host/touch-input.md)).
    - Exit: a vision script and an audio script written against the standard NAOqi services run unchanged on nao-sim.

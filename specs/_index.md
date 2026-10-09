@@ -6,7 +6,7 @@ nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe su
 - **Host**: dumb devices named after their role (the audio output today; audio, video and touch inputs planned), Python 3.12–3.13 with libqi. Perception and speech recognition are the clients' job, not nao-sim's.
 - **Simulated world** (planned, optional): the `nao-sim[viewer]` extra pulls nao-viewer, whose sim mode poses the NAO model from nao-sim's NAOqi in a scene and renders the head cameras that nao-sim injects into `ALVideoDevice`.
 
-Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement, `tts` engine, audio output) the `NaoSim` status service with the Docker healthcheck, and `nao-sim run`: the `NaoSim` object with its config, the sim window and the CLI. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
+Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement, `tts` engine, audio output) the `NaoSim` status service with the Docker healthcheck, and `nao-sim run`: the `NaoSim` object with its config, the sim window and the CLI; CI runs both test tiers on both versions. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
 
 ## Specs
 
@@ -71,7 +71,7 @@ How nao-sim is verified, locally and in CI.
 | Spec | Description | Status |
 |---|---|---|
 | [testing.md](testing/testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, a live tier that drives its own stack per NAOqi version | Implemented |
-| [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAO_SIM_E2E_VERSION` turning skips into failures, a headless viewer once built; the Python 2.7 check | Stable |
+| [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAO_SIM_E2E_VERSION` turning skips into failures, a headless viewer once built; the Python 2.7 check | Implemented |
 
 [_overview.md](_overview.md) is the overview of nao-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: the capability probe and the asset guard (both deferred), and the perception measurements kept for clients.
 

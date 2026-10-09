@@ -9,7 +9,7 @@ tests:
 
 # Continuous integration
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 
@@ -79,7 +79,20 @@ The runner downloads Aldebaran's suites and robot images from their public repos
 
 nao-viewer pins a nao-sim commit for its own live job (`NAO_SIM_REF`) and bumps it on purpose. nao-sim's CI does not test it.
 
+## Measured
+
+On the first runs (PR #1, October 9, 2026):
+
+| | Cold (build) | Cache hit |
+| --- | --- | --- |
+| `check` | 15 s | 12 s |
+| `fast-tier` | 42 s | 43 s |
+| `e2e-sim` 2.1 | 6 min 39 s (tests 2 min 16 s) | 5 min 11 s (tests 2 min 12 s) |
+| `e2e-sim` 2.8 | 6 min 54 s (tests 1 min 33 s) | 3 min 49 s (tests 1 min 44 s) |
+
+- **The cache.** The archives take 1.5 GB (2.1) and 2.9 GB (2.8), 4.5 GB of the 10 GB budget; an edit under `docker/` adds a new pair while the old one ages out. A hit loads the images and skips the build: the image IDs survive `docker save`/`docker load`, so `check_images` accepts them as verified.
+- **Skips.** Only the expected one, on the 2.8 entry; the window test runs and passes under Xvfb on 2.1.
+
 ## Open questions
 
-1. **The 2.8 cache.** Whether the 2.8 archive fits next to 2.1's within the budget across edits, or whether the 2.8 entry often builds cold (to measure on the first runs).
-2. **Time budget.** Measured on the first runs; the live entries are expected to dominate (image load, boot, speech in real time).
+None: the cache budget and the time budget were measured above. Revisit them if an edit under `docker/` becomes frequent enough for the eviction of the old archives to matter.
