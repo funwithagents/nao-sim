@@ -56,24 +56,26 @@ def test_the_robot_says_its_camera_is_the_render(nao):
 
 
 def test_a_client_reads_rendered_frames_at_the_configured_rate(camera):
+    """Never faster than `fps`, and frames keep coming. Not exactly `fps`: a CI runner renders
+    in software (Mesa, no GPU) and reaches about 9 VGA frames per second on 2.8, where a
+    Mac holds 30."""
     video, subscribe = camera
     handle = subscribe(resolution=QVGA)
 
     image, stamp = read(video, handle)
-    stamps = set()
-    end = time.monotonic() + 2.0
+    stamps = {stamp}
+    seconds = 3.0
+    end = time.monotonic() + seconds
     while time.monotonic() < end:
         image, stamp = read(video, handle)
         stamps.add(stamp)
         time.sleep(0.005)
+    rate = (len(stamps) - 1) / seconds
 
-    assert image.shape == (
-        240,
-        320,
-        3,
-    )  # NAOqi scaled the VGA frame to the subscriber's
+    # NAOqi scaled the VGA frame to the subscriber's resolution.
+    assert image.shape == (240, 320, 3)
     assert image.std() > 1  # a render of the scene, not a flat placeholder
-    assert 2 * (FPS - 3) <= len(stamps) <= 2 * (FPS + 3)
+    assert 4 <= rate <= FPS + 1.5, f"{rate:.1f} frames per second"
 
 
 def test_each_subscriber_gets_its_own_colorspace(camera):
@@ -108,42 +110,53 @@ def target_columns(image: np.ndarray) -> np.ndarray:
     return np.nonzero(red)[1]
 
 
-def expected_column(motion, width: int) -> float | None:
-    """Where a pinhole camera at CameraTop's world pose sees the pillar's centre, or None
-    when it is out of the field of view."""
+def bearing_to_target(motion) -> float:
+    """The pillar's direction from CameraTop, relative to where it looks (positive: left)."""
     x, y, _, _, _, heading = motion.getPosition("CameraTop", WORLD, True)
-    bearing = (
-        math.atan2(TARGET[1] - y, TARGET[0] - x) - heading
-    )  # positive: to the left
+    return math.atan2(TARGET[1] - y, TARGET[0] - x) - heading
+
+
+def expected_column(bearing: float, width: int) -> float | None:
+    """Where a pinhole camera sees the pillar's centre at `bearing`, or None when the
+    pillar is out of the field of view."""
     if abs(bearing) > HALF_FOV + 0.1:  # the pillar's half-width: 0.07 rad at 1.5 m
         return None
     return width / 2 * (1 - math.tan(bearing) / math.tan(HALF_FOV))
 
 
+def look(motion, yaw: float) -> None:
+    motion.angleInterpolation(["HeadYaw", "HeadPitch"], [yaw, 0.0], 0.8, True)
+    time.sleep(0.5)  # the viewer follows the pose at 50 Hz
+
+
 def test_the_camera_sees_what_the_head_faces(nao, camera):
-    """The red pillar where the camera's pose says it is, as the head turns left and right,
-    and gone once the head turns away. The robot need not face the pillar squarely: NAOqi's
-    world pose of the robot (which the viewer renders) drifts a few degrees."""
+    """The red pillar where the camera's pose says it is, as the head turns left and right
+    of it, and gone once the head turns away. The head aims relative to the pillar, not to
+    the scene: NAOqi's world pose of the robot, which the viewer renders, starts about
+    0.13 rad off and drifts with gestures (specs/host/viewer.md, "In the live tier and CI")."""
     video, subscribe = camera
     motion = nao.service("ALMotion")
     handle = subscribe(resolution=QVGA)
     width = 320
     motion.setStiffnesses("Head", 1.0)
     try:
-        for yaw in (0.0, 0.25, -0.25, 1.2, -1.2):
-            motion.angleInterpolation(["HeadYaw", "HeadPitch"], [yaw, 0.0], 0.8, True)
-            time.sleep(0.5)  # the viewer follows the pose at 50 Hz
+        look(motion, 0.0)
+        aim = bearing_to_target(
+            motion
+        )  # the HeadYaw that faces the pillar, near enough
+        for offset in (0.0, 0.25, -0.25, 1.2, -1.2):
+            look(motion, aim + offset)
             seen = target_columns(
                 next_frame(video, handle, after=read(video, handle)[1])
             )
-            expected = expected_column(motion, width)
+            expected = expected_column(bearing_to_target(motion), width)
             if expected is None:
                 assert seen.size == 0, (
-                    f"HeadYaw {yaw}: the pillar should be out of view"
+                    f"{offset:+} rad off: the pillar should be out of view"
                 )
             else:
-                assert seen.size > 100, f"HeadYaw {yaw}: the pillar is not in view"
-                assert abs(seen.mean() - expected) < 15, f"HeadYaw {yaw}"
+                assert seen.size > 100, f"{offset:+} rad off: the pillar is not in view"
+                assert abs(seen.mean() - expected) < 15, f"{offset:+} rad off"
     finally:
         motion.angleInterpolation("HeadYaw", 0.0, 0.5, True)
 
