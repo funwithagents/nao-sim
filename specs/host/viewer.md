@@ -63,7 +63,7 @@ Closing the sim window stops the viewer only; the robot keeps running, and the `
 
 Through the `nao-sim[viewer]` extra, which pulls nao-viewer and with it MuJoCo. Without it, nao-sim runs with no window and no render camera: every NAOqi API, speech, the audio input and the webcam all work, which suits servers. nao-viewer depends on libqi only, never on nao-sim, so the chain stays one-way; `nao-bridge[sim]` pulls `nao-sim[viewer]`, so the full experience stays one install.
 
-- nao-viewer is not on PyPI: until the distribution is settled ([project.md](../project.md), open question 1, which covers it with the libqi wheels), `[tool.uv.sources]` takes it from its GitHub repository (`funwithagents/nao-viewer`), pinned to a commit, as the libqi wheels are taken from theirs.
+- nao-viewer is not on PyPI: `[tool.uv.sources]` takes it from its GitHub repository (`funwithagents/nao-viewer`), pinned to a commit, as the libqi wheels are taken from theirs, and a project depending on nao-sim from git gets that pin with it ([project.md](../project.md), "Distribution"). Its meshes, fetched with `nao-viewer fetch-meshes`, are shared by every environment on the machine.
 - The dev environment installs the extra, so the code that drives the viewer type-checks against nao-viewer's real API; the fast tier never launches it.
 
 ### In the live tier and CI

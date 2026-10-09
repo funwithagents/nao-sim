@@ -7,6 +7,7 @@ requires-python = ">=3.12,<3.14"  # capped by the libqi wheels (cp312, cp313)
 license = { text = "MIT" }
 dependencies = [
     "numpy",
+    "platformdirs",
     "qi==3.1.6",
     "sounddevice",
 ]
@@ -23,7 +24,17 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nao_sim"]
+# The package, and the container recipes as its package data (specs/project.md, "Distribution"):
+# all of docker/ but the vendor files, which are Aldebaran's and never leave the machine.
+only-include = ["src/nao_sim", "docker"]
+exclude = ["docker/vendor", "__pycache__", "*.pyc"]
+# hatch cannot make an editable install from a remapped path: a checkout puts src/ on the path
+# and uses docker/ where it is.
+dev-mode-dirs = ["src"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src/nao_sim" = "nao_sim"
+"docker" = "nao_sim/docker"
 
 [dependency-groups]
 dev = [

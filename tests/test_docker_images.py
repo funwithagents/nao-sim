@@ -58,6 +58,20 @@ def build(*versions: str, vendor: Path) -> None:
     asyncio.run(fetch_and_build_images(versions or None, vendor=vendor))
 
 
+def test_the_build_reads_the_vendor_files_from_the_folder_they_were_fetched_into(
+    docker, vendor
+):
+    # The vendor folder is outside the recipes (as for an installed nao-sim): compose gets it
+    # as the NAOqi build's `vendor` context.
+    assert not vendor.is_relative_to(docker_images.DOCKER)
+    build("2.1", vendor=vendor)
+
+    assert docker.read()["vendor_contexts"] == {
+        "naoqi21": str(vendor.resolve() / "2.1")
+    }
+    check_images("2.1", vendor)
+
+
 def test_built_and_verified_images_pass_the_check(docker, vendor):
     build("2.1", vendor=vendor)
 

@@ -27,7 +27,7 @@ def viewer_config(settings: ViewerSettings, url: str) -> Any:
     except ImportError:
         raise MissingExtraError(
             "this config needs the viewer (a window, or the render camera): "
-            "install it with `pip install nao-sim[viewer]`, or set viewer.headless to true"
+            "depend on `nao-sim[viewer]` instead of `nao-sim`, or set viewer.headless to true"
         ) from None
     try:
         return nao_viewer.NaoViewerConfig(

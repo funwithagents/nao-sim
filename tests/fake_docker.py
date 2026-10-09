@@ -4,7 +4,9 @@ The fake keeps its state in a JSON file: the images (ID and labels, set by `comp
 the environment's `NAO_SIM_VERSION` and `NAO_SIM_RECIPES`, the same ID for the same inputs, as
 Docker's cache), the containers and how the NAOqi one boots (`boot`: healthy, starting,
 unhealthy, exited), whether the tts engine answers, and whether Docker is up or a build fails.
-Every invocation is logged, and `up` records the `NAO_SIM_TTS_ENGINE` it was given.
+Every invocation is logged, and `up` records the `NAO_SIM_TTS_ENGINE` it was given. A NAOqi build
+reads its `vendor` context as compose does, from `$NAO_SIM_VENDOR/<version>`: it records the
+folder, and fails as BuildKit does when the folder is not there.
 """
 
 import json
@@ -52,6 +54,13 @@ FAKE_DOCKER = textwrap.dedent(
                 "io.nao-sim.recipes": os.environ.get("NAO_SIM_RECIPES", ""),
             }
             for s in services:
+                version = state["services"][s].get("version")
+                if version is not None:
+                    context = os.path.join(os.environ.get("NAO_SIM_VENDOR", "./vendor"), version)
+                    if not os.path.isdir(context):
+                        print(f"failed to solve: {context}: no such directory", file=sys.stderr)
+                        done(1)
+                    state.setdefault("vendor_contexts", {})[s] = context
                 tag = state["services"][s]["image"]
                 inputs = tag + json.dumps(labels, sort_keys=True) + state.get("source", "")
                 state["images"][tag] = {
@@ -100,7 +109,11 @@ class FakeDocker:
     def __init__(self, path: Path):
         self.path = path
         services = {
-            i.service: {"image": i.image, "container": i.container}
+            i.service: {
+                "image": i.image,
+                "container": i.container,
+                "version": i.version,
+            }
             for i in IMAGES.values()
         }
         services["tts"] = {"image": TTS_IMAGE, "container": docker_images.TTS_CONTAINER}

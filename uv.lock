@@ -112,6 +112,7 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
+    { name = "platformdirs" },
     { name = "qi", version = "3.1.6", source = { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp312-cp312-macosx_15_0_arm64.whl" }, marker = "python_full_version < '3.13' and sys_platform != 'linux'" },
     { name = "qi", version = "3.1.6", source = { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp312-cp312-manylinux_2_34_x86_64.whl" }, marker = "python_full_version < '3.13' and sys_platform == 'linux'" },
     { name = "qi", version = "3.1.6", source = { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp313-cp313-macosx_15_0_arm64.whl" }, marker = "python_full_version >= '3.13' and sys_platform != 'linux'" },
@@ -136,6 +137,7 @@ dev = [
 requires-dist = [
     { name = "nao-viewer", marker = "extra == 'viewer'", git = "https://github.com/funwithagents/nao-viewer?rev=db0b59cc2e2875a15e01d206c87f1b181bc4ae01" },
     { name = "numpy" },
+    { name = "platformdirs" },
     { name = "qi", marker = "(python_full_version < '3.12' and sys_platform == 'darwin') or (python_full_version >= '3.14' and sys_platform == 'darwin') or (python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.14' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')", specifier = "==3.1.6" },
     { name = "qi", marker = "python_full_version == '3.12.*' and sys_platform == 'darwin'", url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp312-cp312-macosx_15_0_arm64.whl" },
     { name = "qi", marker = "python_full_version == '3.13.*' and sys_platform == 'darwin'", url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp313-cp313-macosx_15_0_arm64.whl" },

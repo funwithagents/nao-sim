@@ -8,12 +8,11 @@ terminal: they read Docker and the `NaoSim` service, so they need no `NaoSim` ob
 import asyncio
 import json
 import logging
-import os
 import subprocess
 import time
 from dataclasses import dataclass
 
-from nao_sim import docker_images
+from nao_sim import docker_images, files
 from nao_sim.config import NaoSimConfig
 from nao_sim.docker_images import COMPOSE, IMAGES, run
 from nao_sim.errors import BootError, NaoSimError
@@ -64,7 +63,7 @@ class StackStatus:
 def up(config: NaoSimConfig) -> None:
     """Start the `tts` service and the version's NAOqi service from the verified images."""
     images = IMAGES[config.naoqi.version]
-    env = {**os.environ, "NAO_SIM_TTS_ENGINE": config.speech.engine}
+    env = {**files.compose_env(), "NAO_SIM_TTS_ENGINE": config.speech.engine}
     res = run(
         *images.compose(),
         "up",
@@ -89,7 +88,7 @@ def wait_ready(config: NaoSimConfig) -> None:
 
 def down(version: str) -> None:
     """`docker compose down`: removes the containers, keeps the package store volumes."""
-    res = run(*IMAGES[version].compose(), "down", timeout=300)
+    res = run(*IMAGES[version].compose(), "down", timeout=300, env=files.compose_env())
     if res.returncode != 0:
         raise NaoSimError(
             f"docker compose down failed for NAOqi {version}:\n{res.stderr[-3000:]}"
@@ -185,7 +184,15 @@ def _cleanup() -> list[str]:
         ) from None
     names = [c.name for c in _containers()]
     res = run(
-        "docker", "compose", "-f", str(COMPOSE), "--profile", "*", "down", timeout=300
+        "docker",
+        "compose",
+        "-f",
+        str(COMPOSE),
+        "--profile",
+        "*",
+        "down",
+        timeout=300,
+        env=files.compose_env(),
     )
     if res.returncode != 0:
         raise NaoSimError(f"docker compose down failed:\n{res.stderr[-3000:]}")

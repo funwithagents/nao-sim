@@ -1,13 +1,16 @@
 ---
 code:
   - pyproject.toml
+  - src/nao_sim/files.py
 tests:
   - tests/test_project_map.py
+  - tests/test_files.py
+  - tests-e2e/test_install_live.py
 ---
 
 # Project
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
@@ -36,13 +39,34 @@ Structure and tooling for the nao-sim project itself: Python version, dependency
 
 ### Distribution
 
-- **Install**: `pip install nao-sim` runs the simulated NAO with no window (servers); `pip install nao-sim[viewer]` adds nao-viewer for the sim window and the render camera ([viewer.md](host/viewer.md)). nao-bridge's `[sim]` extra pulls `nao-sim[viewer]`. Docker, the suite download and the images are never pip's job: `nao-sim fetch-and-build-images` does them once ([api.md](runtime/api.md), "Images").
-- **The wheel** holds `nao_sim` and the container recipes as package data: everything under `docker/` but `vendor/` (Dockerfiles, compose, entrypoints, healthcheck, `modules/`, `tts/`), none of it an Aldebaran file. They are found with `importlib.resources`; a checkout uses `docker/` directly. `fetch_and_build_images` assembles the build context in the user data directory, next to the vendor files ([api.md](runtime/api.md), "Files on disk"); the `io.nao-sim.recipes` digest is computed the same way from either place.
+nao-sim is distributed through its GitHub repository, not PyPI: another project depends on it as a **uv git dependency** pinned to a commit or tag. pip is not supported (see "Dependencies of a git install").
+
+- **In a project**: the project's `pyproject.toml` declares
+
+  ```toml
+  [project]
+  requires-python = ">=3.12,<3.14"            # the libqi wheels' range
+  dependencies = ["nao-sim[viewer]"]          # or "nao-sim" for no window and no render camera
+
+  [tool.uv.sources]
+  nao-sim = { git = "https://github.com/funwithagents/nao-sim", rev = "<commit or tag>" }
+
+  [tool.uv]
+  environments = [                             # the platforms the libqi wheels exist for
+      "sys_platform == 'darwin' and platform_machine == 'arm64'",
+      "sys_platform == 'linux' and platform_machine == 'x86_64'",
+  ]
+  ```
+
+  then, once per machine, `uv run nao-sim fetch-and-build-images` (the images) and, for Aldebaran's look in the window, `uv run nao-viewer fetch-meshes` (its typed license acceptance); `uv run nao-sim run --config ...` or a `NaoSim` in the project's code then runs the simulated NAO. Docker, the suite download, the images and the meshes are never uv's job.
+- **Dependencies of a git install.** uv applies nao-sim's own `[tool.uv.sources]` to a git dependency (measured with uv 0.11): `qi` resolves to the libqi fork's wheels and nao-viewer to its pinned commit, with nothing for the depending project to repeat. That project only has to stay within the wheels' platforms and Pythons (`requires-python` and `environments` above); without them the lock fails on the platforms with no `qi` 3.1.6. It must not pin nao-viewer itself at another commit: nao-sim's pin is the one tested with it. pip ignores `[tool.uv.sources]` and would look for `qi` 3.1.6 on PyPI, which has none.
+- **The wheel** a git install builds holds `nao_sim` and, as its package data, the container recipes under `nao_sim/docker/`: everything under `docker/` but `vendor/` and Python caches (Dockerfiles and their ignore files, compose, entrypoints, healthcheck, `modules/`, `tts/`), none of it an Aldebaran file. Hatch maps `src/nao_sim` and `docker` into the package (`only-include` and `sources`) and excludes `docker/vendor`, so even a wheel built from a checkout holding the suites carries none; `dev-mode-dirs = ["src"]` keeps the editable install of a checkout working, since hatch cannot make an editable install from a remapped path. The sdist is the repository's tracked files, which never include the vendor files either.
+- **Where the files are** ([api.md](runtime/api.md), "Files on disk"): an installed nao-sim reads its recipes from the package and keeps the vendor files in the user data directory; a checkout uses `docker/` and `docker/vendor/` as today. Both build the images the same way, and compute the same `io.nao-sim.recipes` digest from the same recipes.
+- **nao-viewer behind the extra** needs nothing more: its model and scenes are its package data, its meshes live in its own user data directory (`platformdirs.user_data_dir("nao-viewer")/meshes`), so one `fetch-meshes` serves every project and checkout on the machine, and its `nao-viewer` command and MuJoCo's `mjpython` (the macOS window) are installed in the depending project's environment with it.
 - **Runtime dependencies**: `numpy`, `qi`, `sounddevice`, `platformdirs`; the `viewer` extra adds nao-viewer. The webcam's OpenCV is decided with [video-input.md](host/video-input.md).
-- **Versions**: the package version is the version baked into the images (`io.nao-sim.version`, `NaoSim/Version`), so an upgrade makes `start()` ask for a rebuild. Downstream packages pin a compatible range (`nao-sim>=X.Y,<X+1`), and the README carries the compatibility matrix (nao-sim, nao-viewer, NAOqi versions).
-- **As built**: the package installs from a checkout with `uv sync` only; the wheel has no recipes and the vendor files live in `docker/vendor/`. The package data and the user data directory are the gap this spec's `Updated` status marks.
+- **Versions**: a depending project pins a commit or tag in its `[tool.uv.sources]` and moves it on purpose. The package version is baked into the images (`io.nao-sim.version`, `NaoSim/Version`) next to the recipes digest, which is what tells a commit's images from another's: moving to a commit that changed `docker/` makes `start()` ask for a rebuild, and one that did not reuses the images. The version is bumped by hand, with a tag, when a change is worth naming; the README carries the compatibility of nao-sim, nao-viewer and the NAOqi versions.
+- **Tested** by the live tier (`tests-e2e/test_install_live.py`): a scratch project installs this checkout as the wheel a git dependency builds, and runs `nao-sim run` from it on each version.
 
 ## Open questions
 
-1. **libqi wheels for pip users.** uv resolves `qi` from the fork's GitHub Releases through `[tool.uv.sources]`, which a published package's metadata does not carry, so a plain `qi` would resolve to Aldebaran's older `qi` 3.1.5 on PyPI. Options: a find-links URL, a package index on GitHub Pages, or PyPI under a distinct name. The same question holds for nao-viewer behind the `viewer` extra. Until it is settled, nao-sim installs with `uv` from a checkout.
-2. **Release channel.** PyPI or GitHub Releases only, decided with the question above.
+1. **pip.** Installing with pip from the repository needs the libqi wheels from somewhere pip looks (a find-links URL, an index on GitHub Pages); deferred until someone needs pip.

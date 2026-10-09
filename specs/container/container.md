@@ -35,7 +35,7 @@ The container gives the desktop `naoqi-bin` from the user's Choregraphe suite th
 
 ### Vendor files and licensing
 
-Each image is built from two Aldebaran files per version, kept in `docker/vendor/<version>/` (gitignored): the Choregraphe suite and the robot's `animations` package. The image is built locally, tagged locally (`nao-sim/naoqi:<version>`) and never pushed: it contains Aldebaran's software.
+Each image is built from two Aldebaran files per version, kept in the vendor folder's `<version>/` (`docker/vendor/` in a checkout, gitignored; the user data directory for an installed nao-sim; [api.md](../runtime/api.md), "Files on disk"): the Choregraphe suite and the robot's `animations` package. The image is built locally, tagged locally (`nao-sim/naoqi:<version>`) and never pushed: it contains Aldebaran's software.
 
 | Version | Suite (from the repository's `Choregraphe/Linux/Binaries` or root) | Robot image the package comes from | `animations.pkg` |
 | --- | --- | --- | --- |
@@ -49,7 +49,7 @@ Each image is built from two Aldebaran files per version, kept in `docker/vendor
 
 #### Fetching the vendor files
 
-The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--vendor DIR]` ([api.md](../runtime/api.md), "Images"; default: both versions into `docker/vendor/`), which then builds and verifies the images. `suite.fetch` (`src/nao_sim/suite.py`) makes `<vendor>/<version>/` hold the pinned suite and `animations.pkg`.
+The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--vendor DIR]` ([api.md](../runtime/api.md), "Images"; default: both versions into the vendor folder, `docker/vendor/` in a checkout, see api.md's "Files on disk"), which then builds and verifies the images. `suite.fetch` (`src/nao_sim/suite.py`) makes `<vendor>/<version>/` hold the pinned suite and `animations.pkg`.
 
 - A file already there with the pinned hash is kept, so re-running is cheap: nothing is downloaded, and a file whose size and modification time match its entry in `<vendor>/hashes.json` (written after each verification) is not even hashed again. A missing or unreadable record only means hashing again.
 - A file there with another hash (a Git LFS pointer, a partial copy) is an error and is left untouched; the user deletes it to fetch again.
@@ -63,9 +63,9 @@ The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--vendor DIR]` ([
 
 ### Robot packages in the image
 
-- The Dockerfile copies `vendor/<version>/animations.pkg` to `/opt/naoqi/share/naoqi/apps/animations.pkg`. At boot, NAOqi's `PackageManager` installs every `.pkg` in that directory as a *system* package, as a robot does with its factory packages (the 2.8 suite installs its own `core`, `dialog`, `expressivity`, `life` and `semantic` this way). Measured on both versions: `Successfully installed system package` in the log, `PackageManager.hasPackage("animations")` and `ALBehaviorManager.isBehaviorInstalled("animations/Stand/Gestures/Hey_1")` are true once the entrypoint is ready.
+- The Dockerfile copies `animations.pkg` from the vendor context (`COPY --from=vendor`) to `/opt/naoqi/share/naoqi/apps/animations.pkg`. At boot, NAOqi's `PackageManager` installs every `.pkg` in that directory as a *system* package, as a robot does with its factory packages (the 2.8 suite installs its own `core`, `dialog`, `expressivity`, `life` and `semantic` this way). Measured on both versions: `Successfully installed system package` in the log, `PackageManager.hasPackage("animations")` and `ALBehaviorManager.isBehaviorInstalled("animations/Stand/Gestures/Hey_1")` are true once the entrypoint is ready.
 - Copying the unzipped package into the package store does not work: `PackageManager` only knows the packages in its registry (`~/.local/share/PackageManager/pm.db`, SQLite, table `packages(uuid, path, installer)`).
-- Once built, the image needs neither the suite nor the package. A rebuild (after changing the modules or the entrypoint) still needs both in `docker/vendor/<version>/`: Docker checks every file a `COPY` uses, even for a cached step.
+- Once built, the image needs neither the suite nor the package. A rebuild (after changing the modules or the entrypoint) still needs both in the vendor folder: Docker checks every file a `COPY` uses, even for a cached step.
 
 ### Package store
 
@@ -81,7 +81,7 @@ The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--vendor DIR]` ([
 
 One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override modules copied to `/opt/naoqi/modules/`, entrypoint at `/opt/naoqi/bin/nao-sim-entrypoint.sh`, healthcheck at `/opt/naoqi/bin/nao-sim-healthcheck.sh` ([status-service.md](status-service.md)).
 
-- The build context is `docker/`. Each Dockerfile has its own ignore file (`Dockerfile.naoqi-<version>.dockerignore`, read by BuildKit next to the Dockerfile) that leaves out the other version's vendor files, robot images (`*.opn`) and partial downloads (`*.part`), so a build uploads only its own suite and package.
+- The build context is the recipes folder (`docker/`, or `nao_sim/docker/` when installed). The vendor files come from a second, named build context, `vendor`: compose sets it per service to `${NAO_SIM_VENDOR:-./vendor}/<version>`, so a build uploads only its own version's folder, and the Dockerfile copies from it with `COPY --from=vendor <file>`. Each Dockerfile keeps its own ignore file (`Dockerfile.naoqi-<version>.dockerignore`, read by BuildKit next to the Dockerfile), which leaves the whole `vendor/`, `tts/` and Python caches out of the main context. BuildKit's named contexts need Docker Compose 2.17 or later.
 
 | | 2.1 (`Dockerfile.naoqi-2.1`) | 2.8 (`Dockerfile.naoqi-2.8`) |
 | --- | --- | --- |

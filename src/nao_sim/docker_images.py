@@ -16,7 +16,6 @@ import hashlib
 import importlib.metadata
 import json
 import logging
-import os
 import shutil
 import socket
 import subprocess
@@ -25,7 +24,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from nao_sim import suite
+from nao_sim import files, suite
 from nao_sim.errors import (
     BootError,
     DockerUnavailableError,
@@ -38,9 +37,11 @@ from nao_sim.errors import (
 
 log = logging.getLogger(__name__)
 
-DOCKER = Path(__file__).resolve().parents[2] / "docker"
+DOCKER = (
+    files.RECIPES
+)  # the package data when installed, the checkout's docker/ otherwise
 COMPOSE = DOCKER / "compose.yaml"
-VENDOR = suite.VENDOR
+VENDOR = files.VENDOR
 RECORD = "images.json"  # in the vendor folder, gitignored with it
 LABEL = "io.nao-sim.version"
 RECIPES_LABEL = "io.nao-sim.recipes"
@@ -262,7 +263,9 @@ def _fetch_build_verify(images: Images, vendor: Path) -> None:
             f"fetching the NAOqi {images.version} vendor files: {e}"
         ) from e
     env = {
-        **os.environ,
+        **files.compose_env(
+            vendor
+        ),  # the vendor folder is the build's `vendor` context
         "NAO_SIM_VERSION": nao_sim_version(),
         "NAO_SIM_RECIPES": recipes_digest(),
     }

@@ -1,6 +1,7 @@
 # nao-sim: NAOqi 2.8.7.4 (NAO V6) runtime container.
-# Built locally only, from docker/vendor/2.8/ (`uv run nao-sim-fetch-suite 2.8`): the Choregraphe
-# suite and the robot's animations package.
+# Built locally only, by `nao-sim fetch-and-build-images 2.8`, from the vendor folder's 2.8/ (the
+# Choregraphe suite and the robot's animations package), which compose passes as the `vendor`
+# build context.
 # Never push this image: it contains Aldebaran's software.
 FROM --platform=linux/amd64 ubuntu:16.04
 
@@ -16,7 +17,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Extract the suite to /opt/naoqi (bin/, lib/, etc/naoqi/, share/).
-COPY vendor/2.8/${SUITE} /tmp/suite.tar.gz
+COPY --from=vendor ${SUITE} /tmp/suite.tar.gz
 RUN mkdir -p /opt && cd /opt \
  && tar -xzf /tmp/suite.tar.gz \
  && mv ${SUITE_DIR} naoqi \
@@ -31,7 +32,7 @@ COPY healthcheck.sh /opt/naoqi/bin/nao-sim-healthcheck.sh
 
 # The robot's animations package (extracted from the robot image). PackageManager installs every
 # .pkg in share/naoqi/apps/ as a system package at boot, as a robot does with its factory packages.
-COPY vendor/2.8/animations.pkg /opt/naoqi/share/naoqi/apps/animations.pkg
+COPY --from=vendor animations.pkg /opt/naoqi/share/naoqi/apps/animations.pkg
 
 # The desktop 2.8 suite defaults to Pepper's model; make the virtual robot a NAO H25 V6.
 RUN sed -i 's/JULIETTEY20B2C.xml/NAOH25V60.xml/' /opt/naoqi/etc/naoqi/ALRobotModel.xml

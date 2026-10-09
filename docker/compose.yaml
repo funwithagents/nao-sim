@@ -20,6 +20,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.naoqi-2.1
+      # The suite and animations.pkg (COPY --from=vendor): the vendor folder nao-sim passes as
+      # NAO_SIM_VENDOR, or a checkout's ./vendor when compose runs by hand.
+      additional_contexts:
+        vendor: ${NAO_SIM_VENDOR:-./vendor}/2.1
       args:
         NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
       labels:
@@ -42,6 +46,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.naoqi-2.8
+      # The suite and animations.pkg (COPY --from=vendor): the vendor folder nao-sim passes as
+      # NAO_SIM_VENDOR, or a checkout's ./vendor when compose runs by hand.
+      additional_contexts:
+        vendor: ${NAO_SIM_VENDOR:-./vendor}/2.8
       args:
         NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
       labels:

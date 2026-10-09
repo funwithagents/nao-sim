@@ -240,11 +240,15 @@ def test_the_dockerfile_builds_from_the_fetched_files(name):
     assert re.search(
         rf"^ARG SUITE={re.escape(v.suite.filename)}$", dockerfile, re.MULTILINE
     )
-    assert f"COPY vendor/{name}/${{SUITE}} " in dockerfile
+    # Both files come from the `vendor` build context, which compose points at the version's
+    # folder of the vendor folder fetch() fills.
+    assert "COPY --from=vendor ${SUITE} " in dockerfile
     assert (
-        f"COPY vendor/{name}/{PACKAGE} /opt/naoqi/share/naoqi/apps/{PACKAGE}"
+        f"COPY --from=vendor {PACKAGE} /opt/naoqi/share/naoqi/apps/{PACKAGE}"
         in dockerfile
     )
+    compose = (DOCKER / "compose.yaml").read_text()
+    assert f"vendor: ${{NAO_SIM_VENDOR:-./vendor}}/{name}\n" in compose
     for f in (v.suite, v.image):
         assert f.url.startswith("https://media.githubusercontent.com/media/aldebaran/")
         assert re.fullmatch(r"[0-9a-f]{64}", f.sha256)

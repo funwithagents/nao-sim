@@ -1,9 +1,5 @@
-# Build context for Dockerfile.naoqi-2.1 (BuildKit reads <Dockerfile>.dockerignore): only this
-# version's vendor files, not the other version's suite, robot images or partial downloads.
-vendor/2.8/
-vendor/*.tar.gz
-vendor/*.pkg
-**/*.opn
-**/*.part
+# Build context for Dockerfile.naoqi-2.1 (BuildKit reads <Dockerfile>.dockerignore): the recipes
+# only. The vendor files come from the `vendor` build context, never from this one.
+vendor/
 tts/
 **/__pycache__/

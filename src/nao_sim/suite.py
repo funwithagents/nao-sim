@@ -1,9 +1,10 @@
-"""Fetch what the NAOqi images are built from into docker/vendor/<version>/: the pinned
-Choregraphe suite, and the robot's `animations` package extracted from the public robot image.
+"""Fetch what the NAOqi images are built from into the vendor folder's <version>/ (`files.VENDOR`:
+docker/vendor/ in a checkout, the user data directory when installed): the pinned Choregraphe
+suite, and the robot's `animations` package extracted from the public robot image.
 
 These are Aldebaran's files, downloaded from Aldebaran's own GitHub repositories (Git LFS) to
-this machine only: they stay in the gitignored docker/vendor/ and in locally built images, never
-in the repository or a pushed image.
+this machine only: they stay in the vendor folder (gitignored in a checkout, never in the wheel)
+and in locally built images, never in the repository or a pushed image.
 
 A file already there with the pinned hash is kept, so the command is cheap to re-run. A file with
 the expected name but another hash (a Git LFS pointer, a truncated copy) is an error and is left
@@ -32,9 +33,10 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from nao_sim import files
 from nao_sim.errors import FetchError
 
-VENDOR = Path(__file__).resolve().parents[2] / "docker" / "vendor"
+VENDOR = files.VENDOR
 CHUNK = 1 << 20
 PACKAGE = "animations.pkg"
 

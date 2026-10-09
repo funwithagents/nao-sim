@@ -5,11 +5,13 @@ code:
   - src/nao_sim/__init__.py
   - src/nao_sim/errors.py
   - src/nao_sim/docker_images.py
+  - src/nao_sim/files.py
   - src/nao_sim/audio_output.py
   - docker/compose.yaml
   - tests-e2e/conftest.py
   - tests-e2e/support.py
 tests:
+  - tests/test_files.py
   - tests/test_sim.py
   - tests/test_stack.py
   - tests/test_docker_images.py
@@ -83,14 +85,16 @@ So `start()` only checks: an image missing or not verified raises `ImagesMissing
 
 ### Files on disk
 
-| What | From a checkout | From an installed wheel |
+| What | From a checkout | Installed (a git dependency) |
 | --- | --- | --- |
-| Recipes (Dockerfiles, compose, entrypoint, healthcheck, `modules/`, `tts/`) | `docker/` | Package data inside `nao_sim` (no Aldebaran file, so allowed in the wheel) |
-| Vendor files (suites, `animations.pkg`) | `docker/vendor/<version>/` | `platformdirs.user_data_dir("nao-sim")/vendor/<version>/` |
-| Build context | `docker/` | The same user data directory: `fetch_and_build_images` assembles the context there, recipes copied next to the vendor files |
+| Recipes (Dockerfiles, compose, entrypoints, healthcheck, `modules/`, `tts/`) | `docker/` | `nao_sim/docker/`, the package data ([project.md](../project.md), "Distribution") |
+| Vendor files (suites, `animations.pkg`, `hashes.json`) | `docker/vendor/<version>/` | `platformdirs.user_data_dir("nao-sim")/vendor/<version>/` |
 | `images.json` (verified image IDs) | `docker/vendor/images.json` (gitignored with the vendor files) | Next to the vendor files |
+| Build context | The recipes folder, with the vendor folder of the version as a second, named context | The same |
 
-The checkout layout is today's. The wheel layout, and how the recipes become package data, are detailed in [project.md](../project.md), "Distribution", and built with it (that spec is `Updated` until then).
+- `src/nao_sim/files.py` decides, once: the recipes are `nao_sim/docker/` when the package holds them (an installed wheel), else the checkout's `docker/` (the editable install has no package data). The vendor folder is `NAO_SIM_VENDOR` when set, else `docker/vendor/` in a checkout and the user data directory when installed. Every default that names the vendor folder (`fetch_and_build_images`, `check_images`, `NaoSim.start()`, `--vendor`) comes from there.
+- **`NAO_SIM_VENDOR`** lets a machine keep one copy of the suites (1.8 GB for both versions) for a checkout and the projects that depend on nao-sim, and lets a test point an installed nao-sim at a checkout's vendor files and verified images.
+- **The vendor build context.** nao-sim passes the vendor folder to every `docker compose` call as `NAO_SIM_VENDOR`; compose gives each NAOqi build `additional_contexts: vendor: ${NAO_SIM_VENDOR:-./vendor}/<version>`, and the Dockerfile copies the suite and `animations.pkg` with `COPY --from=vendor` ([container.md](../container/container.md), "Images"). So the recipes are never copied next to the vendor files, the package data is read in place, and `--vendor DIR` builds from `DIR` (it used to download there while the build still read `docker/vendor/`). A `docker compose` run by hand from a checkout falls back to `./vendor`.
 
 ### What a running `NaoSim` offers
 
