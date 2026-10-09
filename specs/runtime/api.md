@@ -46,7 +46,7 @@ The API is **async**, as `NaoBridge`: `await sim.start()`, `await sim.stop()`, `
 1. **Environment checks**, before anything starts, each failing with its own error (see "Errors"):
    - Docker answers;
    - the images are there: the version's NAOqi image and the `tts` image exist, carry the installed nao-sim version (image label `io.nao-sim.version`), were built from the recipes as they are now (`io.nao-sim.recipes`) and were verified by `fetch_and_build_images` (see "Images"). `start()` never downloads or builds;
-   - the `viewer` extra is installed when the config needs it (`headless = false`, or `video_input.source = "render"`; the error names the extra);
+   - the `viewer` extra is installed when the config needs it (`headless = false`, or `video_input.source = "render"`; the error names the extra), and the `NaoViewerConfig` built from the `viewer` block is valid (nao-viewer's own check of the scene, re-raised as a `ConfigError` with key `viewer.scene`);
    - every configured source is built (see [config.md](config.md), "Sources not built yet") and its file exists (`audio_input.wav`);
    - ports 9559, 9562 and, once the audio input is built, the host link's 9563 are free (another nao-sim, a hand-started stack or audio output).
 2. **Audio output**: start the audio output ([audio-output.md](../host/audio-output.md)) in-process, feeding the sink, and open the host link ([devices.md](../host/devices.md), "The host link") once a device uses it.
@@ -54,6 +54,8 @@ The API is **async**, as `NaoBridge`: `await sim.start()`, `await sim.stop()`, `
 4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](../container/status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error. Verified images can still fail here (a volume, the host), so this wait happens on every start.
 5. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)). Each writes its `NaoSim/*/Source` key.
 6. **Simulated world**: when the config calls for it ([viewer.md](../host/viewer.md), "Which viewer runs"), build a `NaoViewer` in sim mode from the `viewer` block and `url`, and `launch()` it (in `asyncio.to_thread`; nao-viewer's API is synchronous). Its `LaunchError` fails the start like any other step.
+
+**The window closed by the user** stops the viewer only: the robot keeps running, as a NAO does when nobody watches it, so a nao-bridge app or a test that owns the `NaoSim` never loses its robot to a click. A `NaoSim` notices it from a thread waiting on the viewer (`NaoViewer.wait()`) and logs it once, at warning level, saying the robot is still running; it does not reopen the window. What the render camera does then is the video input's business ([video-input.md](../host/video-input.md)).
 
 If any step fails, everything already started is stopped, in reverse order, and the error propagates. Calling `start()` on a running `NaoSim` raises `NaoSimError`.
 
@@ -96,6 +98,15 @@ The checkout layout is today's. The wheel layout, and how the recipes become pac
 - `NaoSim` holds no qi session of its own for clients: callers open their own (`qi.Session().connect(sim.url)`), exactly as on a NAO. `status()` opens and closes one.
 - `url` and `status()` raise `NotRunningError` when not running.
 
+### Without a `NaoSim` object
+
+Two functions serve the commands run from another terminal than the one that started nao-sim ([cli.md](cli.md)), so the CLI holds no Docker or qi logic of its own:
+
+- **`await read_status() -> StackStatus`**: the state of whatever runs on this machine. `containers` lists each container of the `nao-sim` compose project with its service, state and health (empty when nothing runs); `naoqi` is the `NaoSimStatus` read from the `NaoSim` service on `tcp://127.0.0.1:9559` (with the connect retry), or `None` when no NAOqi container is `healthy`. `NaoSim.status()` uses the same reader for its `NaoSimStatus`.
+- **`await cleanup() -> list[str]`**: removes what a `NaoSim` that died without stopping left behind (killed, crashed): `docker compose --profile '*' down` on the `nao-sim` project, keeping the package store volumes, and returns the names of the containers removed. If a nao-sim is still running (port 9562, the audio output's, is taken), it removes nothing and raises `NaoSimError` saying so.
+
+Both check Docker first (`DockerUnavailableError`).
+
 ### Errors
 
 | Error | Raised for |
@@ -114,7 +125,7 @@ The `NaoSim` *class* (`nao_sim.NaoSim`, on the host) keeps the name of the `NaoS
 
 ### Front door
 
-`from nao_sim import NaoSim` re-exports what a caller needs: `NaoSim`, `NaoSimStatus`, `fetch_and_build_images`, the config classes (`NaoSimConfig` and its blocks, the `Literal` types), the audio sinks (`AudioSink`, `DevicePlayer`, `NullSink`, `WavSink`, `MemorySink`), `ConfigError` and the errors above. Library modules only use `logging.getLogger(__name__)`; `logging.basicConfig` belongs to the CLI.
+`from nao_sim import NaoSim` re-exports what a caller needs: `NaoSim`, `NaoSimStatus`, `fetch_and_build_images`, `read_status` and `StackStatus`, `cleanup`, the config classes (`NaoSimConfig` and its blocks, the `Literal` types), the audio sinks (`AudioSink`, `DevicePlayer`, `NullSink`, `WavSink`, `MemorySink`), `ConfigError` and the errors above. Library modules only use `logging.getLogger(__name__)`; `logging.basicConfig` belongs to the CLI.
 
 ### One nao-sim per machine
 

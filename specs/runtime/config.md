@@ -7,7 +7,7 @@ tests:
 
 # Configuration
 
-**Status:** Draft
+**Status:** Stable
 
 ## Purpose
 
@@ -100,7 +100,6 @@ class ViewerSettings:
     scene: str = "empty"
     # "auto" | "placeholder" | "aldebaran" (nao-viewer's world.variant)
     variant: ViewerVariant = "auto"
-
 ```
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
@@ -131,11 +130,15 @@ class ViewerSettings:
 
 So a server config is `{"viewer": {"headless": true}}`, and it needs no extra; CI runs a headless viewer with the render camera instead ([ci.md](../testing/ci.md)).
 
-The `viewer` block is nao-sim's own, not an embedded `NaoViewerConfig`: `NaoSim` builds the viewer's config from it as `NaoViewerConfig(mode="sim", headless=headless, naoqi=NaoqiSettings(url=sim.url), world=WorldSettings(scene=scene, variant=variant))`. The mode and the NAOqi URL follow from running nao-sim, so they are not settings; nao-viewer's other fields (`ghost`, `naoqi.rate_hz`, `launch_timeout_s`) keep nao-viewer's defaults. `scene` and `variant` take nao-viewer's values and defaults (`empty`, `auto`); this module only checks their form (a non-empty string; one of the three variants), and an unknown bundled scene or missing meshes surface when the viewer launches ([api.md](api.md), "Lifecycle"), since `config.py` does not import `nao_viewer`).
+The `viewer` block is nao-sim's own, not an embedded `NaoViewerConfig`: `NaoSim` builds the viewer's config from it as `NaoViewerConfig(mode="sim", headless=headless, naoqi=NaoqiSettings(url=sim.url), world=WorldSettings(scene=scene, variant=variant))`. The mode and the NAOqi URL follow from running nao-sim, so they are not settings; nao-viewer's other fields (`ghost`, `naoqi.rate_hz`, `launch_timeout_s`) keep nao-viewer's defaults. `scene` and `variant` take nao-viewer's values and defaults (`empty`, `auto`); this module only checks their form (a non-empty string; one of the three variants), since `config.py` does not import `nao_viewer`. The rest is checked by nao-viewer itself, in `NaoSim.start()` ([api.md](api.md), "Lifecycle"): an unknown bundled scene when step 1 builds the `NaoViewerConfig` (re-raised as a `ConfigError` with key `viewer.scene`, before anything starts), missing meshes when the viewer launches.
 
 ### Sources not built yet
 
 The config accepts every source value from the start (`webcam`, `render`, `mic`, `wav`), so config files written now stay valid as the device specs land. Until a device is built, `NaoSim.start()` fails with an error naming the missing device instead of silently running without it.
+
+### File format
+
+JSON, as nao-bridge: a `sim` block is pasted between a nao-sim file and a nao-bridge file unchanged, which a second format would break. The example files carry no comments; what each one is for is listed below and in the README.
 
 ### Embedding in other configs
 
@@ -155,4 +158,3 @@ The config accepts every source value from the start (`webcam`, `render`, `mic`,
 ## Open questions
 
 1. **More blocks.** Candidates, each deferred until its spec needs it: `speech.language` and voice, the audio output's device and volume ([audio-output.md](../host/audio-output.md), open questions), the microphone's device ([audio-input.md](../host/audio-input.md), open questions), a vendor directory other than the default ([api.md](api.md), "Files on disk"), ports (today 9559, 9562 and the host link's 9563 are fixed, so one nao-sim runs per machine). Adding a block does not break existing files.
-2. **File format.** JSON, as nao-bridge. TOML would allow comments in example files; switching later would mean a second loader, so decide before the CLI ships.

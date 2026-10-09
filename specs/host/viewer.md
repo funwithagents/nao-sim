@@ -1,11 +1,12 @@
 ---
 code:
+  - pyproject.toml
 tests:
 ---
 
 # Viewer: the simulated world
 
-**Status:** Draft
+**Status:** Stable
 
 ## Purpose
 
@@ -49,17 +50,25 @@ When the extra is needed and missing, `NaoSim.start()` fails before starting any
 - Importing `nao_viewer` loads neither MuJoCo nor qi, and nao-sim imports it lazily, only when the config needs it. The API is synchronous; `NaoSim` calls it through `asyncio.to_thread`.
 - The viewer process exits when its caller's connection closes, so a `NaoSim` that dies never leaves a window behind.
 
+### Window closed
+
+Closing the sim window stops the viewer only; the robot keeps running, and the `NaoSim` logs it once and does not reopen the window ([api.md](../runtime/api.md), "Lifecycle"). A NAO does not stop when nobody watches it, and a nao-bridge app or a test that owns the `NaoSim` must not lose its robot to a click. Ctrl-C (or `NaoSim.stop()`) stops the run.
+
 ### Dependency
 
 Through the `nao-sim[viewer]` extra, which pulls nao-viewer and with it MuJoCo. Without it, nao-sim runs with no window and no render camera: every NAOqi API, speech, the audio input and the webcam all work, which suits servers. nao-viewer depends on libqi only, never on nao-sim, so the chain stays one-way; `nao-bridge[sim]` pulls `nao-sim[viewer]`, so the full experience stays one install.
+
+- nao-viewer is not on PyPI: until the distribution is settled ([project.md](../project.md), open question 1, which covers it with the libqi wheels), `[tool.uv.sources]` takes it from its GitHub repository (`funwithagents/nao-viewer`), pinned to a commit, as the libqi wheels are taken from theirs.
+- The dev environment installs the extra, so the code that drives the viewer type-checks against nao-viewer's real API; the fast tier never launches it.
 
 ### In the live tier and CI
 
 The live tier runs the viewer from the start, headless, with the render camera and the placeholder variant: `{"viewer": {"headless": true, "variant": "placeholder"}, "video_input": {"source": "render"}}`. That tests the whole camera loop (a client subscribes, the viewer renders, `putImage` injects, the client reads the frame back) on a runner with no display ([ci.md](../testing/ci.md)). The placeholder visuals are enough to assert frames, and CI never accepts the meshes' license.
 
+Until the render camera is built (milestone 4), a headless config with no render source runs no viewer, so the live tier has none; the window itself needs a display and is checked by a live test that skips without one.
+
 ## Open questions
 
-1. **Window closed.** Whether closing the sim window stops the run or only the viewer (and the render camera) while the robot keeps running. nao-viewer only reports it, as `ViewerClosed` on the next call; the decision is nao-sim's.
-2. **Subtitles.** Showing what the robot says in the window, from the `ALTextToSpeech` replacement's sentences ([speech.md](../services/speech.md)); needs a nao-viewer operation.
-3. **Virtual robot sensors.** What `getAngles(..., True)` and the ALMemory sensor keys return on the desktop NAOqi (likely the commanded values); it decides how faithful the pose, and so the render camera, are.
-4. **NAO V6 geometry.** nao-viewer's model is V5; whether 2.8 (NAO V6) needs its own model is open on the nao-viewer side.
+1. **Subtitles.** Showing what the robot says in the window, from the `ALTextToSpeech` replacement's sentences ([speech.md](../services/speech.md)); needs a nao-viewer operation.
+2. **Virtual robot sensors.** What `getAngles(..., True)` and the ALMemory sensor keys return on the desktop NAOqi (likely the commanded values); it decides how faithful the pose, and so the render camera, are.
+3. **NAO V6 geometry.** nao-viewer's model is V5; whether 2.8 (NAO V6) needs its own model is open on the nao-viewer side.

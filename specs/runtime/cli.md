@@ -8,7 +8,7 @@ tests:
 
 # CLI (`nao-sim`)
 
-**Status:** Draft
+**Status:** Stable
 
 ## Purpose
 
@@ -23,13 +23,14 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 | `nao-sim fetch-and-build-images [2.1] [2.8]` | Runs `fetch_and_build_images` ([api.md](api.md), "Images"): fetches the vendor files, builds and verifies the images (default: both versions). The one slow step, run once before `run` and again after changing `docker/` |
 | `nao-sim run [--config FILE]` | Loads the config (no `--config`: `NaoSimConfig()`), runs `NaoSim.start()`, prints `sim.url` and the `NaoSim` service's versions once ready, then stays in the foreground until Ctrl-C (or `SIGTERM`), which runs `NaoSim.stop()` |
 | `nao-sim cleanup` | Removes what a run that died without stopping left behind (see "Foreground runs") |
-| `nao-sim status` | The containers' health, the `NaoSim` service's versions and readiness, the attached device sources |
-| `nao-sim logs` | The containers' logs (`docker compose logs` on the `nao-sim` project) |
+| `nao-sim status` | Prints `read_status()` ([api.md](api.md), "Without a `NaoSim` object"): each container's state and health, then the `NaoSim` service's versions, readiness and device sources |
+| `nao-sim logs [--follow] [--tail N]` | The containers' logs: `docker compose -p nao-sim logs`, with these two options passed through |
 
 - `nao-sim probe` (the capability report, [_overview.md](../_overview.md), "Capability probe") is deferred with the probe: it gets its spec when the 2.8 validation milestone needs committed reports.
 - The API is async: each command runs its coroutine with `asyncio.run`; Ctrl-C cancels it, and `run` still awaits `stop()` on the way out.
 - `run` starts nothing itself: every check (Docker, the images, the `viewer` extra, ports) happens in `NaoSim.start()` ([api.md](api.md), "Lifecycle"), and the CLI prints the error's message.
 - **Exit codes**, as nao-bridge's CLIs: a `ConfigError` exits 2 with its message (it names the key path); any other `NaoSimError` exits 1 with its message; Ctrl-C after a successful start exits 0 once `stop()` has run.
+- **`status` answers in its exit code** too, for scripts: 0 when the robot is ready (`NaoSim/Ready` read from the service), 1 otherwise, with `nao-sim is not running` when no container runs.
 - `logging.basicConfig` is called here, never in the library; `--verbose` raises the level to `DEBUG`.
 
 ### The config file only
@@ -40,8 +41,9 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 
 `run` stays in the foreground: the host side of the robot (the audio output, later the audio and video inputs and the viewer window, which on macOS must stay in a process the user launched) lives in its process, and Ctrl-C stops everything in that same process with `NaoSim.stop()`, logs in view. There is no detached mode and no pid file. A caller that needs nao-sim in the background uses the API ([api.md](api.md)), or a shell's `&`, tmux and the like. The name says it: `run`, as `docker run` or `uv run`, not compose's `up`/`down` pair, which suggests a detached stack.
 
-- **`nao-sim cleanup`** is for a run that died without stopping (killed, crashed, laptop closed): it removes the `nao-sim` compose project's containers, every profile (`docker compose --profile '*' down`, keeping the package store volumes). If a run is still alive (port 9562, the audio output's, is taken), it changes nothing and says to press Ctrl-C in that run's terminal.
+- **`nao-sim cleanup`** is for a run that died without stopping (killed, crashed, laptop closed): it runs `cleanup()` ([api.md](api.md)), which removes the `nao-sim` compose project's containers, every profile, keeping the package store volumes, and prints what it removed. If a run is still alive (port 9562, the audio output's, is taken), it changes nothing, says to press Ctrl-C in that run's terminal and exits 1.
 - **`nao-sim status` and `nao-sim logs`** work from any terminal: they read Docker and the `NaoSim` service, so they need no pid file either.
+- **Closing the sim window** does not end `run`: the robot keeps running and the terminal says so ([api.md](api.md), "Lifecycle"); Ctrl-C stops it.
 
 ### Existing commands
 
