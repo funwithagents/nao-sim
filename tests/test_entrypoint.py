@@ -1,4 +1,4 @@
-"""The container entrypoint and healthcheck, run on the host against fake `naoqi-bin` and `qicli`.
+"""The containers' entrypoints (one per NAOqi version) and the healthcheck, run on the host against fake `naoqi-bin` and `qicli`.
 
 The fakes sit first on PATH. `qicli` logs every invocation, lists `FAKE_QICLI_SERVICES` (minus
 the names that are "down", plus names that appear late) on `info` without a name, answers `info
@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 DOCKER = Path(__file__).resolve().parent.parent / "docker"
-ENTRYPOINT = DOCKER / "entrypoint.sh"
+ENTRYPOINTS = {v: DOCKER / f"entrypoint-{v}.sh" for v in ("2.1", "2.8")}
 HEALTHCHECK = DOCKER / "healthcheck.sh"
 
 FAKE_QICLI = textwrap.dedent(
@@ -73,6 +73,7 @@ FAKE_NAOQI_BIN = textwrap.dedent(
     """\
     #!/bin/bash
     echo "$@" > "$FAKE_DIR/naoqi-bin.args"
+    echo "${NAO_SIM_INTERNAL_PORT:-unset}" > "$FAKE_DIR/naoqi-bin.port"
     [ -n "${FAKE_NAOQI_EXIT:-}" ] && exit "$FAKE_NAOQI_EXIT"
     trap 'exit 0' TERM INT
     while :; do sleep 0.1; done
@@ -85,23 +86,7 @@ SERVICES = (
     "ALServiceManager ALAutonomousLife ALPanoramaCompass"
 )
 
-ENV_21 = {
-    "NAO_SIM_EXIT_MODULES": "ALTextToSpeech",
-    "NAO_SIM_MODULES": "nao_sim_status_almodule nao_sim_tts_almodule",
-    "NAO_SIM_DEFER_MODULES": "animatedspeech dialog",
-    "NAO_SIM_READY_SERVICE": "ALAutonomousLife",
-}
 REGISTERS_21 = "nao_sim_status_almodule=NaoSim,nao_sim_tts_almodule=ALTextToSpeech"
-
-ENV_28 = {
-    "NAO_SIM_LISTEN_URL": "tcp://127.0.0.1:9558",
-    "NAO_SIM_INTERNAL_PORT": "9558",
-    "NAO_SIM_READY_SERVICE": "ALPanoramaCompass",
-    "NAO_SIM_RESTART_SERVICES": "expressivity.autonomousabilitiesmodules",
-    "NAO_SIM_EXIT_MODULES": "ALTextToSpeech",
-    "NAO_SIM_MODULES": "nao_sim_status_qiservice nao_sim_tts_qiservice",
-    "NAO_SIM_DEFER_MODULES": "",
-}
 REGISTERS_28 = "nao_sim_status_qiservice=NaoSim,nao_sim_tts_qiservice=ALTextToSpeech"
 
 
@@ -139,13 +124,17 @@ class Fakes:
     def naoqi_bin_args(self) -> str:
         return (self.dir / "naoqi-bin.args").read_text().strip()
 
+    def naoqi_bin_port_env(self) -> str:
+        """NAO_SIM_INTERNAL_PORT as naoqi-bin (and so naoqi-service, our modules) inherits it."""
+        return (self.dir / "naoqi-bin.port").read_text().strip()
+
 
 class Entrypoint:
-    def __init__(self, fakes: Fakes, extra: dict[str, str]):
+    def __init__(self, fakes: Fakes, version: str, extra: dict[str, str]):
         self.fakes = fakes
         self.out = fakes.dir / "stdout"
         self.proc = subprocess.Popen(
-            ["bash", str(ENTRYPOINT)],
+            ["bash", str(ENTRYPOINTS[version])],
             env=fakes.env(extra),
             stdout=self.out.open("w"),
             stderr=subprocess.STDOUT,
@@ -189,7 +178,7 @@ def calls_only(fakes: Fakes) -> list[str]:
 
 
 def test_sequence_on_2_1(fakes):
-    ep = Entrypoint(fakes, {**ENV_21, "FAKE_QICLI_REGISTERS": REGISTERS_21})
+    ep = Entrypoint(fakes, "2.1", {"FAKE_QICLI_REGISTERS": REGISTERS_21})
     ep.wait_for_ready()
     ep.stop()
 
@@ -218,7 +207,7 @@ def test_sequence_on_2_1(fakes):
 
 
 def test_sequence_on_2_8(fakes):
-    ep = Entrypoint(fakes, {**ENV_28, "FAKE_QICLI_REGISTERS": REGISTERS_28})
+    ep = Entrypoint(fakes, "2.8", {"FAKE_QICLI_REGISTERS": REGISTERS_28})
     ep.wait_for_ready()
     ep.stop()
 
@@ -237,12 +226,15 @@ def test_sequence_on_2_8(fakes):
         "--qi-listen-url tcp://127.0.0.1:9558 "
         f"--autoload-file {fakes.naoqi_home}/etc/naoqi/autoload.ini"
     )
+    # The qi services connect back to NAOqi on the port the script exports.
+    assert fakes.naoqi_bin_port_env() == "9558"
 
 
 def test_polls_until_naoqi_answers(fakes):
     ep = Entrypoint(
         fakes,
-        {**ENV_21, "FAKE_QICLI_REGISTERS": REGISTERS_21, "FAKE_QICLI_READY_AFTER": "4"},
+        "2.1",
+        {"FAKE_QICLI_REGISTERS": REGISTERS_21, "FAKE_QICLI_READY_AFTER": "4"},
     )
     ep.wait_for_ready()
     ep.stop()
@@ -256,8 +248,8 @@ def test_waits_for_the_required_services_and_a_settled_list(fakes):
     # changing until the 6th: stable at polls 7, 8, 9, so nothing is called before the 9th.
     ep = Entrypoint(
         fakes,
+        "2.8",
         {
-            **ENV_28,
             "FAKE_QICLI_REGISTERS": REGISTERS_28,
             "FAKE_QICLI_LATE": "ALPanoramaCompass:3,ALAudioPlayer:6",
         },
@@ -275,7 +267,7 @@ def test_waits_for_the_required_services_and_a_settled_list(fakes):
 
 def test_gives_up_when_naoqi_never_answers(fakes):
     (fakes.dir / "down").write_text("ALLauncher")
-    ep = Entrypoint(fakes, {**ENV_21, "NAO_SIM_READY_TRIES": "3"})
+    ep = Entrypoint(fakes, "2.1", {"NAO_SIM_READY_TRIES": "3"})
     assert ep.wait_exit() == 1
     assert "not ready after 3 polls" in ep.output()
     assert "nao-sim ready" not in ep.output()
@@ -284,7 +276,7 @@ def test_gives_up_when_naoqi_never_answers(fakes):
 
 def test_gives_up_when_a_required_service_never_appears(fakes):
     (fakes.dir / "down").write_text("ALPythonBridge")
-    ep = Entrypoint(fakes, {**ENV_21, "NAO_SIM_READY_TRIES": "3"})
+    ep = Entrypoint(fakes, "2.1", {"NAO_SIM_READY_TRIES": "3"})
     assert ep.wait_exit() == 1
     assert "not ready after 3 polls" in ep.output()
     assert "ALPythonBridge" in ep.output()
@@ -294,7 +286,7 @@ def test_gives_up_when_a_required_service_never_appears(fakes):
 def test_fails_when_a_replacement_did_not_register(fakes):
     # The tts module is loaded but registers nothing: ALTextToSpeech stays gone.
     ep = Entrypoint(
-        fakes, {**ENV_21, "FAKE_QICLI_REGISTERS": "nao_sim_status_almodule=NaoSim"}
+        fakes, "2.1", {"FAKE_QICLI_REGISTERS": "nao_sim_status_almodule=NaoSim"}
     )
     assert ep.wait_exit() == 1
     assert "replaced service ALTextToSpeech does not answer" in ep.output()
@@ -305,7 +297,7 @@ def test_fails_when_a_replacement_did_not_register(fakes):
 def test_fails_when_the_status_module_is_missing(fakes):
     (fakes.dir / "down").write_text("NaoSim")
     ep = Entrypoint(
-        fakes, {**ENV_21, "FAKE_QICLI_REGISTERS": "nao_sim_tts_almodule=ALTextToSpeech"}
+        fakes, "2.1", {"FAKE_QICLI_REGISTERS": "nao_sim_tts_almodule=ALTextToSpeech"}
     )
     assert ep.wait_exit() == 1
     assert "NaoSim.setReady failed" in ep.output()
@@ -314,7 +306,7 @@ def test_fails_when_the_status_module_is_missing(fakes):
 
 def test_fails_when_naoqi_bin_dies(fakes):
     (fakes.dir / "down").write_text("ALLauncher")
-    ep = Entrypoint(fakes, {**ENV_21, "FAKE_NAOQI_EXIT": "3"})
+    ep = Entrypoint(fakes, "2.1", {"FAKE_NAOQI_EXIT": "3"})
     assert ep.wait_exit() == 1
     assert "naoqi-bin exited" in ep.output()
 

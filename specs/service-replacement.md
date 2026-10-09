@@ -1,6 +1,8 @@
 ---
 code:
-  - docker/entrypoint.sh
+  - docker/entrypoint-2.1.sh
+  - docker/entrypoint-2.8.sh
+  - docker/entrypoint-lib.sh
   - docker/modules/nao_sim_tts_almodule.py
   - docker/modules/nao_sim_tts_qiservice.py
 tests:
@@ -23,7 +25,7 @@ nao-sim makes the container look like a real NAO by replacing or adding NAOqi se
 - Override modules are Python 2.7 files in `docker/modules/`, copied to `/opt/naoqi/modules/` and importable by name.
 - The desktop `naoqi-bin` ignores the `[python]` section of `autoload.ini` (main file, user file, with or without `--writable-path`: measured). The entrypoint instead calls `ALLauncher.launchPythonModule(<module>)`, which runs `from <module> import *` in `ALPythonBridge`'s embedded interpreter. On 2.1 that is the `naoqi-bin` process itself (same pid, verified); on 2.8 it is `naoqi-service`.
 - A module registers its service at import time, at module level.
-- `launchPythonModule` does not report an import failure, so the entrypoint checks afterwards that every replaced name (`NAO_SIM_EXIT_MODULES`) answers again, and exits non-zero otherwise rather than printing "ready" with the built-in gone ([container.md](container.md), "Entrypoint"). A module that adds a new name (`NaoSim`, the planned `ALAudioDevice`) is not covered by that check; the `NaoSim` module is, indirectly, since the entrypoint's last step calls it.
+- `launchPythonModule` does not report an import failure, so the entrypoint checks afterwards that every replaced name (`REPLACED` in each version's script) answers again, and exits non-zero otherwise rather than printing "ready" with the built-in gone ([container.md](container.md), "Entrypoint"). A module that adds a new name (`NaoSim`, the planned `ALAudioDevice`) is not covered by that check; the `NaoSim` module is, indirectly, since the entrypoint's last step calls it.
 - Exact autoload ordering would need a small C++ loader module compiled against the suite's SDK, listed right after `pythonbridge`; kept as an option, not needed so far.
 
 ### Object model per version
@@ -45,9 +47,9 @@ A replacement registers under the built-in's name, after the built-in has left b
 
 | Step | 2.1 | 2.8 |
 | --- | --- | --- |
-| 1. Keep dependents off the old object | Remove them from the autoload copy (`NAO_SIM_DEFER_MODULES`, e.g. `animatedspeech dialog`) | `ALServiceManager.stopService(<package service>)` (`NAO_SIM_RESTART_SERVICES`) |
-| 2. Remove the built-in | `<Built-in>.exit()` (`NAO_SIM_EXIT_MODULES`); it leaves the broker and the ServiceDirectory cleanly | Same |
-| 3. Load the replacement | `launchPythonModule` (`NAO_SIM_MODULES`) | Same |
+| 1. Keep dependents off the old object | Remove them from the autoload copy (`DEPENDENTS` in `entrypoint-2.1.sh`: `animatedspeech dialog`) | `ALServiceManager.stopService(<package service>)` (`DEPENDENTS` in `entrypoint-2.8.sh`: `expressivity.autonomousabilitiesmodules`) |
+| 2. Remove the built-in | `<Built-in>.exit()` (`REPLACED`); it leaves the broker and the ServiceDirectory cleanly | Same |
+| 3. Load the replacement | `launchPythonModule` (`MODULES`) | Same |
 | 4. Bring dependents back | `ALLauncher.launchLocal(<library>)` | `ALServiceManager.startService(<package service>)` |
 
 - Alternative for a built-in nobody needs: drop its C++ library from the autoload copy (`[core]`/`[extra]` entries are `lib<name>.so`). Note that `audioout` provides both `ALTextToSpeech` and `ALAudioPlayer`, so dropping it means replacing both.

@@ -4,7 +4,9 @@ code:
   - docker/modules/nao_sim_status_almodule.py
   - docker/modules/nao_sim_status_qiservice.py
   - docker/healthcheck.sh
-  - docker/entrypoint.sh
+  - docker/entrypoint-2.1.sh
+  - docker/entrypoint-2.8.sh
+  - docker/entrypoint-lib.sh
   - docker/Dockerfile.naoqi-2.1
   - docker/Dockerfile.naoqi-2.8
   - docker/compose.yaml
@@ -28,7 +30,7 @@ It is also a contract with the other packages of the toolkit: nao-viewer's pose 
 
 ### The service
 
-The service is called `NaoSim`. It exists only on nao-sim: no real robot or plain desktop NAOqi has it. Its name is free on both versions, so it is registered directly (no built-in to remove), as the first entry of `NAO_SIM_MODULES` ([service-replacement.md](service-replacement.md)).
+The service is called `NaoSim`. It exists only on nao-sim: no real robot or plain desktop NAOqi has it. Its name is free on both versions, so it is registered directly (no built-in to remove), as the first entry of each entrypoint's `MODULES` ([container.md](container.md), "Entrypoint").
 
 | Method | Returns | Meaning |
 | --- | --- | --- |
@@ -63,7 +65,7 @@ The module writes these at load. All values are plain strings except `NaoSim/Rea
 The entrypoint exits non-zero (after terminating `naoqi-bin`) instead of carrying on when:
 
 - NAOqi does not answer after `NAO_SIM_READY_TRIES` polls (default 120, one per second);
-- a name in `NAO_SIM_EXIT_MODULES` does not answer within 10 s of loading the modules (a replacement that failed at import, which `launchPythonModule` does not report);
+- a replaced name (`REPLACED`) does not answer within 10 s of loading the modules (a replacement that failed at import, which `launchPythonModule` does not report);
 - `NaoSim.setReady` fails (the status module itself did not load).
 
 So a container that is `running` and printed the ready line has its overrides in place, and one whose boot failed shows as `exited`, not as a half-robot. This replaces the earlier behaviour where both failure modes were silent (the former open questions of [container.md](container.md) and [service-replacement.md](service-replacement.md)).

@@ -10,7 +10,7 @@ Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4, see [spike/RESULTS.
 
 - `docker/Dockerfile.naoqi-2.1`: Ubuntu 14.04 amd64 + 2.1.4.13 suite tarball at `/opt/naoqi`, non-root user, entrypoint.
 - `docker/Dockerfile.naoqi-2.8`: Ubuntu 16.04 amd64 + 2.8.7.4 suite, NAO V6 model, `naoqi-bin` behind the suite's gateway on 9559 (compose profile `2.8`; 2.1 is profile `2.1`).
-- `docker/entrypoint.sh`: starts `naoqi-bin`, waits for readiness, stops `$NAO_SIM_RESTART_SERVICES` (2.8), exits `$NAO_SIM_EXIT_MODULES`, loads `$NAO_SIM_MODULES` with `ALLauncher.launchPythonModule`, restarts services (2.8) or launches `$NAO_SIM_DEFER_MODULES` (2.1), checks the replaced services answer and marks `NaoSim` ready. Any failure exits non-zero.
+- `docker/entrypoint-2.1.sh`, `docker/entrypoint-2.8.sh`: each version's boot procedure, top to bottom: start `naoqi-bin`, wait for a settled service list, keep the modules depending on `ALTextToSpeech` off it (2.1: left out of autoload; 2.8: their package service stopped), exit the built-in, load our modules with `ALLauncher.launchPythonModule`, bring the dependents back, check the replacements answer and mark `NaoSim` ready. Any failure exits non-zero. `docker/entrypoint-lib.sh` holds the steps both share.
 - `docker/healthcheck.sh`: the Docker healthcheck, `NaoSim.isReady` on 9559.
 - `docker/modules/`: Python 2.7 modules loaded inside NAOqi: `nao_sim_status_*` (the `NaoSim` service: versions, device sources, readiness, as a service and `NaoSim/*` ALMemory keys), `nao_sim_tts_core` (tag parsing, engine call, events), `nao_sim_tts_almodule` (2.1, `ALModule`), `nao_sim_tts_qiservice` (2.8, qi service).
 - `docker/tts/`: the speech engine container (Piper + eSpeak NG, `POST /say`, streams PCM to the host speaker).

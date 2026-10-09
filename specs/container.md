@@ -3,7 +3,9 @@ code:
   - docker/Dockerfile.naoqi-2.1
   - docker/Dockerfile.naoqi-2.8
   - docker/compose.yaml
-  - docker/entrypoint.sh
+  - docker/entrypoint-2.1.sh
+  - docker/entrypoint-2.8.sh
+  - docker/entrypoint-lib.sh
   - docker/healthcheck.sh
   - docker/Dockerfile.naoqi-2.1.dockerignore
   - docker/Dockerfile.naoqi-2.8.dockerignore
@@ -89,7 +91,7 @@ One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override 
 
 - `naoqi-bin` refuses to run as root: the image runs as user `nao` (uid 1000), which owns `/opt/naoqi`.
 - Labels `io.nao-sim.version` and `io.nao-sim.recipes` on the NAOqi and `tts` images, set by compose (`build.labels`, from `NAO_SIM_VERSION` and `NAO_SIM_RECIPES`) so neither Dockerfile changes; `check_images` reads them to refuse an image built by another nao-sim version or from other recipes ([api.md](api.md), "Images").
-- Environment: `PATH`, `LD_LIBRARY_PATH=/opt/naoqi/lib`, `PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules`, `NAO_SIM_NAOQI_VERSION` (the suite's full version) and `NAO_SIM_VERSION` (build argument, default `dev`; see [status-service.md](status-service.md)), plus the per-version entrypoint defaults below.
+- Environment: `PATH`, `LD_LIBRARY_PATH=/opt/naoqi/lib`, `PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules`, `NAO_SIM_NAOQI_VERSION` (the suite's full version) and `NAO_SIM_VERSION` (build argument, default `dev`; see [status-service.md](status-service.md)). The per-version boot facts are constants in each version's entrypoint (see "Entrypoint"), not environment variables.
 
 ### Network layout
 
@@ -112,36 +114,31 @@ Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and ea
 
 ### Entrypoint
 
-`entrypoint.sh` is the same script for both versions, driven by environment variables (the Dockerfiles set the per-version defaults):
+One script per version, each reading top to bottom as that version's procedure: `entrypoint-2.1.sh` and `entrypoint-2.8.sh`, copied to `/opt/naoqi/bin/nao-sim-entrypoint.sh` in their image. What they share is in `entrypoint-lib.sh`, which both source (copied next to them): starting `naoqi-bin`, waiting for a settled service list, removing built-ins, loading our modules, checking the replacements, marking boot complete. The version's facts are constants at the top of its script, not image environment variables:
 
-| Variable | Meaning | 2.1 default | 2.8 default |
-| --- | --- | --- | --- |
-| `NAO_SIM_LISTEN_URL` | If set, `naoqi-bin --qi-listen-url <url>`; else `-b 0.0.0.0 -p $NAO_SIM_INTERNAL_PORT` | unset | `tcp://127.0.0.1:9558` |
-| `NAO_SIM_INTERNAL_PORT` | Port the entrypoint and modules use to reach NAOqi from inside | 9559 | 9558 |
-| `NAO_SIM_READY_SERVICE` | Last service to wait for (besides `ALLauncher`) before acting | `ALAutonomousLife` | `ALPanoramaCompass` |
-| `NAO_SIM_DEFER_MODULES` | Autoload entries commented out of a copy of `autoload.ini`, launched with `ALLauncher.launchLocal` at the end | `animatedspeech dialog` | empty |
-| `NAO_SIM_RESTART_SERVICES` | `ALServiceManager` services stopped before the replacement and started after | empty | `expressivity.autonomousabilitiesmodules` |
-| `NAO_SIM_EXIT_MODULES` | Built-ins whose `exit()` is called | `ALTextToSpeech` | `ALTextToSpeech` |
-| `NAO_SIM_MODULES` | Python modules loaded with `ALLauncher.launchPythonModule`, in order | `nao_sim_status_almodule nao_sim_tts_almodule` | `nao_sim_status_qiservice nao_sim_tts_qiservice` |
-| `NAO_SIM_READY_TRIES` | Polls (one per second) before giving up on NAOqi | 120 | 120 |
-| `NAO_SIM_SETTLE_POLLS` | Consecutive polls the service list must stay unchanged before NAOqi counts as ready | 3 | 3 |
+| | `entrypoint-2.1.sh` | `entrypoint-2.8.sh` |
+| --- | --- | --- |
+| `naoqi-bin` | `-b 0.0.0.0 -p 9559`: the broker is the public port | `--qi-listen-url tcp://127.0.0.1:9558`, behind the suite's gateway on 9559 |
+| Reached from inside on | `tcp://127.0.0.1:9559` | `tcp://127.0.0.1:9558`, exported as `NAO_SIM_INTERNAL_PORT` for our qi services |
+| `REPLACED` (built-ins whose `exit()` is called) | `ALTextToSpeech` | `ALTextToSpeech` |
+| `MODULES` (ours, loaded with `ALLauncher.launchPythonModule`, in order) | `nao_sim_status_almodule nao_sim_tts_almodule` | `nao_sim_status_qiservice nao_sim_tts_qiservice` |
+| `DEPENDENTS` (hold a proxy to a replaced built-in) | Autoload entries `animatedspeech dialog`: commented out of a copy of `autoload.ini`, launched with `ALLauncher.launchLocal` at the end | Package service `expressivity.autonomousabilitiesmodules`: `ALServiceManager.stopService` before, `startService` after |
+| `LAST_SERVICE` (registered last at boot) | `ALAutonomousLife` | `ALPanoramaCompass` |
 
-(`NAO_SIM_POLL_INTERVAL`, the seconds between polls, and `NAOQI_HOME` exist so the host-side tests can run the script against fake `naoqi-bin` and `qicli`; the images never change them.)
+The tunables below exist so the host-side tests can run the scripts against fake `naoqi-bin` and `qicli`; the images never set them: `NAO_SIM_READY_TRIES` (polls, one per second, before giving up on NAOqi; 120), `NAO_SIM_SETTLE_POLLS` (consecutive polls the service list must stay unchanged; 3), `NAO_SIM_POLL_INTERVAL` (seconds between polls; 1), `NAOQI_HOME`.
 
-Sequence:
+Sequence (2.1 / 2.8):
 
-1. Start `naoqi-bin`.
-2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge`, every exit module and the ready service are registered **and** the list has not changed for `NAO_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAO_SIM_READY_TRIES` polls fail, exit 1. The settling matters on 2.8: on a slow boot (cold cache, right after an image rebuild) the ready service appears while `naoqi-service` is still loading modules, and exiting a built-in or loading a module into that half-started process killed it (measured: `ALServiceManager` restarted it and `launchPythonModule` was cancelled after 50 s).
-3. Stop the restart services.
-4. `exit()` the exit modules.
-5. Add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`).
-6. Load the modules.
-7. Start the restart services.
-8. Launch the deferred modules.
-9. Check that every exit module's name answers again (up to 10 s each; `launchPythonModule` does not report an import failure). If one does not, exit 1.
-10. Call `NaoSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] nao-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
+1. Start `naoqi-bin` (2.1: with the autoload copy without the dependents).
+2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge`, every replaced built-in and the last service are registered **and** the list has not changed for `NAO_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAO_SIM_READY_TRIES` polls fail, exit 1. The settling matters on 2.8: on a slow boot (cold cache, right after an image rebuild) the last service appears while `naoqi-service` is still loading modules, and exiting a built-in or loading a module into that half-started process killed it (measured: `ALServiceManager` restarted it and `launchPythonModule` was cancelled after 50 s).
+3. 2.8: stop the dependent services.
+4. `exit()` the replaced built-ins.
+5. Add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`) and load our modules.
+6. 2.1: launch the deferred modules. 2.8: start the dependent services.
+7. Check that every replaced name answers again (up to 10 s each; `launchPythonModule` does not report an import failure). If one does not, exit 1.
+8. Call `NaoSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] nao-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
 
-Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited container, never as a running one without its overrides. The healthcheck ([status-service.md](status-service.md)) reports `healthy` only after step 10.
+Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited container, never as a running one without its overrides. The healthcheck ([status-service.md](status-service.md)) reports `healthy` only after step 8.
 
 ### Desktop NAOqi facts the rest of nao-sim relies on
 

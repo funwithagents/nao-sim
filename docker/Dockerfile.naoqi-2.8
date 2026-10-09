@@ -24,7 +24,9 @@ RUN mkdir -p /opt && cd /opt \
 
 # Our override modules (Python 2.7), loaded into the naoqi-bin process by the entrypoint.
 COPY modules/ /opt/naoqi/modules/
-COPY entrypoint.sh /opt/naoqi/bin/nao-sim-entrypoint.sh
+# This version's boot procedure, and what it shares with the other one.
+COPY entrypoint-2.8.sh /opt/naoqi/bin/nao-sim-entrypoint.sh
+COPY entrypoint-lib.sh /opt/naoqi/bin/entrypoint-lib.sh
 COPY healthcheck.sh /opt/naoqi/bin/nao-sim-healthcheck.sh
 
 # The robot's animations package (extracted from the robot image). PackageManager installs every
@@ -45,14 +47,7 @@ ENV NAOQI_HOME=/opt/naoqi \
     PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules \
     HOME=/home/nao \
     NAO_SIM_VERSION=${NAO_SIM_VERSION} \
-    NAO_SIM_NAOQI_VERSION=2.8.7.4 \
-    NAO_SIM_LISTEN_URL="tcp://127.0.0.1:9558" \
-    NAO_SIM_INTERNAL_PORT="9558" \
-    NAO_SIM_READY_SERVICE="ALPanoramaCompass" \
-    NAO_SIM_RESTART_SERVICES="expressivity.autonomousabilitiesmodules" \
-    NAO_SIM_EXIT_MODULES="ALTextToSpeech" \
-    NAO_SIM_MODULES="nao_sim_status_qiservice nao_sim_tts_qiservice" \
-    NAO_SIM_DEFER_MODULES=""
+    NAO_SIM_NAOQI_VERSION=2.8.7.4
 
 USER nao
 WORKDIR /opt/naoqi
