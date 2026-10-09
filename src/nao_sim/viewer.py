@@ -14,6 +14,10 @@ from nao_sim.errors import MissingExtraError
 log = logging.getLogger(__name__)
 
 
+class WorldClosed(Exception):
+    """The viewer is gone (its window closed by the user): it renders no more frames."""
+
+
 def needs_viewer(config: NaoSimConfig) -> bool:
     """A window, or a headless viewer for the render camera (viewer.md, "Which viewer runs")."""
     return not config.viewer.headless or config.video_input.source == "render"
@@ -74,6 +78,16 @@ class SimWorld:
             log.warning(
                 "the sim window was closed: the robot is still running (Ctrl-C to stop it)"
             )
+
+    def camera_frame(self, camera: str, width: int, height: int) -> Any:
+        """What a head camera (`top`, `bottom`) sees: a (height, width, 3) uint8 RGB array.
+        Raises `WorldClosed` once the viewer is gone."""
+        from nao_viewer import ViewerClosed
+
+        try:
+            return self._viewer.camera_frame(camera, width, height).image  # type: ignore[arg-type]
+        except ViewerClosed:
+            raise WorldClosed("the viewer is closed") from None
 
     def close(self) -> None:
         self._closing = True

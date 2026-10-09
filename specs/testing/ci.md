@@ -56,7 +56,7 @@ In order:
 
 - **Sizes.** Measured locally: the 2.1 image is 4.5 GB on disk (1.4 GB compressed), the 2.8 image 6.3 GB (2.7 GB), `tts` 0.8 GB (0.27 GB). With zstd, the two archives take about 5 GB of the repository's 10 GB cache budget; an edit under `docker/` adds a new pair, and GitHub evicts the least recently used.
 - **Python 2.7 check.** A live test compiles every module in the image's `/opt/naoqi/modules/` with the image's own interpreter (`/opt/naoqi/bin/python2 -m compileall`), so a module the version does not load is still checked; both entries run it, closing [testing.md](testing.md)'s open question 2.
-- **The headless viewer**, once [viewer.md](../host/viewer.md)'s render camera is built: `MUJOCO_GL=egl`, and the live tier runs a headless viewer with the render camera and the placeholder variant, so the camera loop is tested on every push ([viewer.md](../host/viewer.md), "In the live tier and CI"). A viewer that fails to launch fails the entry. CI never accepts the meshes' license.
+- **The headless viewer**: nao-viewer renders through EGL (`MUJOCO_GL=egl`, which it sets itself for a headless viewer on Linux, with the job's `libegl1` and `libgl1-mesa-dri`), and the live tier runs a headless viewer with the render camera and the placeholder variant, so the camera loop is tested on every push ([viewer.md](../host/viewer.md), "In the live tier and CI"). A viewer that fails to launch fails the entry. CI never accepts the meshes' license.
 
 ### Expected skips
 

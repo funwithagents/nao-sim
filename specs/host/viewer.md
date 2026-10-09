@@ -5,13 +5,14 @@ code:
   - pyproject.toml
 tests:
   - tests/test_viewer.py
+  - tests-e2e/test_video_input_live.py
   - tests/test_sim.py
   - tests-e2e/test_naosim_live.py
 ---
 
 # Viewer: the simulated world
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 
@@ -68,13 +69,13 @@ Through the `nao-sim[viewer]` extra, which pulls nao-viewer and with it MuJoCo. 
 
 ### In the live tier and CI
 
-The live tier runs the viewer from the start, headless, with the render camera and the placeholder variant: `{"viewer": {"headless": true, "variant": "placeholder"}, "video_input": {"source": "render"}}`. That tests the whole camera loop (a client subscribes, the viewer renders, `putImage` injects, the client reads the frame back) on a runner with no display ([ci.md](../testing/ci.md)). The placeholder visuals are enough to assert frames, and CI never accepts the meshes' license.
+The live tier runs the viewer from the start, headless, with the render camera and the placeholder variant: `{"viewer": {"headless": true, "variant": "placeholder", "scene": "tests-e2e/scenes/camera-target.xml"}, "video_input": {"source": "render"}}`. That tests the whole camera loop (a client subscribes, the viewer renders, `putImage` injects, the client reads the frame back) on a runner with no display ([ci.md](../testing/ci.md)). The scene is the empty one plus a red pillar 1.5 m ahead of the robot, so a test checks that the camera sees it where the top camera's world pose says it should (`ALMotion.getPosition("CameraTop", FRAME_WORLD, True)`, 60.97° across), as the head turns, and loses it when the head turns away. The robot's world heading in NAOqi is not exactly 0 (about -0.13 rad on 2.1), so the test predicts from the pose rather than assuming the pillar centred. The placeholder visuals are enough to assert frames, and CI never accepts the meshes' license.
 
-Until the render camera is built (milestone 4), a headless config with no render source runs no viewer, so the live tier has none; the window itself needs a display and is checked by a live test that skips without one.
+The window itself needs a display and is checked by a live test that skips without one.
 
 ### As built
 
-The window is built: `NaoSim` launches the viewer for `headless = false`, closes it on `stop()`, and logs a window closed by the user. The headless viewer comes with the render camera ([video-input.md](video-input.md)): until then `video_input.source = "render"` is refused at start, and this spec stays `Stable`.
+Both viewers are built: `NaoSim` launches the viewer for `headless = false` or `video_input.source = "render"`, before the video input, which renders the top camera through `SimWorld.camera_frame` ([video-input.md](video-input.md)); `stop()` stops the video input, then closes the viewer; a window closed by the user is logged, and the video input stops with it. The live tier runs the headless viewer with the render camera on both versions.
 
 ## Open questions
 

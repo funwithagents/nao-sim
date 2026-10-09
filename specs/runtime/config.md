@@ -5,6 +5,7 @@ code:
   - examples/configs/default.json
   - examples/configs/2.8.json
   - examples/configs/headless.json
+  - examples/configs/ci.json
 tests:
   - tests/test_config.py
   - tests/test_project_map.py
@@ -32,7 +33,7 @@ This config is the **host-level** description. The container keeps its own inter
   "speech": { "engine": "piper" },
   "audio_output": { "mode": "play", "record": null },
   "audio_input": { "source": "none", "wav": null, "mono": "duplicate", "gate_tail_s": 0.3 },
-  "video_input": { "source": "none", "device": 0 },
+  "video_input": { "source": "none", "fps": 15, "device": 0 },
   "viewer": { "headless": false, "scene": "empty", "variant": "auto" }
 }
 ```
@@ -92,6 +93,8 @@ class VideoInputSettings:
 
     # "none" | "render" | "webcam"
     source: VideoInputSource = "none"
+    # frames injected per second into CameraTop, 1 to 30
+    fps: int = 15
     # webcam index, used by "webcam"
     device: int = 0
 
@@ -118,7 +121,7 @@ class ViewerSettings:
 - Every config class has the same three constructors: `from_dict(data)`, `from_json(text)` (parses, then calls `from_dict`), and `from_json_file(path)` (reads, then calls `from_json`; an invalid-JSON error names the path). All three share one validation path.
 - Errors raise `ConfigError(ValueError)`, with a message that names the offending key path (e.g. `audio_input.wav`). A block's own checks raise `ConfigError(message, key=<field>)`, and each enclosing loader prefixes `key` with its own path; the message is never parsed to find the key.
 - **Unknown keys are errors**, so a typo fails when the config loads.
-- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; `gate_tail_s` is a non-negative, finite number; `device` is a non-negative integer; `viewer.scene` is a non-empty string.
+- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; `gate_tail_s` is a non-negative, finite number; `video_input.fps` is an integer from 1 to 30 (a NAO camera's maximum); `device` is a non-negative integer; `viewer.scene` is a non-empty string.
 - **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`; `audio_input.source = "wav"` needs `audio_input.wav`. Other fields that do not apply (`device` without a webcam, `wav` with `mic`) are validated but not applied, so switching a source is a one-word change.
 - **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a WAV file exists: `NaoSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
 - `config.py` imports neither `qi`, nor `nao_viewer`, nor `sounddevice`.
@@ -157,7 +160,7 @@ JSON, as nao-bridge: a `sim` block is pasted between a nao-sim file and a nao-br
 - `default.json`: 2.1, window, speech only;
 - `2.8.json`: the same on 2.8;
 - `headless.json`: 2.1, no window, silent audio output (servers);
-- `ci.json`: 2.1, headless viewer with the placeholder variant, `video_input.source = "render"`, silent audio output (the live tier and CI, once the viewer is built);
+- `ci.json`: 2.1, headless viewer with the placeholder variant, `video_input.source = "render"`, silent audio output: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
 - `wav-replay.json`: headless, `audio_input.source = "wav"` (once `ALAudioDevice` is built).
 
 ## Open questions

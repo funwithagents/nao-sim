@@ -30,7 +30,8 @@ def test_an_empty_config_is_the_defaults():
     assert config.naoqi.version == "2.1" and config.naoqi.ready_timeout_s == 240.0
     assert config.speech.engine == "piper"
     assert config.audio_output.mode == "play"
-    assert config.audio_input.source == "none" and config.video_input.source == "none"
+    assert config.audio_input.source == "none"
+    assert config.video_input == VideoInputSettings(source="none", fps=15, device=0)
     assert config.viewer == ViewerSettings(
         headless=False, scene="empty", variant="auto"
     )
@@ -56,7 +57,7 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
                 "wav": str(tmp_path / "in.wav"),
                 "mono": "silence",
             },
-            "video_input": {"source": "webcam", "device": 1},
+            "video_input": {"source": "webcam", "fps": 30, "device": 1},
             "viewer": {"headless": True, "scene": "table", "variant": "placeholder"},
         }
     )
@@ -79,6 +80,10 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
         ({"audio_input": {"mono": "left"}}, "audio_input.mono"),
         ({"video_input": {"device": -1}}, "video_input.device"),
         ({"video_input": {"device": 1.5}}, "video_input.device"),
+        ({"video_input": {"fps": 0}}, "video_input.fps"),
+        ({"video_input": {"fps": 31}}, "video_input.fps"),
+        ({"video_input": {"fps": 12.5}}, "video_input.fps"),
+        ({"video_input": {"fps": "15"}}, "video_input.fps"),
         ({"viewer": {"headless": "yes"}}, "viewer.headless"),
         ({"viewer": {"scene": ""}}, "viewer.scene"),
         ({"viewer": {"variant": "shiny"}}, "viewer.variant"),
@@ -87,6 +92,11 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
 )
 def test_a_bad_value_names_its_key_path(data, key):
     assert error_for(data).key == key
+
+
+@pytest.mark.parametrize("fps", [1, 30])
+def test_the_frame_rate_takes_a_nao_cameras_range(fps):
+    assert NaoSimConfig.from_dict({"video_input": {"fps": fps}}).video_input.fps == fps
 
 
 def test_unknown_keys_are_errors_naming_them():
@@ -157,7 +167,7 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
 
 def test_the_example_files_load():
     names = sorted(p.name for p in EXAMPLES.glob("*.json"))
-    assert names == ["2.8.json", "default.json", "headless.json"]
+    assert names == ["2.8.json", "ci.json", "default.json", "headless.json"]
     default = NaoSimConfig.from_json_file(EXAMPLES / "default.json")
     assert default == NaoSimConfig()
     assert NaoSimConfig.from_json_file(EXAMPLES / "2.8.json") == NaoSimConfig(
@@ -165,3 +175,6 @@ def test_the_example_files_load():
     )
     headless = NaoSimConfig.from_json_file(EXAMPLES / "headless.json")
     assert headless.viewer.headless and headless.audio_output.mode == "silent"
+    ci = NaoSimConfig.from_json_file(EXAMPLES / "ci.json")
+    assert ci.viewer == ViewerSettings(headless=True, variant="placeholder")
+    assert ci.video_input.source == "render" and ci.audio_output.mode == "silent"

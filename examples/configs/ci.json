@@ -1,0 +1,5 @@
+{
+  "viewer": { "headless": true, "variant": "placeholder" },
+  "video_input": { "source": "render" },
+  "audio_output": { "mode": "silent" }
+}

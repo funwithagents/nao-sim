@@ -10,6 +10,7 @@
 # (both publish 9559). Its audio goes to a MemorySink, so a test asserts on what was played.
 import asyncio
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 import qi
@@ -29,16 +30,23 @@ from nao_sim.config import (
     AudioOutputSettings,
     NaoqiSettings,
     NaoSimConfig,
+    VideoInputSettings,
     ViewerSettings,
 )
 
+SCENE = Path(__file__).resolve().parent / "scenes" / "camera-target.xml"
+
 
 def live_config(version: str, **blocks) -> NaoSimConfig:
-    """Headless and silent: what the live tier runs, unless a test asks for more."""
+    """Headless and silent, with the render camera looking at the camera-target scene (a
+    red pillar straight ahead): what the live tier runs, unless a test asks for something else."""
     settings = {
         "naoqi": NaoqiSettings(version=version),  # type: ignore[arg-type]
         "audio_output": AudioOutputSettings(mode="silent"),
-        "viewer": ViewerSettings(headless=True),
+        "viewer": ViewerSettings(
+            headless=True, scene=str(SCENE), variant="placeholder"
+        ),
+        "video_input": VideoInputSettings(source="render"),
         **blocks,
     }
     return NaoSimConfig(**settings)
