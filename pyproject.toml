@@ -43,7 +43,7 @@ environments = [
 
 [tool.uv.sources]
 # nao-viewer is not on PyPI yet (specs/project.md, open question 1): its repository, pinned.
-nao-viewer = { git = "https://github.com/funwithagents/nao-viewer", rev = "bac227102efbf0e4d9bb17741540d595bda7e63d" }
+nao-viewer = { git = "https://github.com/funwithagents/nao-viewer", rev = "db0b59cc2e2875a15e01d206c87f1b181bc4ae01" }
 qi = [
     { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp312-cp312-macosx_15_0_arm64.whl", marker = "sys_platform == 'darwin' and python_version == '3.12'" },
     { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp313-cp313-macosx_15_0_arm64.whl", marker = "sys_platform == 'darwin' and python_version == '3.13'" },
