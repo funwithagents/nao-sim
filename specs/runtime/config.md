@@ -11,7 +11,7 @@ tests:
 
 ## Purpose
 
-One declarative description of *which simulated NAO to run and which devices to attach to it*. A [`NaoSim`](api.md) is built from it, the `nao-sim` CLI loads it from a file, and nao-bridge's `sim` backend embeds it. Today the same facts are spread over `docker compose` profiles, environment variables (`NAO_SIM_VERSION`, `NAO_SIM_TTS_ENGINE`) and the speaker's flags; a config file makes a setup reproducible and lets a test, a CLI user and nao-bridge describe the same stack the same way.
+One declarative description of *which simulated NAO to run and which devices to attach to it*. A [`NaoSim`](api.md) is built from it, the `nao-sim` CLI loads it from a file, and nao-bridge's `sim` backend embeds it. Today the same facts are spread over `docker compose` profiles, environment variables (`NAO_SIM_VERSION`, `NAO_SIM_TTS_ENGINE`) and the audio output's flags; a config file makes a setup reproducible and lets a test, a CLI user and nao-bridge describe the same stack the same way.
 
 It follows nao-bridge's configuration conventions on purpose (its `specs/config.md`), so the two packages' files look alike and a nao-sim config can be pasted into a nao-bridge one unchanged.
 

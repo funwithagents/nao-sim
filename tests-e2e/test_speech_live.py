@@ -1,5 +1,5 @@
 """Speech through a running nao-sim stack, on each NAOqi version: the ALTextToSpeech
-replacement, the tts container and the host speaker together, driven over qi like any client."""
+replacement, the tts container and the host audio output together, driven over qi like any client."""
 
 import re
 import time
@@ -20,14 +20,14 @@ def test_the_replacement_serves_alt_text_to_speech(nao):
     assert nao.version.implementation in nao.service("ALTextToSpeech").whoami()
 
 
-def test_say_blocks_for_the_audio(nao, speaker):
+def test_say_blocks_for_the_audio(nao, audio_output):
     tts = nao.service("ALTextToSpeech")
     tts.setLanguage("English")
-    mark = speaker.mark()
+    mark = audio_output.mark()
     t0 = time.time()
     tts.say(SENTENCE)
     blocked = time.time() - t0
-    audio = speaker.played(mark)
+    audio = audio_output.played(mark)
 
     assert audio > 2.0  # real speech was played, not the fallback clock
     assert 0.8 * audio <= blocked <= audio + 1.5
@@ -55,16 +55,16 @@ def test_animated_speech_gets_every_bookmark(nao):
     assert raised[-1] == 0
 
 
-def test_stop_all_cuts_the_sentence(nao, speaker):
+def test_stop_all_cuts_the_sentence(nao, audio_output):
     tts = nao.service("ALTextToSpeech")
-    mark = speaker.mark()
+    mark = audio_output.mark()
     future = tts.say(LONG, _async=True)
     time.sleep(1.5)  # well into the audio
     t_stop = time.time()
     tts.stopAll()
     future.wait(10000)
     returned = time.time() - t_stop
-    played = speaker.played(mark)
+    played = audio_output.played(mark)
 
     done = last(nao.stack.tts_log(), "say-done")
     assert done["interrupted"] is True
@@ -72,9 +72,9 @@ def test_stop_all_cuts_the_sentence(nao, speaker):
     assert played < done["duration"] - 2.0
 
 
-def test_stop_all_during_synthesis(nao, speaker):
+def test_stop_all_during_synthesis(nao, audio_output):
     tts = nao.service("ALTextToSpeech")
-    mark = speaker.mark()
+    mark = audio_output.mark()
     t0 = time.time()
     future = tts.say(LONG + " " + LONG, _async=True)
     time.sleep(0.15)  # the engine is still synthesizing the long text
@@ -85,4 +85,4 @@ def test_stop_all_during_synthesis(nao, speaker):
     done = last(nao.stack.tts_log(), "say-done")
     assert done["interrupted"] is True
     assert returned < 1.5  # synthesis plus the stop, not the ~15 s of audio
-    assert speaker.played(mark) < 0.3
+    assert audio_output.played(mark) < 0.3

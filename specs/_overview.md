@@ -52,7 +52,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | Service replacement mechanism | Built and tested, used by the speech path ([service-replacement.md](container/service-replacement.md)) |
 | `ALTextToSpeech` replacement | Built and tested on both versions ([speech.md](services/speech.md)) |
 | `tts` container | Built and tested ([tts-engine.md](container/tts-engine.md)) |
-| Audio output | Built and tested as the speaker; audio sinks and the rename not built ([audio-output.md](host/audio-output.md)) |
+| Audio output | Built and tested, with its audio sinks ([audio-output.md](host/audio-output.md)) |
 | `NaoSim` status service, healthcheck | Built and tested ([status-service.md](container/status-service.md)) |
 | `NaoSimConfig`, `NaoSim` object, CLI | Specified, `Stable` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md)); only `fetch-and-build-images` built. Today the stack is started with `docker compose` (see [README.md](../README.md)) |
 | Host link | Draft ([devices.md](host/devices.md)) |
@@ -128,7 +128,7 @@ The viewer process only reads NAOqi; everything NAOqi-specific stays in nao-sim.
 
 ## Speech
 
-`ALTextToSpeech.say()` is served by a replacement loaded inside NAOqi. It sends each sentence to the `tts` container, which synthesizes it and streams the PCM to the host speaker, and it raises the NAOqi events itself, on its own clock, from the timings the engine returns. Specified in [speech.md](services/speech.md), [tts-engine.md](container/tts-engine.md) and [audio-output.md](host/audio-output.md). The microphone gate, which keeps the robot from hearing itself, belongs to the audio input ([audio-input.md](host/audio-input.md), "Microphone gate"). Kept here: the fallback.
+`ALTextToSpeech.say()` is served by a replacement loaded inside NAOqi. It sends each sentence to the `tts` container, which synthesizes it and streams the PCM to the host audio output, and it raises the NAOqi events itself, on its own clock, from the timings the engine returns. Specified in [speech.md](services/speech.md), [tts-engine.md](container/tts-engine.md) and [audio-output.md](host/audio-output.md). The microphone gate, which keeps the robot from hearing itself, belongs to the audio input ([audio-input.md](host/audio-input.md), "Microphone gate"). Kept here: the fallback.
 
 ### Fallback: listening to TTS events
 

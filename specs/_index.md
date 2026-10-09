@@ -58,7 +58,7 @@ The simulated robot's inputs and outputs on the host, owned by a running `NaoSim
 | Spec | Description | Status |
 |---|---|---|
 | [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Draft |
-| [audio-output.md](host/audio-output.md) | The robot's loudspeaker: TCP PCM protocol, newest stream wins, stop, the `AudioSink` seam (device, null, WAV, memory), playing state for the gate; built as `speaker.py` | Updated |
+| [audio-output.md](host/audio-output.md) | The robot's loudspeaker: TCP PCM protocol, newest stream wins, stop, the `AudioSink` seam (device, null, WAV, memory), playing state for the gate | Implemented |
 | [audio-input.md](host/audio-input.md) | The robot's microphones: WAV replay then host microphone, format and mono policy, the microphone gate on the host, messages on the host link | Draft |
 | [video-input.md](host/video-input.md) | The robot's head cameras: nao-viewer render then webcam, driven by `ALVideoDevice`'s subscribers, `putImage`, `SimulatorCam` pinned in the images | Draft |
 | [touch-input.md](host/touch-input.md) | The robot's touch sensors: clicks in the sim window and an API for tests, written to ALMemory | Draft |

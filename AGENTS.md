@@ -28,7 +28,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 
 | Module | Role | Spec |
 |---|---|---|
-| `src/nao_sim/speaker.py` | The audio output device: TCP PCM player the containers stream into, run by `NaoSim` (`nao-sim-speaker` until then); becomes `audio_output.py` with the audio sinks | [audio-output.md](specs/host/audio-output.md), [devices.md](specs/host/devices.md) |
+| `src/nao_sim/audio_output.py` | The audio output device: TCP PCM player the containers stream into, its audio sinks (device, null, WAV, memory) and playing state; run by `NaoSim` (`nao-sim-speaker` until then) | [audio-output.md](specs/host/audio-output.md), [devices.md](specs/host/devices.md) |
 | `src/nao_sim/__init__.py` | Front door: re-exports `fetch_and_build_images`, `check_images` and the errors | [api.md](specs/runtime/api.md) |
 | `src/nao_sim/cli.py` | The `nao-sim` command, a thin shell over the library (`fetch-and-build-images` so far) | [cli.md](specs/runtime/cli.md) |
 | `src/nao_sim/errors.py` | `NaoSimError` and its subclasses, shared by the modules | [api.md](specs/runtime/api.md) |
@@ -76,7 +76,7 @@ The mapping is **many-to-many**: a file can be governed by several specs, so the
 
 ### Live/e2e tests
 
-Some tests need the nao-sim containers running (built from the user's Choregraphe suite). They live in `tests-e2e/`, a directory separate from `tests/`, so the default `uv run pytest` never runs them — no Docker or suite is needed for the normal dev loop. Run them explicitly with `uv run pytest tests-e2e`: the tests bring up each NAOqi version's stack with `docker compose`, test it over qi on `127.0.0.1:9559` and take it down, so stop any stack (or `nao-sim-speaker`) you started by hand first. A version whose suite or image is missing, or a machine without Docker, **skips**, not fails. Remember that libqi 3 `connect()` against NAOqi 2.1 fails about one time in three: live tests connect with a retry (`tests-e2e/support.connect`). nao-sim's job is to behave like a NAO in its API; the tests check that, and never target a real robot.
+Some tests need the nao-sim containers running (built from the user's Choregraphe suite). They live in `tests-e2e/`, a directory separate from `tests/`, so the default `uv run pytest` never runs them — no Docker or suite is needed for the normal dev loop. Run them explicitly with `uv run pytest tests-e2e`: the tests bring up each NAOqi version's stack with `docker compose`, test it over qi on `127.0.0.1:9559` and take it down, so stop any stack (or audio output) you started by hand first. A version whose suite or image is missing, or a machine without Docker, **skips**, not fails. Remember that libqi 3 `connect()` against NAOqi 2.1 fails about one time in three: live tests connect with a retry (`tests-e2e/support.connect`). nao-sim's job is to behave like a NAO in its API; the tests check that, and never target a real robot.
 
 ## Code that is not linted here
 

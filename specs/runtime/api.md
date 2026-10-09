@@ -4,7 +4,7 @@ code:
   - src/nao_sim/__init__.py
   - src/nao_sim/errors.py
   - src/nao_sim/docker_images.py
-  - src/nao_sim/speaker.py
+  - src/nao_sim/audio_output.py
   - tests-e2e/support.py
 tests:
   - tests/test_docker_images.py

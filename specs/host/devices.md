@@ -1,9 +1,9 @@
 ---
 code:
-  - src/nao_sim/speaker.py
+  - src/nao_sim/audio_output.py
   - docker/compose.yaml
 tests:
-  - tests/test_speaker.py
+  - tests/test_audio_output.py
 ---
 
 # Host devices
@@ -18,7 +18,7 @@ Each device is named after its role on the robot, not after what implements it: 
 
 | Device | Spec | Direction | Talks to NAOqi through | State |
 | --- | --- | --- | --- | --- |
-| Audio output | [audio-output.md](audio-output.md) | The robot's voice and sounds, out | Its own TCP protocol, fed by the `tts` engine and later [`ALAudioPlayer`](../services/audio-player.md) | Built as `speaker.py`; its audio sinks are not |
+| Audio output | [audio-output.md](audio-output.md) | The robot's voice and sounds, out | Its own TCP protocol, fed by the `tts` engine and later [`ALAudioPlayer`](../services/audio-player.md) | Built, with its audio sinks |
 | Audio input | [audio-input.md](audio-input.md) | Microphone or WAV replay, in | The host link, into the [`ALAudioDevice`](../services/audio-device.md) replacement | Planned |
 | Video input | [video-input.md](video-input.md) | Head cameras (nao-viewer render or webcam), in | qi: `ALVideoDevice.putImage` | Planned |
 | Touch input | [touch-input.md](touch-input.md) | Head, hand, foot and chest sensors, in | qi: ALMemory | Planned |

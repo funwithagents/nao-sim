@@ -1,6 +1,6 @@
 # nao-sim speech engine container: Piper (onnxruntime) with eSpeak NG underneath.
 # Native architecture (no emulation). Knows nothing about NAOqi: it synthesizes a list of
-# text / mark / pause items, streams PCM to the host speaker and returns the timings.
+# text / mark / pause items, streams PCM to the host audio output and returns the timings.
 FROM python:3.12-slim
 
 RUN apt-get update \

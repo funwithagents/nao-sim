@@ -18,6 +18,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 | [202610091350_split-entrypoint.md](202610091350_split-entrypoint.md) | One entrypoint per NAOqi version (`entrypoint-2.1.sh`, `entrypoint-2.8.sh`) over a shared `entrypoint-lib.sh`; the version's facts are constants in its script, not image environment variables | Done |
 | [202610091600_drop-perception-source-key.md](202610091600_drop-perception-source-key.md) | The `NaoSim` status module stops writing `NaoSim/Perception/Source` (perception runs in the clients); fast and live status tests updated; `status-service.md` back to `Implemented` | Done |
 | [202610091610_autonomous-abilities-on-2-1.md](202610091610_autonomous-abilities-on-2-1.md) | 2.1 entrypoint launches the built-ins a NAO autoloads (`expressiveness`, `basicawareness`, `autonomousblinking`, `autonomousmoves`) and then `autonomouslife`, in a NAO's order, failing the boot if one registers nothing; `container.md` back to `Implemented` | Done |
+| [202610091719_audio-sinks.md](202610091719_audio-sinks.md) | The speaker becomes the audio output (`audio_output.py`, `AudioOutput`): `AudioSink` seam with `DevicePlayer`, `NullSink`, `WavSink`, `MemorySink`; pacing for every sink, newest-wins call discipline, `playing_until`; `audio-output.md` back to `Implemented` | Done |
 
 ## Status legend
 

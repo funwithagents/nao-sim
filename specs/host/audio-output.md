@@ -1,14 +1,14 @@
 ---
 code:
-  - src/nao_sim/speaker.py
+  - src/nao_sim/audio_output.py
 tests:
-  - tests/test_speaker.py
+  - tests/test_audio_output.py
   - tests-e2e/test_speech_live.py
 ---
 
 # Audio output
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
@@ -21,7 +21,7 @@ It is named after its role, not after a loudspeaker: where the audio ends up is 
 ### Naming
 
 - Module `src/nao_sim/audio_output.py`, class `AudioOutput`, config block `audio_output` ([config.md](../runtime/config.md)).
-- It was built as the "speaker" (`src/nao_sim/speaker.py`, class `Speaker`, command `nao-sim-speaker`), and before that the "sound card". The rename to `audio_output` happens in the plan that builds the audio sinks.
+- It was first built as the "speaker" (class `Speaker`, command `nao-sim-speaker`), and before that the "sound card"; the `nao-sim-speaker` script stays, pointing at this module, until `NaoSim` lands.
 - The `tts` container's `NAO_SIM_SOUNDCARD` setting keeps its name: it is internal to the container recipes.
 
 ### Command
@@ -83,10 +83,6 @@ Whether audio is playing belongs to the audio output, not the sink, so the audio
 - `playing_until: float`, in `time.monotonic()` seconds: when the audio fed so far finishes playing (the last chunk's pacing deadline). In the past when idle.
 - It is updated at every chunk and set to now on a stop or an interruption, so a cut stream ends the gate's playing period at once (the gate's tail still applies).
 - Read from another thread without a lock: a float assignment is atomic in CPython.
-
-### As built
-
-`Speaker(record=None, silent=False)` in `speaker.py` takes the two flags instead of a sink, and keeps a `playing_until` it never sets. The sinks, the playing state and the rename are the gap this spec's `Updated` status marks.
 
 ## Open questions
 

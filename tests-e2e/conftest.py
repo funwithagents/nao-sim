@@ -12,7 +12,14 @@ from dataclasses import dataclass
 
 import pytest
 import qi
-from support import VERSIONS, SpeakerProcess, Stack, Version, connect, require_docker
+from support import (
+    VERSIONS,
+    AudioOutputProcess,
+    Stack,
+    Version,
+    connect,
+    require_docker,
+)
 
 
 @dataclass
@@ -26,14 +33,14 @@ class Nao:
 
 
 @pytest.fixture(scope="session")
-def speaker() -> Iterator[SpeakerProcess]:
-    card = SpeakerProcess()
-    yield card
-    card.close()
+def audio_output() -> Iterator[AudioOutputProcess]:
+    process = AudioOutputProcess()
+    yield process
+    process.close()
 
 
 @pytest.fixture(scope="session", params=sorted(VERSIONS))
-def nao(request, speaker) -> Iterator[Nao]:
+def nao(request, audio_output) -> Iterator[Nao]:
     require_docker()
     stack = Stack(VERSIONS[request.param])
     try:

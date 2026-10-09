@@ -10,7 +10,7 @@ class DockerUnavailableError(NaoSimError):
 
 
 class PortInUseError(NaoSimError):
-    """A port nao-sim needs is taken (another nao-sim, a stack or speaker started by hand)."""
+    """A port nao-sim needs is taken (another nao-sim, a stack or audio output started by hand)."""
 
 
 class ImagesMissingError(NaoSimError):
