@@ -12,7 +12,7 @@ import os
 SERVICE = "NaoSim"
 PREFIX = "NaoSim/"
 NONE = "none"  # no host device attached to that service
-DEVICES = ("Camera", "Audio", "Perception")
+DEVICES = ("Camera", "Audio")
 DEFAULT_VERSION = "dev"
 UNKNOWN = "unknown"
 

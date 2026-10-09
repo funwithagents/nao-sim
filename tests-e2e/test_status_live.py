@@ -14,7 +14,8 @@ def test_the_target_identifies_as_nao_sim(nao):
     assert memory.getData("NaoSim/NaoqiVersion") == nao.version.naoqi_version
     assert memory.getData("NaoSim/Camera/Source") == "none"
     assert memory.getData("NaoSim/Audio/Source") == "none"
-    assert memory.getData("NaoSim/Perception/Source") == "none"
+    # Perception runs in the clients: nao-sim publishes no perception source.
+    assert "NaoSim/Perception/Source" not in memory.getDataListName()
 
 
 def test_ready_means_the_replacements_answer(nao):

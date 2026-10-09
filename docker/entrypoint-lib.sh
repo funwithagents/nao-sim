@@ -96,6 +96,17 @@ load_modules() {
   done
 }
 
+# launch_local <entries...>: ALLauncher.launchLocal each autoload entry, in order. It answers with the
+# modules the library registered (`[ "ALBasicAwareness" ]`); an empty list means it registered none.
+launch_local() {
+  local out
+  for m in "$@"; do
+    log "launching built-in $m"
+    out=$(call ALLauncher.launchLocal "$m" 2>&1) || fail "launching $m failed: $out"
+    printf '%s\n' "$out" | grep -q '\[ *"' || fail "launching $m registered no module: $out"
+  done
+}
+
 # check_answer <names...>: launchPythonModule does not report an import failure, so every replaced
 # name must answer again, otherwise the built-in is gone and nothing took its place.
 check_answer() {

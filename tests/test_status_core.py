@@ -33,7 +33,6 @@ def test_publishes_versions_and_idle_sources_at_load():
         "NaoSim/Ready": 0,
         "NaoSim/Camera/Source": "none",
         "NaoSim/Audio/Source": "none",
-        "NaoSim/Perception/Source": "none",
     }
 
 

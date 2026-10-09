@@ -22,9 +22,9 @@ tests:
 
 ## Purpose
 
-The desktop `naoqi-bin` has no `ALSystem` and no version key in ALMemory ([container.md](container.md), "Desktop NAOqi facts"), so a client has no standard way to learn what it is talking to. The `NaoSim` service is nao-sim's identity: its existence says the target is nao-sim, it reports the nao-sim and NAOqi versions, publishes which host devices are attached, and says whether boot is complete. The Docker healthcheck is built on it, and so will `nao-sim run` and `nao-sim status` be.
+The desktop `naoqi-bin` has no `ALSystem` and no version key in ALMemory ([container.md](container.md), "Desktop NAOqi facts"), so a client has no standard way to learn what it is talking to. The `NaoSim` service is nao-sim's identity: its existence says the target is nao-sim, it reports the nao-sim and NAOqi versions, publishes which host devices are attached (camera, microphone), and says whether boot is complete. The Docker healthcheck is built on it, and so will `nao-sim run` and `nao-sim status` be.
 
-It is also a contract with the other packages of the toolkit: nao-viewer's pose source identifies a target as `nao-sim` when the `NaoSim` service exists and reads its version from the ALMemory key `NaoSim/Version`; nao-bridge plans `nao.info.target` the same way. The service name and these keys do not change without a coordinated release.
+It is also a contract with the other packages of the toolkit: nao-viewer's pose source identifies a target as `nao-sim` when the `NaoSim` service exists, and should read the NAOqi version it shows from `NaoSim/NaoqiVersion` (it reads `NaoSim/Version` today, a bug on nao-viewer's side); nao-bridge plans its target info the same way. The service name and these keys do not change without a coordinated release.
 
 ## Decided
 
@@ -54,9 +54,8 @@ The module writes these at load. All values are plain strings except `NaoSim/Rea
 | `NaoSim/Ready` | `0`; `1` after `setReady()`. Raised as an event, so a client can wait on it | The entrypoint, through `setReady()` |
 | `NaoSim/Camera/Source` | `none` | The host camera feeder (`webcam`, `render`), when the video spec is built |
 | `NaoSim/Audio/Source` | `none` | The host microphone device (`mic`, `wav`), when the `ALAudioDevice` spec is built |
-| `NaoSim/Perception/Source` | `none` | The host detection feed, when the perception spec is built |
 
-- `none` means no host device is attached to that service, so it serves nothing (no frames, no audio, no detections). The device specs own the other values and may add keys under the same prefixes (for example the mono policy under `NaoSim/Audio/`); the host writes them as an ordinary qi client, as the overview's "Host services" prescribes.
+- `none` means no host device is attached to that service, so it serves nothing (no frames, no audio). The device specs own the other values and may add keys under the same prefixes (for example the mono policy under `NaoSim/Audio/`); the host writes them as an ordinary qi client, as the overview's "Host services" prescribes.
 
 ### Readiness
 
@@ -80,6 +79,8 @@ Both Dockerfiles declare it: `HEALTHCHECK --interval=5s --timeout=5s --start-per
 
 - `NAO_SIM_VERSION` is a build argument of both Dockerfiles, kept as an environment variable in the image (default `dev`). `docker/compose.yaml` passes `${NAO_SIM_VERSION:-dev}`; `nao-sim fetch-and-build-images` passes the installed package version (the live tests build through it too). Baked at build rather than read at run time because it describes the override modules inside the image.
 - `NAO_SIM_NAOQI_VERSION` is set by each Dockerfile next to the suite it extracts.
+
+- There is no `NaoSim/Perception/Source`: perception runs in the clients, not in nao-sim ([_overview.md](_overview.md), "Perception and speech recognition").
 
 ## Open questions
 

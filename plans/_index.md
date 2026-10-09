@@ -16,6 +16,8 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 | [202610091830_faster-live-tier.md](202610091830_faster-live-tier.md) | Live tier builds only when `check_images` fails (new `io.nao-sim.recipes` label: an edit under `docker/` makes images outdated); vendor files not re-hashed when unchanged (`hashes.json`) | Done |
 | [202610092000_tts-stops-on-sigterm.md](202610092000_tts-stops-on-sigterm.md) | The `tts` server handles `SIGTERM` as PID 1, so a stack stops in under a second instead of being killed after Docker's 10 s grace period | Done |
 | [202610092100_split-entrypoint.md](202610092100_split-entrypoint.md) | One entrypoint per NAOqi version (`entrypoint-2.1.sh`, `entrypoint-2.8.sh`) over a shared `entrypoint-lib.sh`; the version's facts are constants in its script, not image environment variables | Done |
+| [202610100900_drop-perception-source-key.md](202610100900_drop-perception-source-key.md) | The `NaoSim` status module stops writing `NaoSim/Perception/Source` (perception runs in the clients); fast and live status tests updated; `status-service.md` back to `Implemented` | Done |
+| [202610100930_autonomous-abilities-on-2-1.md](202610100930_autonomous-abilities-on-2-1.md) | 2.1 entrypoint launches the built-ins a NAO autoloads (`expressiveness`, `basicawareness`, `autonomousblinking`, `autonomousmoves`) and then `autonomouslife`, in a NAO's order, failing the boot if one registers nothing; `container.md` back to `Implemented` | Done |
 
 ## Status legend
 

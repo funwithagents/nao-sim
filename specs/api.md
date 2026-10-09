@@ -22,7 +22,7 @@ tests:
 
 - the `nao-sim` CLI ([cli.md](cli.md)), whose `run` loads a config file, starts a `NaoSim` and stays in the foreground;
 - the live tests (`tests-e2e/`), which build their stacks from configs instead of driving `docker compose` themselves;
-- nao-bridge's `sim` backend, which awaits a `NaoSim`'s start and connects to it;
+- nao-bridge's `sim` backend (`{"backend": "sim", "sim": {…}}`, the block a `NaoSimConfig`), which awaits a `NaoSim`'s start, connects its ordinary qi backend to `url` and stops it with the bridge; it has no other sim-specific behaviour;
 - any Python caller that wants a NAO for the duration of a script or a test.
 
 It replaces the overview's "one host process started by `nao-sim up`" (now `nao-sim run`): the host services are what a running `NaoSim` owns. A client of the simulated robot never needs it: once started, nao-sim is reached at `sim.url` with any qi client, as a NAO.
@@ -52,8 +52,8 @@ The API is **async**, as `NaoBridge`: `await sim.start()`, `await sim.stop()`, `
 2. **Speaker**: start the host speaker ([devices.md](devices.md)) in-process, feeding the sink.
 3. **Containers**: `docker compose up -d` (no build) for the `tts` service and the version's NAOqi service, with the environment generated from the config (`NAO_SIM_TTS_ENGINE` = `speech.engine`, the version's profile, `2.1` or `2.8`). The compose project is always `nao-sim`.
 4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error. Verified images can still fail here (a volume, the host), so this wait happens on every start.
-5. **Host devices**: the camera feeder, the microphone and the perception feed, as the config's sources ask (each specified by its own device spec). Each writes its `NaoSim/*/Source` key.
-6. **Simulated world**: launch nao-viewer's sim mode when the config calls for it (the table in [config.md](config.md), "The viewer and the camera").
+5. **Host devices**: the camera feeder and the microphone, as the config's sources ask (each specified by its own device spec). Each writes its `NaoSim/*/Source` key.
+6. **Simulated world**: when the config calls for it (the table in [config.md](config.md), "The viewer and the camera"), build a `NaoViewer` in sim mode from the `viewer` block and `url`, and `launch()` it (in `asyncio.to_thread`; nao-viewer's API is synchronous). Its `LaunchError` fails the start like any other step.
 
 If any step fails, everything already started is stopped, in reverse order, and the error propagates. Calling `start()` on a running `NaoSim` raises `NaoSimError`.
 
@@ -89,7 +89,7 @@ The checkout layout is today's. The wheel layout, and how the recipes become pac
 | Member | Returns | Meaning |
 | --- | --- | --- |
 | `url` | `str` | `tcp://127.0.0.1:9559`, the address any qi client connects to |
-| `await status()` | `NaoSimStatus` | Read from the `NaoSim` service over qi, with the connect retry libqi 3 needs against 2.1: `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source`, `perception_source` |
+| `await status()` | `NaoSimStatus` | Read from the `NaoSim` service over qi, with the connect retry libqi 3 needs against 2.1: `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source` |
 | `config` | `NaoSimConfig` | The config it was built from |
 | `running` | `bool` | Between a successful `start()` and `stop()` |
 

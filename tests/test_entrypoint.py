@@ -54,6 +54,11 @@ FAKE_QICLI = textwrap.dedent(
         down.add(target[: -len(".exit")]); save(); sys.exit(0)
     if target == "ALLauncher.launchPythonModule":
         down.discard(registers.get(args[2], "")); save(); sys.exit(0)
+    if target == "ALLauncher.launchLocal":  # the modules the library registered, as 2.1 prints them
+        empty = os.environ.get("FAKE_QICLI_EMPTY_LAUNCH", "").split()
+        print("ALLauncher.launchLocal: [  ]" if args[2] in empty else
+              'ALLauncher.launchLocal: [ "%s" ]' % args[2])
+        sys.exit(0)
     if target.startswith("NaoSim."):
         if "NaoSim" in down:
             sys.stderr.write("Call failed: no such service\\n"); sys.exit(1)
@@ -80,7 +85,7 @@ FAKE_NAOQI_BIN = textwrap.dedent(
     """
 )
 
-AUTOLOAD = "pythonbridge\nanimatedspeech\ndialog\naudioout\n"
+AUTOLOAD = "pythonbridge\nanimatedspeech\naudioout\nalpanoramacompass\nautonomouslife\ndialog\n"
 SERVICES = (
     "ServiceDirectory ALMemory ALLauncher ALPythonBridge ALTextToSpeech ALAudioPlayer "
     "ALServiceManager ALAutonomousLife ALPanoramaCompass"
@@ -188,7 +193,14 @@ def test_sequence_on_2_1(fakes):
         f"call ALPythonBridge.eval import sys; sys.path.insert(0, '{fakes.naoqi_home}/modules') {url}",
         f"call ALLauncher.launchPythonModule nao_sim_status_almodule {url}",
         f"call ALLauncher.launchPythonModule nao_sim_tts_almodule {url}",
+        # Late, in a NAO's autoload order: the TTS dependents, the built-ins a NAO autoloads and
+        # the desktop does not, and autonomouslife after those.
+        f"call ALLauncher.launchLocal expressiveness {url}",
         f"call ALLauncher.launchLocal animatedspeech {url}",
+        f"call ALLauncher.launchLocal basicawareness {url}",
+        f"call ALLauncher.launchLocal autonomousblinking {url}",
+        f"call ALLauncher.launchLocal autonomousmoves {url}",
+        f"call ALLauncher.launchLocal autonomouslife {url}",
         f"call ALLauncher.launchLocal dialog {url}",
         f"call NaoSim.setReady {url}",
     ]
@@ -196,13 +208,14 @@ def test_sequence_on_2_1(fakes):
     # again after loading, right before setReady.
     assert "NAOqi ready after 4 polls, 9 services" in ep.output()
     assert fakes.calls()[-2] == f"info ALTextToSpeech {url}"
-    # naoqi-bin got the broker arguments and the autoload copy with the dependents deferred.
+    # naoqi-bin got the broker arguments and the autoload copy with the late entries it lists
+    # deferred; the others were never in it.
     args = fakes.naoqi_bin_args()
     assert args.startswith("-b 0.0.0.0 -p 9559 --autoload-file ")
     autoload = Path(args.split("--autoload-file ")[1]).read_text()
-    assert (
-        autoload
-        == "pythonbridge\n#deferred animatedspeech\n#deferred dialog\naudioout\n"
+    assert autoload == (
+        "pythonbridge\n#deferred animatedspeech\naudioout\nalpanoramacompass\n"
+        "#deferred autonomouslife\n#deferred dialog\n"
     )
 
 
@@ -291,6 +304,24 @@ def test_fails_when_a_replacement_did_not_register(fakes):
     assert ep.wait_exit() == 1
     assert "replaced service ALTextToSpeech does not answer" in ep.output()
     assert "nao-sim ready" not in ep.output()
+    assert not [c for c in fakes.calls() if "setReady" in c]
+
+
+def test_fails_when_a_late_built_in_registers_nothing(fakes):
+    ep = Entrypoint(
+        fakes,
+        "2.1",
+        {
+            "FAKE_QICLI_REGISTERS": REGISTERS_21,
+            "FAKE_QICLI_EMPTY_LAUNCH": "basicawareness",
+        },
+    )
+    assert ep.wait_exit() == 1
+    assert "launching basicawareness registered no module" in ep.output()
+    assert "nao-sim ready" not in ep.output()
+    # Nothing after the failed launch: no later built-in, no ready mark.
+    launched = [c.split()[2] for c in calls_only(fakes) if "launchLocal" in c]
+    assert launched == ["expressiveness", "animatedspeech", "basicawareness"]
     assert not [c for c in fakes.calls() if "setReady" in c]
 
 

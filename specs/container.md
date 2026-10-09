@@ -20,6 +20,7 @@ tests:
   - tests/test_entrypoint.py
   - tests-e2e/test_packages_live.py
   - tests-e2e/test_status_live.py
+  - tests-e2e/test_modules_live.py
 ---
 
 # NAOqi container
@@ -122,23 +123,39 @@ One script per version, each reading top to bottom as that version's procedure: 
 | Reached from inside on | `tcp://127.0.0.1:9559` | `tcp://127.0.0.1:9558`, exported as `NAO_SIM_INTERNAL_PORT` for our qi services |
 | `REPLACED` (built-ins whose `exit()` is called) | `ALTextToSpeech` | `ALTextToSpeech` |
 | `MODULES` (ours, loaded with `ALLauncher.launchPythonModule`, in order) | `nao_sim_status_almodule nao_sim_tts_almodule` | `nao_sim_status_qiservice nao_sim_tts_qiservice` |
-| `DEPENDENTS` (hold a proxy to a replaced built-in) | Autoload entries `animatedspeech dialog`: commented out of a copy of `autoload.ini`, launched with `ALLauncher.launchLocal` at the end | Package service `expressivity.autonomousabilitiesmodules`: `ALServiceManager.stopService` before, `startService` after |
-| `LAST_SERVICE` (registered last at boot) | `ALAutonomousLife` | `ALPanoramaCompass` |
+| Dependents (hold a proxy to a replaced built-in) | Autoload entries `animatedspeech dialog`, launched late (`LATE`) | `DEPENDENTS`: package service `expressivity.autonomousabilitiesmodules`, `ALServiceManager.stopService` before, `startService` after |
+| Added (built-ins a NAO autoloads that the desktop suite ships but does not; see "Matching a NAO's modules") | `expressiveness basicawareness autonomousblinking autonomousmoves`, launched late (`LATE`) | None |
+| `LATE` (launched with `ALLauncher.launchLocal` after our modules, in a NAO's autoload order; those the desktop autoloads are commented out of a copy of `autoload.ini`) | `expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog`: the dependents, the added built-ins, and `autonomouslife`, which a NAO loads after the added built-ins and may depend on | None |
+| `LAST_SERVICE` (registered last at boot) | `ALPanoramaCompass` (`alpanoramacompass`, the last autoload entry once `autonomouslife` and `dialog` are left out) | `ALPanoramaCompass` |
 
 The tunables below exist so the host-side tests can run the scripts against fake `naoqi-bin` and `qicli`; the images never set them: `NAO_SIM_READY_TRIES` (polls, one per second, before giving up on NAOqi; 120), `NAO_SIM_SETTLE_POLLS` (consecutive polls the service list must stay unchanged; 3), `NAO_SIM_POLL_INTERVAL` (seconds between polls; 1), `NAOQI_HOME`.
 
 Sequence (2.1 / 2.8):
 
-1. Start `naoqi-bin` (2.1: with the autoload copy without the dependents).
+1. Start `naoqi-bin` (2.1: with the autoload copy without the `LATE` entries).
 2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge`, every replaced built-in and the last service are registered **and** the list has not changed for `NAO_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAO_SIM_READY_TRIES` polls fail, exit 1. The settling matters on 2.8: on a slow boot (cold cache, right after an image rebuild) the last service appears while `naoqi-service` is still loading modules, and exiting a built-in or loading a module into that half-started process killed it (measured: `ALServiceManager` restarted it and `launchPythonModule` was cancelled after 50 s).
 3. 2.8: stop the dependent services.
 4. `exit()` the replaced built-ins.
 5. Add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`) and load our modules.
-6. 2.1: launch the deferred modules. 2.8: start the dependent services.
+6. 2.1: launch the `LATE` entries in order; a launch that registers no module (`launchLocal` returns an empty list) exits 1. 2.8: start the dependent services.
 7. Check that every replaced name answers again (up to 10 s each; `launchPythonModule` does not report an import failure). If one does not, exit 1.
 8. Call `NaoSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] nao-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
 
 Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited container, never as a running one without its overrides. The healthcheck ([status-service.md](status-service.md)) reports `healthy` only after step 8.
+
+### Matching a NAO's modules
+
+Each image matches a real NAO **on the same NAOqi version**, not the other version's image: real robots differ between 2.1 and 2.8 too. The reference is the robot's own `autoload.ini` in the public robot image (`/etc/naoqi/autoload.ini` on 2.1, `/opt/aldebaran/etc/naoqi/autoload.ini` on 2.8), compared with the desktop suite's (measured Oct 9, 2026):
+
+| Difference between the two images | Cause | On real robots too? |
+| --- | --- | --- |
+| 2.8 only: `ALMood`, `ALBackgroundMovement`, `ALListeningMovement`, `ALSpeakingMovement`, `ALAnimationPlayer`, `Conversation`, `Knowledge`, `ALUserInfo`, ... | 2.8's `dialog`, `expressivity` and `life` packages | Yes |
+| 2.1 only: `ALBonjour`, `ALRedBallTracker`, `ALSegmentation3D`, `ALCloseObjectDetection` | Dropped in 2.8 | Yes |
+| `ALBasicAwareness`, `ALAutonomousMoves` and the hidden `_ALExpressiveness`, `_ALAutonomousBlinking` missing on 2.1 | The 2.1 desktop suite ships these libraries but leaves them out of its `autoload.ini` | No: nao-sim adds them (`LATE`) |
+
+- Entries a NAO autoloads that the desktop suite ships but does not load: 2.1 `expressiveness`, `basicawareness`, `autonomousblinking`, `autonomousmoves`, `aldiagnosis`, `facetracker`, `visionrecognition`, `alchestbutton`, `memorywatcher`, `notificationreader`, `voiceemotionanalysis`, `mecalogger`, `dcm_hal`; 2.8 `aldiagnosis`, `memorywatcher`, `voiceemotionanalysis`. Each loads with `launchLocal` on a running image, which stays healthy (`voiceemotionanalysis` and `mecalogger` register nothing).
+- The 2.1 entrypoint adds the four that make the autonomous abilities a NAO 2.1 runs (expressiveness, awareness, blinking, autonomous moves), launched in the robot's order with `autonomouslife` after them, since a NAO loads it after them and it may depend on them ("Entrypoint", `LATE`). The others are added when a client needs them (open questions); vision modules are not wanted.
+- Entries a NAO autoloads that the desktop suites do not ship at all (audio input, `ALSystem`, face detection, speech recognition, sound localization, photo and video capture, landmark and barcode detection, infrared, laser...) cannot be added. nao-sim provides `ALAudioDevice` itself; `ALSystem` stays absent (its absence tells a client the target is not a real robot); detection and recognition are the clients' ([_overview.md](_overview.md), "Perception and speech recognition").
 
 ### Desktop NAOqi facts the rest of nao-sim relies on
 
@@ -159,3 +176,4 @@ Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited c
 
 1. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
 2. **Starting the stack.** `nao-sim run` and `cleanup` ([cli.md](cli.md)) are not built; today it is `docker compose` by hand (see [README.md](../README.md)). `NaoSim.start()` waits on the container's health rather than on the log line ([api.md](api.md)).
+3. **More added built-ins.** The other shipped-but-not-autoloaded modules (2.1: `aldiagnosis`, `memorywatcher`, `alchestbutton`, `notificationreader`, `facetracker`, `visionrecognition`; 2.8: `aldiagnosis`, `memorywatcher`) are left out until a client needs one.

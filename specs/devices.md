@@ -12,23 +12,22 @@ tests:
 
 ## Purpose
 
-The simulated robot's inputs and outputs, on the host. A NAO has a loudspeaker, microphones and cameras, and it perceives people; inside Docker, NAOqi has none of these, so nao-sim provides them on the host as **devices**: dumb, each doing one job, knowing nothing about NAOqi's tags, events or `say()` semantics. Every NAOqi-specific decision stays in the containers (the override modules) or, for the few devices that are ordinary qi clients, at the edge of the device.
+The simulated robot's inputs and outputs, on the host. A NAO has a loudspeaker, microphones and cameras; inside Docker, NAOqi has none of these, so nao-sim provides them on the host as **devices**: dumb, each doing one job, knowing nothing about NAOqi's tags, events or `say()` semantics. Every NAOqi-specific decision stays in the containers (the override modules) or, for the few devices that are ordinary qi clients, at the edge of the device.
 
 | Device | Direction | Feeds or is fed by | State |
 | --- | --- | --- | --- |
 | [Speaker](#speaker) | Output: the robot's voice and sounds | The `tts` engine ([tts-engine.md](tts-engine.md)); later the `ALAudioPlayer` shim and replacement | Built (`speaker.py`); its audio sinks are not |
 | Microphone (host mic or WAV replay) | Input | The `ALAudioDevice` replacement | Planned ([_overview.md](_overview.md), "ALAudioDevice replacement") |
 | Camera (webcam or nao-viewer render) | Input | `ALVideoDevice.putImage` | Planned ([_overview.md](_overview.md), "Video injection") |
-| Perception feed | Input | The people-perception contract in ALMemory | Planned ([_overview.md](_overview.md), "Perception") |
 
-This spec holds the contract every device follows, then one section per device. A device that grows heavy moves to its own spec, linked from here. The NAOqi-side replacements the devices talk to (`ALAudioDevice`, the perception modules) are specified on their own: they run inside the container, this spec covers only the host side.
+This spec holds the contract every device follows, then one section per device. A device that grows heavy moves to its own spec, linked from here. The NAOqi-side replacement the microphone talks to (`ALAudioDevice`) is specified on its own: they run inside the container, this spec covers only the host side.
 
 ## Decided
 
 ### The device contract
 
 - **Owned by `NaoSim`.** A running `NaoSim` ([api.md](api.md)) starts each device the config asks for (step 2 for the speaker, step 5 for the inputs of "Lifecycle"), in its own process, and stops them in reverse order. A device is never a user command: the only standalone entry point left is a debugging one (see [Speaker](#speaker), "Command").
-- **Configured by its block** of [config.md](config.md): `speaker`, `audio` (the microphone), `camera`, later `perception`. A device whose block says `none` is not started.
+- **Configured by its block** of [config.md](config.md): `speaker`, `audio` (the microphone), `camera`. A device whose block says `none` is not started.
 - **Pluggable at its edge.** Where the data goes or comes from is a seam, chosen by the config or passed in code: the speaker's `AudioSink`; the microphone's source (host mic or WAV file); the camera's source (webcam or render). Tests plug in-memory ends.
 - **Publishes its source.** An input device writes its `NaoSim/*/Source` key when it starts ([status-service.md](status-service.md), "ALMemory keys"), as an ordinary qi client; whether it resets it to `none` on stop is the device's to decide.
 - **Real time.** A device paces its data in real time whatever its seam, so NAOqi's timing (a blocking `say()`, a microphone chunk cadence) is the same with a device, a file or memory.

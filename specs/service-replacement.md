@@ -16,7 +16,7 @@ tests:
 
 ## Purpose
 
-nao-sim makes the container look like a real NAO by replacing or adding NAOqi services *inside* NAOqi, so any qi client on the host reaches them on 9559 exactly like built-ins and in-process modules (`ALAnimatedSpeech`, `ALDialog`...) call them instead of the originals. This spec is the reusable mechanism: how an override module is loaded, which object model it uses on each version, how a built-in is taken out first, and how an override reaches services that live on the host. The `ALTextToSpeech` replacement ([speech.md](speech.md)) is its first user; the planned `ALAudioDevice`, `ALPeoplePerception`, `ALFaceDetection` and `ALMovementDetection` replacements reuse it.
+nao-sim makes the container look like a real NAO by replacing or adding NAOqi services *inside* NAOqi, so any qi client on the host reaches them on 9559 exactly like built-ins and in-process modules (`ALAnimatedSpeech`, `ALDialog`...) call them instead of the originals. This spec is the reusable mechanism: how an override module is loaded, which object model it uses on each version, how a built-in is taken out first, and how an override reaches services that live on the host. The `ALTextToSpeech` replacement ([speech.md](speech.md)) is its first user; the planned `ALAudioDevice` and `ALAudioPlayer` replacements reuse it.
 
 ## Decided
 
