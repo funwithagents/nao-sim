@@ -1,0 +1,146 @@
+# Continuous integration — specs/testing/ci.md.
+#
+# Three jobs side by side on GitHub's hosted runners, on every pull request and push to main:
+# `check` (lint, format, types), `fast-tier` (tests/) and `e2e-sim` (tests-e2e/ against real
+# NAOqi stacks the runner fetches, builds and verifies itself), once per NAOqi version, each
+# entry on its own runner since both publish 9559. None waits on another. All on Linux: macOS
+# runners have no Docker. No secret is needed.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesa's GL and a virtual X display, for the sim-window test on the 2.1 entry; libegl1 and
+  # libgl1-mesa-dri are what the headless viewer will render through (specs/testing/ci.md).
+  APT_WINDOW: xvfb xauth libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri
+
+jobs:
+  check:
+    name: lint, format, types
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Sync (against the lock)
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check .
+      - name: Format check (code directories only — `ruff format .` reflows Markdown)
+        run: uv run ruff format --check src tests tests-e2e docker/tts
+      - name: Type check
+        run: uv run pyright
+
+  fast-tier:
+    name: fast tier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Sync (against the lock)
+        run: uv sync --locked
+      - name: Fast tier
+        run: uv run pytest -rs
+
+  e2e-sim:
+    name: live tier, NAOqi ${{ matrix.version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["2.1", "2.8"]
+    steps:
+      # The 2.8 image and its `docker save` archive take about 13 GB, the suite 1.3 GB more on
+      # a cold build: drop the toolchains nao-sim never uses. Both entries, so they stay alike.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Sync (against the lock)
+        run: uv sync --locked
+      # Keyed on what `check_images` compares to the image labels (the nao-sim version and the
+      # digest of the docker/ recipes) and on the suite pins, which the labels do not see.
+      - name: Image cache key
+        id: key
+        run: |
+          stamp=$(uv run python -c "from nao_sim import docker_images as d; print(f'{d.nao_sim_version()}-{d.recipes_digest()}')")
+          echo "key=naoqi-${{ matrix.version }}-$stamp-${{ hashFiles('src/nao_sim/suite.py') }}" >> "$GITHUB_OUTPUT"
+      # The version's NAOqi image and the tts image, saved with `docker save`, and the record
+      # of their verified IDs. The images contain Aldebaran's software: a cache only this
+      # repository's workflows read, never a registry. The vendor files are never cached.
+      - name: Images (restore)
+        id: images
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/images.tar
+            docker/vendor/images.json
+          key: ${{ steps.key.outputs.key }}
+      - name: Load the cached images
+        if: steps.images.outputs.cache-hit == 'true'
+        run: |
+          docker load -i "$RUNNER_TEMP/images.tar"
+          rm "$RUNNER_TEMP/images.tar"
+      - name: Fetch, build and verify the images (nao-sim fetch-and-build-images)
+        if: steps.images.outputs.cache-hit != 'true'
+        run: |
+          uv run nao-sim fetch-and-build-images ${{ matrix.version }}
+          image=$(uv run python -c "from nao_sim.docker_images import IMAGES; print(IMAGES['${{ matrix.version }}'].image)")
+          docker save -o "$RUNNER_TEMP/images.tar" "$image" nao-sim/tts:dev
+          rm -rf docker/vendor/${{ matrix.version }}
+      # Saved right after the build, not at the end of the job, so a failing live tier
+      # doesn't build again on the next run.
+      - name: Images (save)
+        if: steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/images.tar
+            docker/vendor/images.json
+          key: ${{ steps.key.outputs.key }}
+      - name: Drop the saved archive
+        if: steps.images.outputs.cache-hit != 'true'
+        run: rm -f "$RUNNER_TEMP/images.tar"
+      - name: System packages (Mesa GL, virtual display)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends -o Acquire::http::Timeout=30 -o Acquire::Retries=3 $APT_WINDOW
+      - name: Live tier
+        env:
+          # This version only, and a missing image or Docker fails instead of skipping.
+          NAO_SIM_E2E_VERSION: ${{ matrix.version }}
+        # Warnings and errors print live. xvfb-run gives the sim window an X display.
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x1024x24"
+          uv run pytest tests-e2e -rs -o log_cli=true --log-cli-level=WARNING
+      - name: Container logs
+        if: failure()
+        run: |
+          for c in $(docker ps -a --filter name=nao-sim- --format '{{.Names}}'); do
+            echo "::group::$c"
+            docker logs --tail 300 "$c" 2>&1
+            echo "::endgroup::"
+          done

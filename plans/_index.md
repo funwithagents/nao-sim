@@ -20,6 +20,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 | [202610091610_autonomous-abilities-on-2-1.md](202610091610_autonomous-abilities-on-2-1.md) | 2.1 entrypoint launches the built-ins a NAO autoloads (`expressiveness`, `basicawareness`, `autonomousblinking`, `autonomousmoves`) and then `autonomouslife`, in a NAO's order, failing the boot if one registers nothing; `container.md` back to `Implemented` | Done |
 | [202610091719_audio-sinks.md](202610091719_audio-sinks.md) | The speaker becomes the audio output (`audio_output.py`, `AudioOutput`): `AudioSink` seam with `DevicePlayer`, `NullSink`, `WavSink`, `MemorySink`; pacing for every sink, newest-wins call discipline, `playing_until`; `audio-output.md` back to `Implemented` | Done |
 | [202610091734_naosim-run.md](202610091734_naosim-run.md) | `NaoSimConfig`, the `NaoSim` object with the sim window, `read_status`/`cleanup`, `nao-sim run`/`cleanup`/`status`/`logs`; the audio output becomes internal (no command); live tier through `NaoSim` with a `MemorySink` | Done |
+| [202610091947_ci-workflow.md](202610091947_ci-workflow.md) | `.github/workflows/ci.yml` (`check`, `fast-tier`, `e2e-sim` over 2.1 and 2.8 with a cached `docker save` of the images), `NAO_SIM_E2E_VERSION` making a version required in the live tier, the Python 2.7 compile check as a live test | Done |
 
 ## Status legend
 

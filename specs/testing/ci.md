@@ -1,24 +1,28 @@
 ---
 code:
+  - .github/workflows/ci.yml
+  - tests-e2e/support.py
+  - tests-e2e/conftest.py
 tests:
+  - tests-e2e/test_modules_live.py
 ---
 
 # Continuous integration
 
-**Status:** Draft
+**Status:** Implemented
 
 ## Purpose
 
-Both test tiers ([testing.md](testing.md)) run on GitHub's hosted runners for every pull request and every push to `main`, so the verification gate of [AGENTS.md](../../AGENTS.md) (lint, type check, tests) is a machine's verdict on each change and not only a local command. The live tier runs against real NAOqi stacks that the runner fetches, builds and verifies itself, since the vendor files are Aldebaran's public downloads. Like [testing.md](testing.md), this is a cross-cutting practice, not a runtime concept: the one file that implements it is `.github/workflows/ci.yml`.
+Both test tiers ([testing.md](testing.md)) run on GitHub's hosted runners for every pull request and every push to `main`, so the verification gate of [AGENTS.md](../../AGENTS.md) (lint, type check, tests) is a machine's verdict on each change and not only a local command. The live tier runs against real NAOqi stacks that the runner fetches, builds and verifies itself, since the vendor files are Aldebaran's public downloads. Like [testing.md](testing.md), this is a cross-cutting practice, not a runtime concept: it is implemented by `.github/workflows/ci.yml` and by the live tier's switch from skipping to failing (`tests-e2e/support.py`, `tests-e2e/conftest.py`).
 
-The jobs follow reachy-mini-bridge's CI (its `specs/testing/ci.md`) on purpose: a static gate, the fast tier and a live matrix, side by side.
+Three jobs side by side: a static gate, the fast tier and a live matrix. The image cache follows nao-viewer's CI, which already builds nao-sim's 2.1 images on its runners.
 
 ## Decided
 
 ### The runner
 
 - **GitHub-hosted Linux, the free tier.** Every job runs on `ubuntu-24.04` (x86_64), pinned by name rather than `ubuntu-latest`, so Docker, Mesa and the system libraries move only when the pin is bumped on purpose. No self-hosted runner.
-- **Linux is the platform** because it runs the NAOqi images natively (amd64, no emulation as on Apple Silicon) and has a display-less GL backend, Mesa's EGL, for the headless viewer's renders. GitHub's macOS runners have no Docker, so they could run the fast tier only.
+- **Linux is the platform** because it runs the NAOqi images natively (amd64, no emulation as on Apple Silicon) and has a display-less GL backend, Mesa's EGL, for the headless viewer's renders. GitHub's macOS runners have no Docker, so they could run the fast tier only. A green run is also the "works on Linux" half of milestone 3's exit ([_overview.md](../_overview.md), "Milestones").
 - **One Python**, 3.12, the floor of `requires-python` and the version `.python-version` names; uv installs it.
 
 ### The workflow
@@ -28,22 +32,39 @@ One file, `.github/workflows/ci.yml`. It triggers on `pull_request`, on `push` t
 | Job | What |
 | --- | --- |
 | `check` | `uv sync --locked`, then `ruff check .`, `ruff format --check src tests tests-e2e docker/tts`, `pyright` |
-| `fast-tier` | The same environment; `uv run pytest` |
-| `e2e-sim` | A matrix over the NAOqi versions (`2.1`, `2.8`), `fail-fast: false`, each entry on its own runner: build the version's images, then `uv run pytest tests-e2e -rs` on that version only |
+| `fast-tier` | The same environment; `uv run pytest -rs` |
+| `e2e-sim` | A matrix over the NAOqi versions (`2.1`, `2.8`), `fail-fast: false`, each entry on its own runner: restore or build the version's images, then `uv run pytest tests-e2e -rs` on that version only |
 
 - The three jobs run side by side and none waits on another: a run takes as long as its slowest job, a live entry.
-- **`--locked`**: the sync fails when `uv.lock` does not match `pyproject.toml`, so a dependency edit lands with its relock.
+- **`--locked`**: the sync fails when `uv.lock` does not match `pyproject.toml`, so a dependency edit lands with its relock. The sync installs the `dev` group, so the `viewer` extra (nao-viewer, from its pinned Git commit) is there in every job.
 - **The format check covers the code directories only**, since `ruff format .` would reflow the Python blocks inside Markdown files. `docker/modules/` is Python 2.7, outside ruff ([project.md](../project.md)).
-- **One version per live entry.** Both versions publish 9559 and one nao-sim runs per machine, so each version gets its own runner. The entry sets `NAO_SIM_E2E_VERSION` to its version: the `nao` fixture then runs that version only, and a missing suite, image or Docker **fails** the entry instead of skipping it. Without the variable (a local run) the tier keeps its rule of skipping what the machine lacks ([testing.md](testing.md), "Skip, never fail, without the means"); in CI a skip would turn the job green with nothing tested.
-- **Each job carries a `timeout-minutes`** well under GitHub's default, so a hung boot fails in minutes.
+- **No system package for audio.** `sounddevice` is imported at the first stream of the device sink only ([audio-output.md](../host/audio-output.md)); the fast tier fakes it and the live tier plays into a `MemorySink`, so no job needs PortAudio or a sound device.
+- **One version per live entry.** Both versions publish 9559 and one nao-sim runs per machine, so each version gets its own runner. The entry sets `NAO_SIM_E2E_VERSION` to its version: the `nao` fixture then runs that version only, and a missing suite, image or Docker **fails** the entry instead of skipping it. An unknown value fails the session at collection. Without the variable (a local run) the tier keeps its rule of skipping what the machine lacks ([testing.md](testing.md), "Skip, never fail, without the means"); in CI a skip would turn the job green with nothing tested.
+- **Each job carries a `timeout-minutes`** well under GitHub's default (10 for `check`, 15 for `fast-tier`, 45 for a live entry, whose cold build is the longest step), so a hung boot fails in minutes.
 
 ### The live entries
 
-- **Images.** The entry runs `uv run nao-sim fetch-and-build-images <version>`, which fetches the pinned vendor files, builds the images and verifies they boot ([api.md](../runtime/api.md), "Images"); the live tier then finds them current through `check_images`.
-- **Caches** (`actions/cache`): the vendor files, keyed on their pinned hashes, and the built images (`docker save`/`docker load`), keyed on the `io.nao-sim.recipes` digest of `docker/` and the nao-sim version, so an edit under `docker/` rebuilds. The 2.1 images take about 2.5 minutes cold and 2 with the cache (measured by nao-viewer's CI); the 2.8 images are about 2.4 GB against the repository's 10 GB cache budget.
-- **Audio.** No sound device is needed: the live tier plays speech into a silent audio output today and a `MemorySink` once it runs through `NaoSim` ([audio-output.md](../host/audio-output.md)). `libportaudio2` is installed for the `sounddevice` import of the `play` sink.
-- **The viewer**, as soon as [viewer.md](../host/viewer.md) is built: the entry installs the `viewer` extra and Mesa's EGL libraries (`libegl1`, `libgl1-mesa-dri`), sets `MUJOCO_GL=egl`, and the live tier runs a headless viewer with the render camera and the placeholder variant, so the camera loop is tested on every push ([viewer.md](../host/viewer.md), "In the live tier and CI"). A viewer that fails to launch fails the entry. CI never accepts the meshes' license.
-- **Python 2.7 check.** Before the tests, the entry compiles `docker/modules/*.py` with the image's own interpreter (`docker run --rm <image> /opt/naoqi/bin/python2 -m py_compile ...`), closing [testing.md](testing.md)'s open question 2.
+In order:
+
+1. **Disk.** The 2.8 image is about 6.3 GB, its `docker save` archive as much again, and the suite 1.3 GB on a cold build: the entry first deletes the runner's preinstalled toolchains nao-sim never uses (Android SDK, .NET, GHC, CodeQL), which frees about 25 GB. Both entries do it, so they stay alike.
+2. **Sync**: `uv sync --locked`.
+3. **The cache key**, computed by nao-sim itself: `naoqi-<version>-<nao-sim version>-<recipes digest>-<hash of src/nao_sim/suite.py>`. The first two parts are what `check_images` compares to the image labels ([api.md](../runtime/api.md), "Images"), so the key changes exactly when a start would find the images outdated; the suite pins' hash covers a new suite or package, which the labels do not see.
+4. **Restore** (`actions/cache/restore`): one archive per version, `docker save` of the version's NAOqi image and the `tts` image, together with `docker/vendor/images.json`, the record of the verified image IDs. On a hit, `docker load` and the archive is deleted at once to free its space: the image IDs survive the save and load, so `check_images` accepts the images as verified.
+5. **On a miss**: `uv run nao-sim fetch-and-build-images <version>`, which fetches the pinned vendor files, builds the images and verifies they boot, as on a user's machine; then `docker save` and **save** (`actions/cache/save`) right away, before the tests, so a failing live tier does not rebuild on the next run. The vendor files are never cached, as in nao-viewer's CI: they are needed only on a miss, and a miss downloads them from Aldebaran's repositories.
+6. **The live tier**: `uv run pytest tests-e2e -rs` with `NAO_SIM_E2E_VERSION`, under `xvfb-run` with Mesa's GL (`xvfb`, `xauth`, `libgl1`, `libglx-mesa0`, `libegl1`, `libgl1-mesa-dri`), so the sim-window test runs on the 2.1 entry instead of skipping for want of a display. Warnings and errors are logged live (`-o log_cli=true --log-cli-level=WARNING`).
+7. **On failure**: the end of the NAOqi and `tts` containers' logs, if any are still there (`nao-sim logs` needs a running stack, so the step uses `docker logs` on the containers the test left behind, and prints nothing when the `NaoSim` stopped cleanly).
+
+- **Sizes.** Measured locally: the 2.1 image is 4.5 GB on disk (1.4 GB compressed), the 2.8 image 6.3 GB (2.7 GB), `tts` 0.8 GB (0.27 GB). With zstd, the two archives take about 5 GB of the repository's 10 GB cache budget; an edit under `docker/` adds a new pair, and GitHub evicts the least recently used.
+- **Python 2.7 check.** A live test compiles every module in the image's `/opt/naoqi/modules/` with the image's own interpreter (`/opt/naoqi/bin/python2 -m compileall`), so a module the version does not load is still checked; both entries run it, closing [testing.md](testing.md)'s open question 2.
+- **The headless viewer**, once [viewer.md](../host/viewer.md)'s render camera is built: `MUJOCO_GL=egl`, and the live tier runs a headless viewer with the render camera and the placeholder variant, so the camera loop is tested on every push ([viewer.md](../host/viewer.md), "In the live tier and CI"). A viewer that fails to launch fails the entry. CI never accepts the meshes' license.
+
+### Expected skips
+
+The tests that skip by design on a runner; any other skip in a CI log is a fault.
+
+| Job | Test | Why |
+| --- | --- | --- |
+| `e2e-sim` (2.8) | `test_naosim_live.py::test_the_sim_window` | The window does not depend on the NAOqi version: checked on the 2.1 entry |
 
 ### Licensing
 
@@ -56,11 +77,22 @@ The runner downloads Aldebaran's suites and robot images from their public repos
 
 ### Downstream repositories
 
-nao-viewer and nao-bridge pin a nao-sim commit for their own live jobs and bump it on purpose (nao-viewer's `NAO_SIM_REF` today). nao-sim's CI does not test them.
+nao-viewer pins a nao-sim commit for its own live job (`NAO_SIM_REF`) and bumps it on purpose. nao-sim's CI does not test it.
+
+## Measured
+
+On the first runs (PR #1, October 9, 2026):
+
+| | Cold (build) | Cache hit |
+| --- | --- | --- |
+| `check` | 15 s | 12 s |
+| `fast-tier` | 42 s | 43 s |
+| `e2e-sim` 2.1 | 6 min 39 s (tests 2 min 16 s) | 5 min 11 s (tests 2 min 12 s) |
+| `e2e-sim` 2.8 | 6 min 54 s (tests 1 min 33 s) | 3 min 49 s (tests 1 min 44 s) |
+
+- **The cache.** The archives take 1.5 GB (2.1) and 2.9 GB (2.8), 4.5 GB of the 10 GB budget; an edit under `docker/` adds a new pair while the old one ages out. A hit loads the images and skips the build: the image IDs survive `docker save`/`docker load`, so `check_images` accepts them as verified.
+- **Skips.** Only the expected one, on the 2.8 entry; the window test runs and passes under Xvfb on 2.1.
 
 ## Open questions
 
-1. **The 2.8 cache.** Whether the 2.8 images fit the cache budget next to 2.1's, or whether the 2.8 entry builds cold on every run (to measure on the first runs).
-2. **Expected skips.** The table of the tests that skip by design on a runner (with reasons), as reachy-mini-bridge's spec keeps; written with the workflow, once its first runs show them.
-3. **Time budget.** Measured on the first runs; the live entries are expected to dominate (image load, boot, speech in real time).
-4. **The legal question on the suite download** (the toolkit document's open question): if Aldebaran's terms require a typed acceptance, CI needs a non-interactive equivalent.
+None: the cache budget and the time budget were measured above. Revisit them if an edit under `docker/` becomes frequent enough for the eviction of the old archives to matter.

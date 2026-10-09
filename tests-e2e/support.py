@@ -3,18 +3,22 @@
 The live tests drive their own simulated NAO: they build and verify a version's images with
 `fetch_and_build_images` when `check_images` finds them missing or outdated (an edit under
 docker/ included), then run it with a `NaoSim` (tests-e2e/conftest.py). A version whose suite
-(or image) is missing, or a machine without Docker, skips, never fails. `Container` reaches into
-the running NAOqi container for what qi does not show (the replacement's log, files, the image).
+(or image) is missing, or a machine without Docker, skips, never fails, unless
+`NAO_SIM_E2E_VERSION` names the version to run (CI, specs/testing/ci.md): then only that version
+runs, and what would skip fails. `Container` reaches into the running NAOqi container for what qi
+does not show (the replacement's log, files, the image).
 """
 
 import asyncio
 import json
+import os
 import shutil
 import socket
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 import qi
@@ -27,6 +31,7 @@ COMPOSE = REPO / "docker" / "compose.yaml"
 VENDOR = REPO / "docker" / "vendor"
 URL = "tcp://127.0.0.1:9559"
 AUDIO_OUTPUT_PORT = 9562
+REQUIRED = os.environ.get("NAO_SIM_E2E_VERSION") or None  # CI: this version must run
 
 
 @dataclass(frozen=True)
@@ -67,6 +72,24 @@ VERSIONS = {
 }
 
 
+def e2e_versions() -> list[str]:
+    """The versions the tier runs: the required one, or every version."""
+    if REQUIRED is None:
+        return sorted(VERSIONS)
+    if REQUIRED not in VERSIONS:
+        raise pytest.UsageError(
+            f"NAO_SIM_E2E_VERSION={REQUIRED!r}: choose from {', '.join(sorted(VERSIONS))}"
+        )
+    return [REQUIRED]
+
+
+def unavailable(reason: str) -> NoReturn:
+    """Skip a test whose means the machine lacks; fail it when a version is required."""
+    if REQUIRED is not None:
+        pytest.fail(f"{reason} (NAO_SIM_E2E_VERSION={REQUIRED} requires it)")
+    pytest.skip(reason)
+
+
 def connect(url: str = URL, attempts: int = 5) -> qi.Session:
     """Connect a qi.Session, retrying: libqi 3 fails about one connect in three against 2.1."""
     error: Exception | None = None
@@ -97,12 +120,12 @@ def _port_taken(port: int) -> bool:
 
 def require_docker() -> None:
     if shutil.which("docker") is None or _run("docker", "info").returncode != 0:
-        pytest.skip("Docker is not available")
+        unavailable("Docker is not available")
 
 
 def ensure_images(version: Version) -> None:
     """Use the version's images if current; build and verify them from the checkout if not,
-    when its vendor files are there; skip otherwise."""
+    when its vendor files are there; skip (or fail, see `unavailable`) otherwise."""
     vendored = suite.VERSIONS[version.name]
     folder = VENDOR / version.name
     try:
@@ -113,7 +136,7 @@ def ensure_images(version: Version) -> None:
             (folder / vendored.suite.filename).exists()
             and (folder / suite.PACKAGE).exists()
         ):
-            pytest.skip(
+            unavailable(
                 f"NAOqi {version.name}: no suite and package in docker/vendor/{version.name}/ "
                 f"and no usable images ({stale})"
             )

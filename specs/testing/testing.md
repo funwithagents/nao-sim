@@ -63,5 +63,5 @@ nao-sim is tested as what it is: containers that behave like a NAO in their API,
 
 ## Open questions
 
-1. **CI wiring** is specified in [ci.md](ci.md) (`Draft`), not built: today all testing is a local, manual command. The live tier's rule of skipping what the machine lacks gets a CI counterpart there (`NAO_SIM_E2E_VERSION` makes a version required).
-2. **Python 2.7 override modules.** The shared core (`nao_sim_tts_core`) is Python 2.7 code kept importable under Python 3, so the fast tier tests it on the host; the version-specific modules (`naoqi`/`qi` objects) are only exercised by the live tier. No automated check proves the modules are still valid Python 2.7: today that is a manual `compile` with the image's `/opt/naoqi/bin/python2`; [ci.md](ci.md) plans it in the live entries.
+1. **CI wiring** is built ([ci.md](ci.md)): both tiers run on GitHub's hosted runners. The live tier's rule of skipping what the machine lacks has its CI counterpart: `NAO_SIM_E2E_VERSION` runs one version and makes it required, so what would skip fails.
+2. **Python 2.7 override modules.** The shared core (`nao_sim_tts_core`) is Python 2.7 code kept importable under Python 3, so the fast tier tests it on the host; the version-specific modules (`naoqi`/`qi` objects) are only exercised by the live tier. A live test (`test_modules_live.py`) compiles every module in each image with the image's own `/opt/naoqi/bin/python2`, so the live tier, and CI's entries with it, prove they are still valid Python 2.7.
