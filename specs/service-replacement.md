@@ -5,6 +5,7 @@ code:
   - docker/modules/nao_sim_tts_qiservice.py
 tests:
   - tests-e2e/test_speech_live.py
+  - tests/test_entrypoint.py
 ---
 
 # Service replacement
@@ -22,6 +23,7 @@ nao-sim makes the container look like a real NAO by replacing or adding NAOqi se
 - Override modules are Python 2.7 files in `docker/modules/`, copied to `/opt/naoqi/modules/` and importable by name.
 - The desktop `naoqi-bin` ignores the `[python]` section of `autoload.ini` (main file, user file, with or without `--writable-path`: measured). The entrypoint instead calls `ALLauncher.launchPythonModule(<module>)`, which runs `from <module> import *` in `ALPythonBridge`'s embedded interpreter. On 2.1 that is the `naoqi-bin` process itself (same pid, verified); on 2.8 it is `naoqi-service`.
 - A module registers its service at import time, at module level.
+- `launchPythonModule` does not report an import failure, so the entrypoint checks afterwards that every replaced name (`NAO_SIM_EXIT_MODULES`) answers again, and exits non-zero otherwise rather than printing "ready" with the built-in gone ([container.md](container.md), "Entrypoint"). A module that adds a new name (`NaoSim`, the planned `ALAudioDevice`) is not covered by that check; the `NaoSim` module is, indirectly, since the entrypoint's last step calls it.
 - Exact autoload ordering would need a small C++ loader module compiled against the suite's SDK, listed right after `pythonbridge`; kept as an option, not needed so far.
 
 ### Object model per version
@@ -63,5 +65,4 @@ Some overrides must call a service that a host client registered: for example, `
 ## Open questions
 
 1. **Host callbacks on 2.8** are not measured. They are expected to work through the gateway with the same socket mechanism; to confirm when `ALAudioDevice` is built.
-2. **Load failures are silent.** If a module raises at import, `launchPythonModule` fails but the entrypoint carries on and prints "ready" with the built-in gone. The entrypoint should check that each replaced name answers again and exit non-zero otherwise.
-3. **Restarting a replacement** (re-running the procedure without restarting the container, e.g. while developing a module) is not supported.
+2. **Restarting a replacement** (re-running the procedure without restarting the container, e.g. while developing a module) is not supported.

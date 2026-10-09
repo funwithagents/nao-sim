@@ -50,7 +50,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | `ALTextToSpeech` replacement | Built and tested on both versions; microphone gate and subtitles not built ([speech.md](speech.md)) |
 | `tts` container | Built and tested ([tts-engine.md](tts-engine.md)) |
 | Host sound card | Built and tested ([soundcard.md](soundcard.md)) |
-| `NaoSim` status service, healthcheck | Planned |
+| `NaoSim` status service, healthcheck | Built and tested ([status-service.md](status-service.md)) |
 | Host link and host services | Planned; the sound card's protocol predates the design |
 | `ALAudioDevice` replacement | Planned |
 | Video injection | Measured (`putImage` works on both versions), not built |
@@ -91,10 +91,10 @@ Details and measurements: [container.md](container.md) and [service-replacement.
 
 ## Container
 
-Specified in [container.md](container.md), including the robot packages: the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs) is extracted from the public robot image and installed at boot as a system package; the user installs anything else (the sound set) as on a robot, and a volume per version keeps it. Still to build:
+Specified in [container.md](container.md), including the robot packages: the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs) is extracted from the public robot image and installed at boot as a system package; the user installs anything else (the sound set) as on a robot, and a volume per version keeps it.
 
-- **`NaoSim` status service** (an override module): reports the nao-sim version, the NAOqi version and the device sources, and publishes them in ALMemory (`NaoSim/Version`, `NaoSim/Camera/Source`, `NaoSim/Audio/Channels`, `NaoSim/Perception/*`). The desktop `naoqi-bin` has no `ALSystem`, so this is how a client learns the version and that the target is nao-sim. nao-viewer already relies on it: its pose source identifies the target as `nao-sim` when the `NaoSim` service exists, and reads the version from `NaoSim/Version`. The service name and that key are therefore a contract between the two packages.
-- **Healthcheck**: a Docker healthcheck calling the `NaoSim` service.
+The **`NaoSim` status service** ([status-service.md](status-service.md)) is the identity of a nao-sim target: the desktop `naoqi-bin` has no `ALSystem`, so this is how a client learns that the target is nao-sim, the nao-sim and NAOqi versions, which host devices are attached (`NaoSim/Camera/Source`, `NaoSim/Audio/Source`, `NaoSim/Perception/Source`, `none` until the device specs are built) and whether boot is complete (`NaoSim/Ready`). The Docker healthcheck calls it. nao-viewer already relies on it (service exists means `nao-sim`, version from `NaoSim/Version`), so the name and the keys are a contract between the packages. Still to build:
+
 - **Camera source**: pin `VideoInput.xml` to `SimulatorCam` in the image. The desktop suites already accept `putImage` as shipped (see [Media](#media-camera-and-microphone)).
 
 ## Host services
@@ -259,7 +259,7 @@ Two tiers ([testing.md](testing.md)): a fast, deterministic `tests/` tier with n
 1. **Validation spike** (done, Oct 8, 2026): a module loaded into NAOqi serves a host client; a host-registered service is called back from the container; the built-in `ALTextToSpeech` is replaced, with `ALAnimatedSpeech` using the replacement. On 2.1 and 2.8.
 2. **Speech path** (done except gate and subtitles): `ALTextToSpeech` replacement, `tts` container, host sound card, under test on both versions (plan [202610081257](../plans/202610081257_baseline-tests-speech-path.md)).
    - Still to exit: a Choregraphe behaviour with animated speech and the `animations` package runs with gestures on their words; sound files play through the `ALAudioPlayer` shim; reference sentences within the agreed duration tolerance.
-3. **Container and probe**: `NaoSim` status service and healthcheck, entrypoint hardening, `nao-sim up`/`down`, the host-link spec, the probe with committed reports for 2.1 and 2.8.
+3. **Container and probe** (started): `NaoSim` status service, healthcheck and entrypoint hardening (done, [status-service.md](status-service.md)); `nao-sim up`/`down`, the host-link spec, the probe with committed reports for 2.1 and 2.8.
    - Exit: `nao-sim up` works on Linux and macOS; capability reports committed.
 4. **Media**: video injection (webcam and render), the sim window through `nao-sim[viewer]`, `ALAudioDevice` replacement, microphone gate.
    - Exit: a vision script and an audio script written against the standard NAOqi services run unchanged on nao-sim.

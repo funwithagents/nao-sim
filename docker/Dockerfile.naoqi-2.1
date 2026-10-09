@@ -4,6 +4,8 @@
 # Never push this image: it contains Aldebaran's software.
 FROM --platform=linux/amd64 ubuntu:14.04
 
+# The nao-sim version the NaoSim service reports (compose passes ${NAO_SIM_VERSION:-dev}).
+ARG NAO_SIM_VERSION=dev
 ARG SUITE=choregraphe-suite-2.1.4.13-linux64.tar.gz
 
 RUN apt-get update \
@@ -22,6 +24,7 @@ RUN mkdir -p /opt && cd /opt \
 # Our override modules (Python 2.7), loaded into the naoqi-bin process by the entrypoint.
 COPY modules/ /opt/naoqi/modules/
 COPY entrypoint.sh /opt/naoqi/bin/nao-sim-entrypoint.sh
+COPY healthcheck.sh /opt/naoqi/bin/nao-sim-healthcheck.sh
 
 # The robot's animations package (extracted from the robot image). PackageManager installs every
 # .pkg in share/naoqi/apps/ as a system package at boot, as a robot does with its factory packages.
@@ -37,8 +40,10 @@ ENV NAOQI_HOME=/opt/naoqi \
     LD_LIBRARY_PATH=/opt/naoqi/lib \
     PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules \
     HOME=/home/nao \
+    NAO_SIM_VERSION=${NAO_SIM_VERSION} \
+    NAO_SIM_NAOQI_VERSION=2.1.4.13 \
     NAO_SIM_EXIT_MODULES="ALTextToSpeech" \
-    NAO_SIM_MODULES="nao_sim_tts_almodule" \
+    NAO_SIM_MODULES="nao_sim_status_almodule nao_sim_tts_almodule" \
     NAO_SIM_DEFER_MODULES="animatedspeech dialog" \
     NAO_SIM_READY_SERVICE="ALAutonomousLife"
 
@@ -46,4 +51,7 @@ USER nao
 WORKDIR /opt/naoqi
 # 9559: naoqi-bin broker; override modules register through it (naoqi.ALModule), so it is the only port
 EXPOSE 9559
+# Healthy once NaoSim.isReady answers true on the public port (specs/status-service.md).
+HEALTHCHECK --interval=5s --timeout=5s --start-period=120s --retries=3 \
+  CMD ["/opt/naoqi/bin/nao-sim-healthcheck.sh"]
 ENTRYPOINT ["/opt/naoqi/bin/nao-sim-entrypoint.sh"]

@@ -6,7 +6,7 @@ nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe su
 - **Host**: dumb devices (the sound card today; microphone, webcam and the perception feed planned), Python 3.12–3.13 with libqi.
 - **Simulated world** (planned, optional): the `nao-sim[viewer]` extra pulls nao-viewer, whose sim mode poses the NAO model from nao-sim's NAOqi in a scene and renders the head cameras that nao-sim injects into `ALVideoDevice`.
 
-Built and tested on both versions: the container, the service-replacement mechanism and the speech path (`ALTextToSpeech` replacement, `tts` engine, sound card). Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
+Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement, `tts` engine, sound card) and the `NaoSim` status service with the Docker healthcheck. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
 
 ## Specs
 
@@ -21,8 +21,9 @@ Built and tested on both versions: the container, the service-replacement mechan
 | [speech.md](speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock | Implemented |
 | [tts-engine.md](tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the sound card | Implemented |
 | [soundcard.md](soundcard.md) | Host sound card: TCP PCM protocol, newest-stream-wins, stop, `--record`/`--silent` | Implemented |
+| [status-service.md](status-service.md) | `NaoSim` status service: identity of a nao-sim target (versions, device sources, readiness) as a service and ALMemory keys, the entrypoint's readiness guarantees, the Docker healthcheck | Implemented |
 
-[_overview.md](_overview.md) is the overview of nao-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: host services and host link, the simulated world (nao-viewer sim mode), `NaoSim` status service and healthcheck, `ALAudioDevice`, video injection, `ALAudioPlayer`, perception, speech recognition, CLI, capability probe.
+[_overview.md](_overview.md) is the overview of nao-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: host services and host link, the simulated world (nao-viewer sim mode), `ALAudioDevice`, video injection, `ALAudioPlayer`, perception, speech recognition, CLI, capability probe.
 
 Each spec also opens with a YAML **frontmatter** block declaring the `code:` and `tests:` files it governs — the spec → code/tests mapping the spec-drift checks use to scope what they compare. Keep it current when files move, and see [AGENTS.md](../AGENTS.md) ("Spec frontmatter") for the full convention.
 

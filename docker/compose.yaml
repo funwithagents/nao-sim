@@ -13,6 +13,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.naoqi-2.1
+      args:
+        NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
     image: nao-sim/naoqi:2.1.4.13
     platform: linux/amd64
     container_name: nao-sim-naoqi
@@ -30,6 +32,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.naoqi-2.8
+      args:
+        NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
     image: nao-sim/naoqi:2.8.7.4
     platform: linux/amd64
     container_name: nao-sim-naoqi28

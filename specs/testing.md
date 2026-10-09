@@ -7,7 +7,10 @@ tests:
   - tests/test_soundcard.py
   - tests/test_tts_core.py
   - tests/test_tts_engine.py
+  - tests/test_status_core.py
+  - tests/test_entrypoint.py
   - tests-e2e/test_speech_live.py
+  - tests-e2e/test_status_live.py
 ---
 
 # Testing
@@ -30,7 +33,7 @@ Tests split into two directories, and the split is structural — a directory bo
 - **`tests/` is the normal dev loop.** Fast, deterministic, no real network, no credentials. `pyproject.toml`'s `testpaths = ["tests"]` points the default `uv run pytest` here, so this is what runs on every change and what any contributor or CI can run with zero credentials.
 - **`tests-e2e/` is opt-in.** It builds and runs the NAOqi and `tts` containers (Docker, the user's Choregraphe suite, real timing), so it is deliberately *not* collected by the default run. Because `testpaths` already excludes it, no pytest marker or `--run-e2e` flag is needed: the physical separation is the whole mechanism. Run it explicitly (`uv run pytest tests-e2e`).
 
-The `tests/` tier has one `test_<module>.py` per module under test: the `src/nao_sim/` modules and the host-importable container code (`test_tts_core.py` for `docker/modules/nao_sim_tts_core.py`, `test_tts_engine.py` for `docker/tts/server.py`), plus the `test_project_map.py` drift guard. `tests/conftest.py` puts `docker/modules` and `docker/tts` on `sys.path` (and pyright's `extraPaths`). `tests-e2e/` is organized around live scenarios rather than modules.
+The `tests/` tier has one `test_<module>.py` per module under test: the `src/nao_sim/` modules and the host-importable container code (`test_tts_core.py` for `docker/modules/nao_sim_tts_core.py`, `test_status_core.py` for `nao_sim_status_core.py`, `test_tts_engine.py` for `docker/tts/server.py`), the container's shell scripts (`test_entrypoint.py` runs `docker/entrypoint.sh` and `healthcheck.sh` with fake `naoqi-bin` and `qicli` first on `PATH`, so the boot sequence and its failure exits are checked without Docker), plus the `test_project_map.py` drift guard. `tests/conftest.py` puts `docker/modules` and `docker/tts` on `sys.path` (and pyright's `extraPaths`). `tests-e2e/` is organized around live scenarios rather than modules.
 
 ## What a good test asserts
 

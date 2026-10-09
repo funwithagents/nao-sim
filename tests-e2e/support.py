@@ -5,7 +5,9 @@ The live tests drive their own stack: they build and start a version's container
 version whose suite (or image) is missing, or a machine without Docker, skips, never fails.
 """
 
+import importlib.metadata
 import json
+import os
 import shutil
 import socket
 import subprocess
@@ -30,6 +32,7 @@ SOUNDCARD_PORT = 9562
 @dataclass(frozen=True)
 class Version:
     name: str
+    naoqi_version: str  # what NaoSim.getNaoqiVersion() reports
     service: str  # compose service
     container: str
     image: str
@@ -43,6 +46,7 @@ class Version:
 VERSIONS = {
     "2.1": Version(
         "2.1",
+        "2.1.4.13",
         "naoqi",
         "nao-sim-naoqi",
         "nao-sim/naoqi:2.1.4.13",
@@ -52,6 +56,7 @@ VERSIONS = {
     ),
     "2.8": Version(
         "2.8",
+        "2.8.7.4",
         "naoqi28",
         "nao-sim-naoqi28",
         "nao-sim/naoqi:2.8.7.4",
@@ -76,9 +81,11 @@ def connect(url: str = URL, attempts: int = 5) -> qi.Session:
     raise RuntimeError(f"could not connect to {url} in {attempts} attempts: {error}")
 
 
-def _run(*args: str, timeout: float = 120) -> subprocess.CompletedProcess[str]:
+def _run(
+    *args: str, timeout: float = 120, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        args, capture_output=True, text=True, timeout=timeout, check=False
+        args, capture_output=True, text=True, timeout=timeout, check=False, env=env
     )
 
 
@@ -124,7 +131,9 @@ class Stack:
             "tts",
             v.service,
         ]
-        res = _run(*cmd, timeout=1800)
+        # The image reports the checkout's version through NaoSim.getVersion().
+        env = {**os.environ, "NAO_SIM_VERSION": importlib.metadata.version("nao-sim")}
+        res = _run(*cmd, timeout=1800, env=env)
         if res.returncode != 0:
             pytest.fail(f"docker compose up failed for {v.name}:\n{res.stderr[-3000:]}")
         end = time.time() + timeout
@@ -151,6 +160,40 @@ class Stack:
     def copy_in(self, src: Path, dest: str) -> None:
         res = _run("docker", "cp", str(src), f"{self.version.container}:{dest}")
         assert res.returncode == 0, res.stderr
+
+    def image_env(self) -> dict[str, str]:
+        """The environment baked into the version's image (`NAO_SIM_VERSION`, ...)."""
+        res = _run(
+            "docker",
+            "image",
+            "inspect",
+            "-f",
+            "{{range .Config.Env}}{{println .}}{{end}}",
+            self.version.image,
+        )
+        assert res.returncode == 0, res.stderr
+        return dict(
+            line.split("=", 1) for line in res.stdout.splitlines() if "=" in line
+        )
+
+    def health(self) -> str:
+        """Docker's health status of the NAOqi container: starting, healthy or unhealthy."""
+        res = _run(
+            "docker",
+            "inspect",
+            "-f",
+            "{{.State.Health.Status}}",
+            self.version.container,
+        )
+        return res.stdout.strip()
+
+    def wait_healthy(self, timeout: float = 30) -> str:
+        end = time.time() + timeout
+        status = self.health()
+        while status != "healthy" and time.time() < end:
+            time.sleep(1)
+            status = self.health()
+        return status
 
     def logs(self, since: str) -> str:
         res = _run("docker", "logs", "--since", since, self.version.container)

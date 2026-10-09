@@ -4,13 +4,16 @@ code:
   - docker/Dockerfile.naoqi-2.8
   - docker/compose.yaml
   - docker/entrypoint.sh
+  - docker/healthcheck.sh
   - docker/Dockerfile.naoqi-2.1.dockerignore
   - docker/Dockerfile.naoqi-2.8.dockerignore
   - src/nao_sim/suite.py
 tests:
   - tests-e2e/test_speech_live.py
   - tests/test_suite.py
+  - tests/test_entrypoint.py
   - tests-e2e/test_packages_live.py
+  - tests-e2e/test_status_live.py
 ---
 
 # NAOqi container
@@ -69,7 +72,7 @@ Each image is built from two Aldebaran files per version, kept in `docker/vendor
 
 ### Images
 
-One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override modules copied to `/opt/naoqi/modules/`, entrypoint at `/opt/naoqi/bin/nao-sim-entrypoint.sh`.
+One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override modules copied to `/opt/naoqi/modules/`, entrypoint at `/opt/naoqi/bin/nao-sim-entrypoint.sh`, healthcheck at `/opt/naoqi/bin/nao-sim-healthcheck.sh` ([status-service.md](status-service.md)).
 
 - The build context is `docker/`. Each Dockerfile has its own ignore file (`Dockerfile.naoqi-<version>.dockerignore`, read by BuildKit next to the Dockerfile) that leaves out the other version's vendor files, robot images (`*.opn`) and partial downloads (`*.part`), so a build uploads only its own suite and package.
 
@@ -81,7 +84,7 @@ One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override 
 | Boot to ready | about 5 s | about 15 s |
 
 - `naoqi-bin` refuses to run as root: the image runs as user `nao` (uid 1000), which owns `/opt/naoqi`.
-- Environment: `PATH`, `LD_LIBRARY_PATH=/opt/naoqi/lib`, `PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules`, plus the per-version entrypoint defaults below.
+- Environment: `PATH`, `LD_LIBRARY_PATH=/opt/naoqi/lib`, `PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules`, `NAO_SIM_NAOQI_VERSION` (the suite's full version) and `NAO_SIM_VERSION` (build argument, default `dev`; see [status-service.md](status-service.md)), plus the per-version entrypoint defaults below.
 
 ### Network layout
 
@@ -112,19 +115,26 @@ Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and ea
 | `NAO_SIM_DEFER_MODULES` | Autoload entries commented out of a copy of `autoload.ini`, launched with `ALLauncher.launchLocal` at the end | `animatedspeech dialog` | empty |
 | `NAO_SIM_RESTART_SERVICES` | `ALServiceManager` services stopped before the replacement and started after | empty | `expressivity.autonomousabilitiesmodules` |
 | `NAO_SIM_EXIT_MODULES` | Built-ins whose `exit()` is called | `ALTextToSpeech` | `ALTextToSpeech` |
-| `NAO_SIM_MODULES` | Python modules loaded with `ALLauncher.launchPythonModule` | `nao_sim_tts_almodule` | `nao_sim_tts_qiservice` |
+| `NAO_SIM_MODULES` | Python modules loaded with `ALLauncher.launchPythonModule`, in order | `nao_sim_status_almodule nao_sim_tts_almodule` | `nao_sim_status_qiservice nao_sim_tts_qiservice` |
+| `NAO_SIM_READY_TRIES` | Polls (one per second) before giving up on NAOqi | 120 | 120 |
+| `NAO_SIM_SETTLE_POLLS` | Consecutive polls the service list must stay unchanged before NAOqi counts as ready | 3 | 3 |
+
+(`NAO_SIM_POLL_INTERVAL`, the seconds between polls, and `NAOQI_HOME` exist so the host-side tests can run the script against fake `naoqi-bin` and `qicli`; the images never change them.)
 
 Sequence:
 
 1. Start `naoqi-bin`.
-2. Poll with `qicli` (1 s period, up to 120 tries) until `ALLauncher` and the ready service answer.
+2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge`, every exit module and the ready service are registered **and** the list has not changed for `NAO_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAO_SIM_READY_TRIES` polls fail, exit 1. The settling matters on 2.8: on a slow boot (cold cache, right after an image rebuild) the ready service appears while `naoqi-service` is still loading modules, and exiting a built-in or loading a module into that half-started process killed it (measured: `ALServiceManager` restarted it and `launchPythonModule` was cancelled after 50 s).
 3. Stop the restart services.
 4. `exit()` the exit modules.
 5. Add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`).
 6. Load the modules.
 7. Start the restart services.
 8. Launch the deferred modules.
-9. Print `[entrypoint] nao-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
+9. Check that every exit module's name answers again (up to 10 s each; `launchPythonModule` does not report an import failure). If one does not, exit 1.
+10. Call `NaoSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] nao-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
+
+Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited container, never as a running one without its overrides. The healthcheck ([status-service.md](status-service.md)) reports `healthy` only after step 10.
 
 ### Desktop NAOqi facts the rest of nao-sim relies on
 
@@ -143,7 +153,5 @@ Sequence:
 
 ## Open questions
 
-1. **Readiness timeout.** After 120 failed polls the entrypoint carries on as if NAOqi were ready instead of failing. It should exit non-zero, so the container shows as failed.
-2. **Healthcheck.** There is no Docker healthcheck. It needs the planned `NaoSim` status service (no `ALSystem` on the desktop `naoqi-bin`); see [_overview.md](_overview.md), "Container".
-3. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
-4. **Starting the stack.** `nao-sim up` and `down` (build if needed, pick the version, start the host services) are not built; today it is `docker compose` by hand (see [README.md](../README.md)).
+1. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
+2. **Starting the stack.** `nao-sim up` and `down` (build if needed, pick the version, start the host services) are not built; today it is `docker compose` by hand (see [README.md](../README.md)). It should wait on the container's health rather than on the log line.

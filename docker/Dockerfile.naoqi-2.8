@@ -4,6 +4,8 @@
 # Never push this image: it contains Aldebaran's software.
 FROM --platform=linux/amd64 ubuntu:16.04
 
+# The nao-sim version the NaoSim service reports (compose passes ${NAO_SIM_VERSION:-dev}).
+ARG NAO_SIM_VERSION=dev
 ARG SUITE=choregraphe-suite-2.8.7.4-linux64.tar.gz
 ARG SUITE_DIR=choregraphe-suite-2.8.7.4-linux64
 
@@ -23,6 +25,7 @@ RUN mkdir -p /opt && cd /opt \
 # Our override modules (Python 2.7), loaded into the naoqi-bin process by the entrypoint.
 COPY modules/ /opt/naoqi/modules/
 COPY entrypoint.sh /opt/naoqi/bin/nao-sim-entrypoint.sh
+COPY healthcheck.sh /opt/naoqi/bin/nao-sim-healthcheck.sh
 
 # The robot's animations package (extracted from the robot image). PackageManager installs every
 # .pkg in share/naoqi/apps/ as a system package at boot, as a robot does with its factory packages.
@@ -41,12 +44,14 @@ ENV NAOQI_HOME=/opt/naoqi \
     LD_LIBRARY_PATH=/opt/naoqi/lib \
     PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules \
     HOME=/home/nao \
+    NAO_SIM_VERSION=${NAO_SIM_VERSION} \
+    NAO_SIM_NAOQI_VERSION=2.8.7.4 \
     NAO_SIM_LISTEN_URL="tcp://127.0.0.1:9558" \
     NAO_SIM_INTERNAL_PORT="9558" \
     NAO_SIM_READY_SERVICE="ALPanoramaCompass" \
     NAO_SIM_RESTART_SERVICES="expressivity.autonomousabilitiesmodules" \
     NAO_SIM_EXIT_MODULES="ALTextToSpeech" \
-    NAO_SIM_MODULES="nao_sim_tts_qiservice" \
+    NAO_SIM_MODULES="nao_sim_status_qiservice nao_sim_tts_qiservice" \
     NAO_SIM_DEFER_MODULES=""
 
 USER nao
@@ -54,4 +59,7 @@ WORKDIR /opt/naoqi
 # 9559: the suite's qi-secure-gateway (core package), which relays every service process (naoqi-bin
 # itself listens on 127.0.0.1:9558). Single public port, as on a real NAO 6.
 EXPOSE 9559
+# Healthy once NaoSim.isReady answers true on the public port (specs/status-service.md).
+HEALTHCHECK --interval=5s --timeout=5s --start-period=120s --retries=3 \
+  CMD ["/opt/naoqi/bin/nao-sim-healthcheck.sh"]
 ENTRYPOINT ["/opt/naoqi/bin/nao-sim-entrypoint.sh"]

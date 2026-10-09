@@ -19,7 +19,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | `plans/` | Implementation plans turning settled specs into buildable steps — indexed by [plans/_index.md](plans/_index.md) |
 | `tests/` | Fast, deterministic, no-network tests; mirrors the `src/nao_sim/` module structure |
 | `tests-e2e/` | Opt-in live tests that start the nao-sim containers themselves, once per NAOqi version (not collected by default `pytest`) |
-| `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh` ([container.md](specs/container.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/service-replacement.md), [speech.md](specs/speech.md)); `tts/`, the speech engine container ([tts-engine.md](specs/tts-engine.md)); `vendor/<version>/`, the suite tarball and `animations.pkg` fetched by `nao-sim-fetch-suite` (gitignored) |
+| `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh` ([container.md](specs/container.md)), `healthcheck.sh` ([status-service.md](specs/status-service.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/service-replacement.md), [speech.md](specs/speech.md), [status-service.md](specs/status-service.md)); `tts/`, the speech engine container ([tts-engine.md](specs/tts-engine.md)); `vendor/<version>/`, the suite tarball and `animations.pkg` fetched by `nao-sim-fetch-suite` (gitignored) |
 | `spike/` | Local-only investigation scripts and measurement log (untracked, not committed); findings are folded into the specs |
 
 ### `src/nao_sim/` modules
