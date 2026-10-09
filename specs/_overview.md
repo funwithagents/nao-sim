@@ -4,7 +4,7 @@ nao-sim is a NAO in a box. NAOqi (`naoqi-bin` from the user's own Choregraphe su
 
 It is unofficial and MIT-licensed, not affiliated with Aldebaran, and ships no Aldebaran assets.
 
-This overview is the map of the whole project. Each concept gets its own spec (see [_index.md](_index.md)) when work on it starts; until then, its section here is the reference. Sections whose concept has a spec only summarize it and link to it.
+This overview is the map of the whole project and the authority for nao-sim; the toolkit-wide document (nao-bridge, nao-sim, nao-viewer) covers cross-package concerns only and defers to it. Each concept gets its own spec (see [_index.md](_index.md)) when work on it starts; until then, its section here is the reference. Sections whose concept has a spec only summarize it and link to it.
 
 ## Goals
 
@@ -20,7 +20,7 @@ This overview is the map of the whole project. Each concept gets its own spec (s
 | Override modules for the services the desktop NAOqi lacks: speech, audio input, sound files, perception | Reimplementing NAOqi, its walk engine, fall manager, or vision and audio algorithms |
 | Host devices: loudspeaker, microphone or WAV replay, webcam or rendered camera | A physics simulation driving NAOqi (no simulator interface exists for it) |
 | The simulated world (window, rendered head cameras), through nao-viewer's sim mode | ROS / ROS 2, Webots |
-| A capability probe that measures what a NAOqi target offers | Client libraries: they connect to nao-sim as to any NAO |
+| A capability probe that measures what a NAOqi target offers | Client libraries: they connect to nao-sim as to any NAO (nao-bridge offers nao-sim as its `[sim]` extra; nao-sim never depends on it) |
 |  | The NAO model, the meshes and the 3D rendering: nao-viewer owns them |
 
 ## Architecture
@@ -93,7 +93,7 @@ Details and measurements: [container.md](container.md) and [service-replacement.
 
 Specified in [container.md](container.md), including the robot packages: the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs) is extracted from the public robot image and installed at boot as a system package; the user installs anything else (the sound set) as on a robot, and a volume per version keeps it.
 
-The **`NaoSim` status service** ([status-service.md](status-service.md)) is the identity of a nao-sim target: the desktop `naoqi-bin` has no `ALSystem`, so this is how a client learns that the target is nao-sim, the nao-sim and NAOqi versions, which host devices are attached (`NaoSim/Camera/Source`, `NaoSim/Audio/Source`, `NaoSim/Perception/Source`, `none` until the device specs are built) and whether boot is complete (`NaoSim/Ready`). The Docker healthcheck calls it. nao-viewer already relies on it (service exists means `nao-sim`, version from `NaoSim/Version`), so the name and the keys are a contract between the packages. Still to build:
+The **`NaoSim` status service** ([status-service.md](status-service.md)) is the identity of a nao-sim target: the desktop `naoqi-bin` has no `ALSystem`, so this is how a client learns that the target is nao-sim, the nao-sim and NAOqi versions, which host devices are attached (`NaoSim/Camera/Source`, `NaoSim/Audio/Source`, `NaoSim/Perception/Source`, `none` until the device specs are built; `NaoSim/Audio/Channels` comes with `ALAudioDevice`) and whether boot is complete (`NaoSim/Ready`). The Docker healthcheck calls it. nao-viewer already relies on it (service exists means `nao-sim`, version from `NaoSim/Version`), so the name and the keys are a contract between the packages. Still to build:
 
 - **Camera source**: pin `VideoInput.xml` to `SimulatorCam` in the image. The desktop suites already accept `putImage` as shipped (see [Media](#media-camera-and-microphone)).
 
@@ -122,9 +122,17 @@ nao-viewer is a separate package (its own repository) that owns the NAO MuJoCo m
 - nao-sim drives it with `nao_viewer.sim_client`: `Sim.launch(naoqi_url, scene=..., headless=...)` starts the process and waits for its ready line; `camera_frame(camera, width, height)` returns an RGB frame with the pose sequence and age it was rendered at; `close()` stops it; a window closed by the user raises `SimClosed`. The client imports neither MuJoCo nor qi.
 - The sim process never writes to NAOqi. Everything NAOqi-specific on the device side (colorspaces, subscriptions, `putImage`) stays in nao-sim, which keeps the sim generic.
 - With `--camera render` the loop closes: NAOqi moves the head, the sim renders what that camera sees, nao-sim injects it, NAOqi serves it to its subscribers.
-- `--headless` runs the sim without a window (also on macOS without `mjpython`), for render-camera tests.
 - Planned sim operations that nao-sim will consume: touch events from clicks on the robot (`ALTouch`, an awareness stimulus) and human figures in scenes with their positions (the [perception](#perception) feed without a webcam). Each comes as a new operation of the sim protocol.
-- **Dependency**: through an extra, `nao-sim[viewer]`, which pulls nao-viewer (and with it MuJoCo). Without it, nao-sim runs with no window and no render camera: speech, microphone, webcam camera and perception from the webcam all work, which suits CI and servers. `--camera render` without the extra fails with a message naming the extra. nao-viewer depends on libqi only, never on nao-sim, so the chain stays one-way.
+- **Dependency**: through an extra, `nao-sim[viewer]`, which pulls nao-viewer (and with it MuJoCo). Without it, nao-sim runs with no window and no render camera: every NAOqi API, speech, microphone, webcam camera and perception from the webcam all work, which suits CI and servers; what is lost is the robot in its scene, the render camera, touch from clicks and people placed in the scene. nao-viewer depends on libqi only, never on nao-sim, so the chain stays one-way. `nao-bridge[sim]` pulls `nao-sim[viewer]`, so the full experience stays one install.
+- **`headless` setting** (nao-sim's configuration, default `false`; `--headless` on `up`): it decides the window, and the camera decides whether the sim runs at all:
+
+  | `headless` | Camera | Sim process | Needs `nao-sim[viewer]` |
+  | --- | --- | --- | --- |
+  | `false` | any | `nao-viewer sim` with its window | Yes |
+  | `true` | `render` | `nao-viewer sim --headless` (no window, also on macOS without `mjpython`) | Yes |
+  | `true` | `webcam` or none | None | No |
+
+  When the extra is needed and missing, `nao-sim up` fails before starting anything, with a message naming the extra.
 
 ## Speech
 
@@ -168,7 +176,7 @@ The desktop NAOqi has no audio input, and neither version registers `ALAudioDevi
 - Delivery: each subscriber's `processRemote(nbOfChannels, nbOfSamplesByChannel, timeStamp, buffer)` with interleaved 16-bit samples, called through the broker (`naoqi.ALProxy(subscriber)`), which reaches a host subscriber over the socket the host opened. Verified on 2.1; 2.8 is to confirm ([service-replacement.md](service-replacement.md), open questions).
 - The same rules as NAOqi's device: 48 kHz with all 4 channels, or 16 kHz with all channels or one; invalid combinations refused the same way. Chunk size and cadence match NAOqi's; the reference values are still to be supplied.
 - Sources: the host microphone over the host link, or WAV replay, including 4-channel recordings, for repeatable tests.
-- Mono policy: duplicate to all channels (default) or silence the missing ones, published in ALMemory.
+- Mono policy: duplicate to all channels (default) or silence the missing ones, published as `NaoSim/Audio/Channels` next to `NaoSim/Audio/Source` (the values are this spec's to define).
 - Muted by the microphone gate while the robot speaks.
 
 ### Sound files: ALAudioPlayer
@@ -215,7 +223,7 @@ An optional `ALSpeechRecognition` replacement in the container, backed by a host
 
 | Command | Purpose |
 | --- | --- |
-| `nao-sim up --naoqi 2.1\|2.8 --suite PATH [--camera webcam:0\|render] [--audio mic\|wav:FILE] [--scene FILE] [--no-window]` | Build the image if needed, start the containers and the host services, and launch the sim window (with `nao-sim[viewer]`; `--no-window` runs the sim headless, for `--camera render` without a display) |
+| `nao-sim up --naoqi 2.1\|2.8 --suite PATH [--camera webcam:0\|render] [--audio mic\|wav:FILE] [--scene FILE] [--headless]` | Build the image if needed, start the containers and the host services, and launch the sim (with `nao-sim[viewer]`; `--headless` overrides the `headless` setting, see [Simulated world](#simulated-world-nao-viewer)) |
 | `nao-sim down` | Stop everything |
 | `nao-sim status` / `nao-sim logs` | Health of the containers, the overrides and the host link |
 | `nao-sim probe` | Capability report (see below) |
@@ -243,8 +251,8 @@ The spike scripts (`spike/`, local only) cover these checks by hand today.
 
 ## Packaging and platforms
 
-- Python 3.12–3.13 host code, packaged with uv ([project.md](project.md)), the same range and platforms as nao-viewer. Runtime dependencies: `numpy`, `sounddevice`, `qi` (the libqi wheels); planned: `opencv-python-headless` (webcam) and the `viewer` extra (nao-viewer, for the sim window and the render camera).
-- The libqi wheels exist for macOS 15+ arm64 and Linux x86_64 (glibc 2.34+), Python 3.10–3.13. Installation elsewhere fails by design: nao-sim's host side cannot work without qi. Windows, Intel macOS, Linux arm64 and older systems need wheels from the libqi fork.
+- Python 3.12–3.13 host code, packaged with uv ([project.md](project.md)), the same range and platforms as nao-viewer. Runtime dependencies: `numpy`, `sounddevice`, `qi` (the libqi wheels); planned: `opencv-python-headless` (webcam) and the optional `viewer` extra (nao-viewer, for the sim window and the render camera). nao-sim installs and runs on its own; nao-bridge, a separate package, offers it as its `[sim]` extra.
+- The libqi wheels exist for macOS 15+ arm64 and Linux x86_64 (glibc 2.34+), Python 3.10–3.13. Installation elsewhere fails by design: nao-sim's host side cannot work without qi. v1 targets these two platforms only; Windows, Intel macOS, Linux arm64 and older systems are on the roadmap, each waiting on wheels from the libqi fork.
 - How pip users get the wheels is open: uv resolves them from the fork's GitHub Releases through `[tool.uv.sources]`, but those sources do not reach a published package's metadata, where a plain `qi` would resolve to Aldebaran's older `qi` 3.1.5 on PyPI. Options: a find-links URL, a package index on GitHub Pages, or PyPI under a distinct name.
 - Containers: Docker Engine on Linux, Docker Desktop or OrbStack on macOS (amd64 emulation for the NAOqi images on Apple Silicon; the `tts` container is native). Measured on OrbStack only.
 
