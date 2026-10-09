@@ -4,12 +4,13 @@ code:
   - docker/Dockerfile.naoqi-2.8
   - docker/compose.yaml
   - docker/entrypoint.sh
-  - docker/suite-2.1.sha256
-  - docker/suite-2.8.sha256
+  - docker/Dockerfile.naoqi-2.1.dockerignore
+  - docker/Dockerfile.naoqi-2.8.dockerignore
   - src/nao_sim/suite.py
 tests:
   - tests-e2e/test_speech_live.py
   - tests/test_suite.py
+  - tests-e2e/test_packages_live.py
 ---
 
 # NAOqi container
@@ -22,26 +23,55 @@ The container gives the desktop `naoqi-bin` from the user's Choregraphe suite th
 
 ## Decided
 
-### Suites and licensing
+### Vendor files and licensing
 
-- The suite tarball sits in `docker/vendor/` (gitignored). The image is built locally, tagged locally (`nao-sim/naoqi:<version>`) and never pushed: it contains Aldebaran's software.
-- `nao-sim-fetch-suite [2.1] [2.8] [--vendor DIR]` (`src/nao_sim/suite.py`, default: both versions into `docker/vendor/`) downloads each pinned suite from Aldebaran's own GitHub repository (public, Git LFS, served from `media.githubusercontent.com`). It is the same file a user would download by hand, kept on their machine only, so nothing is redistributed. The user may still place the tarball by hand.
-  - A file already there with the pinned hash is kept (no download), so the command is cheap to re-run.
-  - A file there with another hash (a Git LFS pointer, a partial copy) is an error and is left untouched; the user deletes it to download again.
-  - A download goes to `<file>.part`, is hashed while it streams, and takes the final name only if the hash matches; otherwise it is deleted and the command fails (exit 1).
-  - The pinned name and hash are read from `docker/suite-<version>.sha256` (`<sha256>  <file>`, so `shasum -c` works too); the URL is the repository's LFS media path plus that name.
-- Pinned sources and hashes:
+Each image is built from two Aldebaran files per version, kept in `docker/vendor/<version>/` (gitignored): the Choregraphe suite and the robot's `animations` package. The image is built locally, tagged locally (`nao-sim/naoqi:<version>`) and never pushed: it contains Aldebaran's software.
 
-| Version | Source | File | SHA-256 |
+| Version | Suite (from the repository's `Choregraphe/Linux/Binaries` or root) | Robot image the package comes from | `animations.pkg` |
 | --- | --- | --- | --- |
-| 2.1.4.13 (NAO V4/V5) | [aldebaran/NAO-V5-ressources](https://github.com/aldebaran/NAO-V5-ressources/tree/main/Choregraphe/Linux/Binaries), Git LFS (download from `media.githubusercontent.com`; the raw URL returns a pointer) | `choregraphe-suite-2.1.4.13-linux64.tar.gz` (431 MB) | `bad0212956e2223f36736cff33bdc1e008311b8bf9efd81a52dcf05895c8abce` (`docker/suite-2.1.sha256`) |
-| 2.8.7.4 (NAO V6) | [aldebaran/nao6-binaries](https://github.com/aldebaran/nao6-binaries), branch `master`, Git LFS | `choregraphe-suite-2.8.7.4-linux64.tar.gz` (1.33 GB) | `edf95da2ae8ec7573e3a590b6db47a472f9d2733280a4a597841fbf0c1e6c63c` (`docker/suite-2.8.sha256`) |
+| 2.1.4.13 (NAO V4/V5) | [aldebaran/NAO-V5-ressources](https://github.com/aldebaran/NAO-V5-ressources), `choregraphe-suite-2.1.4.13-linux64.tar.gz` (431 MB), SHA-256 `bad0212956e2223f36736cff33bdc1e008311b8bf9efd81a52dcf05895c8abce` | Same repository, `NAOqi 2.1.4.13/NAOqi Images/opennao-atom-system-image-2.1.4.13_2015-08-27.opn` (377 MB), SHA-256 `5d18427ba6f5199d30cf29941b20ad5fa6a06b8f64a29126953cdfa33dbb9a24`; package at `/usr/share/naoqi/apps/animations.pkg` | version 5.0.9, SHA-256 `a1d46221f5f28b91c8e7564ade4532f390e5911f14210787b3352a84c2b507e1` |
+| 2.8.7.4 (NAO V6) | [aldebaran/nao6-binaries](https://github.com/aldebaran/nao6-binaries), branch `master`, `choregraphe-suite-2.8.7.4-linux64.tar.gz` (1.33 GB), SHA-256 `edf95da2ae8ec7573e3a590b6db47a472f9d2733280a4a597841fbf0c1e6c63c` | Same repository, `nao-x86-2.8.7.4_20210820_094013.opn` (732 MB), SHA-256 `d82e5dd221712555f20c430f3ebcbe46825d5179f1bc0e2594629489855e24a4`; package at `/opt/aldebaran/share/naoqi/apps/animations.pkg` | version 7.0.3, SHA-256 `8866ddf4bb45eab79068cfe5746c66f3b8f507356fd93affed204bc834002f2c` |
 
+- All files are Git LFS: they are downloaded from `media.githubusercontent.com/media/aldebaran/<repo>/<branch>/<path>` (the raw URL returns a pointer). The pins (URL, file name, SHA-256, path inside the image) live in `src/nao_sim/suite.py`.
 - Use the Binaries tarball, not the 2.1 `.run` setup: it is a static self-extractor that crashes under Rosetta (`bss_size overflow`).
+- Neither suite has the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs): the robot image is its only public source. Both versions' packages are behaviours (`.xar`) and `.ogg` only, no native code, with the same 224 `Stand/Gestures` behaviours. The robot images have no sound set: that stays the user's to install (see "Package store").
+- The download fetches Aldebaran's own public files to the user's machine, as the user would by hand; nothing is redistributed.
+
+#### `nao-sim-fetch-suite`
+
+`nao-sim-fetch-suite [2.1] [2.8] [--vendor DIR]` (`src/nao_sim/suite.py`; default: both versions into `docker/vendor/`) makes `<vendor>/<version>/` hold the pinned suite and `animations.pkg`.
+
+- A file already there with the pinned hash is kept, so re-running is cheap (it hashes the files, nothing is downloaded).
+- A file there with another hash (a Git LFS pointer, a partial copy) is an error and is left untouched; the user deletes it to fetch again.
+- Every download goes to `<file>.part`, is hashed while it streams and takes its final name only if the hash matches; otherwise it is deleted and the command fails (exit 1).
+- `animations.pkg`, when missing, is extracted from the version's robot image:
+  1. The image (`.opn`) is used from `<vendor>/<version>/` if the user put it there with the pinned hash, otherwise downloaded there and deleted after the extraction (a user's own copy is kept).
+  2. Layout of a `.opn`: a 4096-byte `ALDIMAGE` header, an installer shell script whose variables give `MAGIC_SIZE`, `SIZE_BASE`, `INSTALLER_SIZE` and `IMAGE_CMP_SIZE`, then the compressed ext3 root filesystem at byte `MAGIC_SIZE + INSTALLER_SIZE × SIZE_BASE`, `IMAGE_CMP_SIZE × SIZE_BASE` bytes long (bzip2 on 2.1, gzip on 2.8, told apart by their magic bytes). The host decompresses it in Python.
+  3. No host tool reads ext3 on macOS, and nao-sim needs Docker anyway: the decompressed filesystem is streamed into `docker run -i --rm alpine:3.20`, which installs `e2fsprogs-extra`, stores it in the container and writes the package to stdout with `debugfs -R "cat <path>"`. The container is removed with its copy; nothing is mounted, no root is needed on the host.
+  4. The package goes through the same `.part`, hash check and rename.
+- Output is progress lines on stderr.
+
+### Robot packages in the image
+
+- The Dockerfile copies `vendor/<version>/animations.pkg` to `/opt/naoqi/share/naoqi/apps/animations.pkg`. At boot, NAOqi's `PackageManager` installs every `.pkg` in that directory as a *system* package, as a robot does with its factory packages (the 2.8 suite installs its own `core`, `dialog`, `expressivity`, `life` and `semantic` this way). Measured on both versions: `Successfully installed system package` in the log, `PackageManager.hasPackage("animations")` and `ALBehaviorManager.isBehaviorInstalled("animations/Stand/Gestures/Hey_1")` are true once the entrypoint is ready.
+- Copying the unzipped package into the package store does not work: `PackageManager` only knows the packages in its registry (`~/.local/share/PackageManager/pm.db`, SQLite, table `packages(uuid, path, installer)`).
+- Once built, the image needs neither the suite nor the package. A rebuild (after changing the modules or the entrypoint) still needs both in `docker/vendor/<version>/`: Docker checks every file a `COPY` uses, even for a cached step.
+
+### Package store
+
+`PackageManager` keeps installed packages under `/home/nao/.local/share/PackageManager` (the unzipped `apps/<uuid>/` plus `pm.db`). Packages the user installs (`PackageManager.install` over qi, or Choregraphe), such as the sound set, go there as on a robot.
+
+- Each NAOqi compose service mounts a named volume there (`packages-2.1`, `packages-2.8`), so user-installed packages survive `docker compose down` and `up`, not only a stop and start. One volume per version: packages are version-specific.
+- The image creates that directory owned by `nao`, so Docker initialises a new volume with that owner (an empty volume would otherwise be owned by root and `PackageManager` could not write).
+- A package built with Python's `zipfile` must give each entry regular-file mode bits (`external_attr = (stat.S_IFREG | 0o644) << 16`, as `zip` on Linux writes): 2.8's `PackageManager` cannot read back an entry without them (`Invalid manifest`), which `ZipFile.writestr(name, data)` produces. 2.1 accepts both.
+- `docker compose down -v` deletes the volumes: back to the image's factory packages, reinstalled at the next boot.
+- The system packages (`animations`, and the 2.8 suite's own) are reinstalled from the image when missing from the store, so a volume created before an image change still gets them.
 
 ### Images
 
 One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override modules copied to `/opt/naoqi/modules/`, entrypoint at `/opt/naoqi/bin/nao-sim-entrypoint.sh`.
+
+- The build context is `docker/`. Each Dockerfile has its own ignore file (`Dockerfile.naoqi-<version>.dockerignore`, read by BuildKit next to the Dockerfile) that leaves out the other version's vendor files, robot images (`*.opn`) and partial downloads (`*.part`), so a build uploads only its own suite and package.
 
 | | 2.1 (`Dockerfile.naoqi-2.1`) | 2.8 (`Dockerfile.naoqi-2.8`) |
 | --- | --- | --- |
@@ -68,7 +98,7 @@ Port 9559 is the only port, published on the host as `127.0.0.1:9559`.
 - `naoqi` (2.1, default).
 - `naoqi28` (2.8, profile `2.8`).
 
-Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time. They reach the engine at `http://tts:8080` (`NAO_SIM_TTS_URL`) and the host through `host.docker.internal` (`host-gateway` on Linux).
+Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and each mounts its package store volume (`packages-2.1`, `packages-2.8`; see "Package store"). They reach the engine at `http://tts:8080` (`NAO_SIM_TTS_URL`) and the host through `host.docker.internal` (`host-gateway` on Linux).
 
 ### Entrypoint
 
@@ -115,6 +145,5 @@ Sequence:
 
 1. **Readiness timeout.** After 120 failed polls the entrypoint carries on as if NAOqi were ready instead of failing. It should exit non-zero, so the container shows as failed.
 2. **Healthcheck.** There is no Docker healthcheck. It needs the planned `NaoSim` status service (no `ALSystem` on the desktop `naoqi-bin`); see [_overview.md](_overview.md), "Container".
-3. **Build context size.** The build context is `docker/`, so every build uploads both suite tarballs in `vendor/` (about 1.7 GB). A per-Dockerfile `.dockerignore` (`Dockerfile.naoqi-2.1.dockerignore`) that keeps only the version's own tarball fixes it.
-4. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
-5. **Starting the stack.** `nao-sim up` and `down` (build if needed, pick the version, start the host services) are not built; today it is `docker compose` by hand (see [README.md](../README.md)).
+3. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
+4. **Starting the stack.** `nao-sim up` and `down` (build if needed, pick the version, start the host services) are not built; today it is `docker compose` by hand (see [README.md](../README.md)).

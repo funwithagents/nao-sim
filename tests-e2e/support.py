@@ -18,6 +18,8 @@ from pathlib import Path
 import pytest
 import qi
 
+from nao_sim import suite
+
 REPO = Path(__file__).resolve().parent.parent
 COMPOSE = REPO / "docker" / "compose.yaml"
 VENDOR = REPO / "docker" / "vendor"
@@ -31,7 +33,6 @@ class Version:
     service: str  # compose service
     container: str
     image: str
-    tarball: str  # suite file in docker/vendor/
     profile: str | None
     tts_log: (
         str  # JSON-lines log of the ALTextToSpeech replacement, inside the container
@@ -45,7 +46,6 @@ VERSIONS = {
         "naoqi",
         "nao-sim-naoqi",
         "nao-sim/naoqi:2.1.4.13",
-        "choregraphe-suite-2.1.4.13-linux64.tar.gz",
         None,
         "/home/nao/tts_almodule.jsonl",
         "nao-sim ALModule replacement",
@@ -55,7 +55,6 @@ VERSIONS = {
         "naoqi28",
         "nao-sim-naoqi28",
         "nao-sim/naoqi:2.8.7.4",
-        "choregraphe-suite-2.8.7.4-linux64.tar.gz",
         "2.8",
         "/home/nao/tts_qiservice.jsonl",
         "nao-sim qi.Session replacement",
@@ -104,10 +103,15 @@ class Stack:
 
     def up(self, timeout: float = 240) -> None:
         v = self.version
-        build = (VENDOR / v.tarball).exists()
+        vendored = suite.VERSIONS[v.name]
+        folder = VENDOR / v.name
+        build = (folder / vendored.suite.filename).exists() and (
+            folder / suite.PACKAGE
+        ).exists()
         if not build and _run("docker", "image", "inspect", v.image).returncode != 0:
             pytest.skip(
-                f"NAOqi {v.name}: no suite in docker/vendor/ (uv run nao-sim-fetch-suite {v.name}) and no {v.image} image"
+                f"NAOqi {v.name}: no suite and package in docker/vendor/{v.name}/ "
+                f"(uv run nao-sim-fetch-suite {v.name}) and no {v.image} image"
             )
         if _port_taken(9559):
             pytest.fail("127.0.0.1:9559 is taken: stop the running nao-sim stack first")
@@ -141,7 +145,12 @@ class Stack:
             time.sleep(1)
 
     def down(self) -> None:
+        """`docker compose down`: removes the containers, keeps the package store volume."""
         _run(*self._compose, "down", timeout=300)
+
+    def copy_in(self, src: Path, dest: str) -> None:
+        res = _run("docker", "cp", str(src), f"{self.version.container}:{dest}")
+        assert res.returncode == 0, res.stderr
 
     def logs(self, since: str) -> str:
         res = _run("docker", "logs", "--since", since, self.version.container)

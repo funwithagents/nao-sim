@@ -4,7 +4,7 @@ Start at [specs/_index.md](specs/_index.md) for an overview of the specs and the
 
 The overview of nao-sim (architecture, licensing rules, NAOqi 2.1/2.8 differences, the state of every concept, milestones) is [specs/_overview.md](specs/_overview.md). Concept specs are carved out of it as work starts on them; until a concept has its own spec, the overview is the reference.
 
-**Never commit Aldebaran assets**: Choregraphe suite tarballs (`docker/vendor/`, gitignored), NAO meshes or textures, robot packages, or anything derived from them. Images built from the suite are local only and never pushed.
+**Never commit Aldebaran assets**: Choregraphe suite tarballs, robot images (`.opn`) and packages (`docker/vendor/`, gitignored), NAO meshes or textures, robot packages, or anything derived from them. Images built from the suite are local only and never pushed.
 
 ## Project map
 
@@ -19,7 +19,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | `plans/` | Implementation plans turning settled specs into buildable steps — indexed by [plans/_index.md](plans/_index.md) |
 | `tests/` | Fast, deterministic, no-network tests; mirrors the `src/nao_sim/` module structure |
 | `tests-e2e/` | Opt-in live tests that start the nao-sim containers themselves, once per NAOqi version (not collected by default `pytest`) |
-| `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh` ([container.md](specs/container.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/service-replacement.md), [speech.md](specs/speech.md)); `tts/`, the speech engine container ([tts-engine.md](specs/tts-engine.md)); `vendor/`, the suite tarballs fetched by `nao-sim-fetch-suite` or placed by hand (gitignored) |
+| `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh` ([container.md](specs/container.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/service-replacement.md), [speech.md](specs/speech.md)); `tts/`, the speech engine container ([tts-engine.md](specs/tts-engine.md)); `vendor/<version>/`, the suite tarball and `animations.pkg` fetched by `nao-sim-fetch-suite` (gitignored) |
 | `spike/` | Local-only investigation scripts and measurement log (untracked, not committed); findings are folded into the specs |
 
 ### `src/nao_sim/` modules
@@ -30,7 +30,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 |---|---|---|
 | `src/nao_sim/__init__.py` | Package glue (no spec needed) | — |
 | `src/nao_sim/soundcard.py` | Host sound card: TCP PCM player the containers stream into (`nao-sim-soundcard`) | [soundcard.md](specs/soundcard.md) |
-| `src/nao_sim/suite.py` | Downloads the pinned Choregraphe suites into `docker/vendor/` (`nao-sim-fetch-suite`) | [container.md](specs/container.md) |
+| `src/nao_sim/suite.py` | Fetches the pinned Choregraphe suites and the robot image's `animations` package into `docker/vendor/<version>/` (`nao-sim-fetch-suite`) | [container.md](specs/container.md) |
 
 **Keep this map current:** when you add, rename, or remove a top-level `src/nao_sim/` module or a root directory, update the map in the same change — same discipline as keeping spec/plan statuses honest (below). A test (`tests/test_project_map.py`) enforces that every `src/nao_sim/*.py` module appears here and vice-versa — and that the spec frontmatter (see below) stays honest too.
 

@@ -39,7 +39,7 @@ def test_animated_speech_gets_every_bookmark(nao):
     subscriber = memory.subscriber("ALTextToSpeech/CurrentBookMark")
     link = subscriber.signal.connect(raised.append)
     try:
-        # No `animations` package in the suite: the gesture is absent, the bookmarks are not.
+        # The gesture comes from the robot's `animations` package, installed in the image.
         nao.service("ALAnimatedSpeech").say(
             "^start(animations/Stand/Gestures/Hey_1) Hello with gestures "
             "^wait(animations/Stand/Gestures/Hey_1) and a second part after the gesture."

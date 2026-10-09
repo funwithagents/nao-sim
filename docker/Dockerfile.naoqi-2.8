@@ -1,5 +1,6 @@
 # nao-sim: NAOqi 2.8.7.4 (NAO V6) runtime container.
-# Built locally only, from the user's Choregraphe suite tarball placed in docker/vendor/.
+# Built locally only, from docker/vendor/2.8/ (`uv run nao-sim-fetch-suite 2.8`): the Choregraphe
+# suite and the robot's animations package.
 # Never push this image: it contains Aldebaran's software.
 FROM --platform=linux/amd64 ubuntu:16.04
 
@@ -13,7 +14,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Extract the suite to /opt/naoqi (bin/, lib/, etc/naoqi/, share/).
-COPY vendor/${SUITE} /tmp/suite.tar.gz
+COPY vendor/2.8/${SUITE} /tmp/suite.tar.gz
 RUN mkdir -p /opt && cd /opt \
  && tar -xzf /tmp/suite.tar.gz \
  && mv ${SUITE_DIR} naoqi \
@@ -23,11 +24,17 @@ RUN mkdir -p /opt && cd /opt \
 COPY modules/ /opt/naoqi/modules/
 COPY entrypoint.sh /opt/naoqi/bin/nao-sim-entrypoint.sh
 
+# The robot's animations package (extracted from the robot image). PackageManager installs every
+# .pkg in share/naoqi/apps/ as a system package at boot, as a robot does with its factory packages.
+COPY vendor/2.8/animations.pkg /opt/naoqi/share/naoqi/apps/animations.pkg
+
 # The desktop 2.8 suite defaults to Pepper's model; make the virtual robot a NAO H25 V6.
 RUN sed -i 's/JULIETTEY20B2C.xml/NAOH25V60.xml/' /opt/naoqi/etc/naoqi/ALRobotModel.xml
 
-# naoqi-bin refuses to run as root.
-RUN useradd -m -u 1000 -s /bin/bash nao && chown -R nao:nao /opt/naoqi
+# naoqi-bin refuses to run as root. The package store is created here so that the compose volume
+# mounted on it starts owned by nao.
+RUN useradd -m -u 1000 -s /bin/bash nao && chown -R nao:nao /opt/naoqi \
+ && mkdir -p /home/nao/.local/share/PackageManager && chown -R nao:nao /home/nao/.local
 
 ENV NAOQI_HOME=/opt/naoqi \
     PATH=/opt/naoqi/bin:$PATH \

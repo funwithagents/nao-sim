@@ -1,28 +1,114 @@
+import bz2
+import gzip
 import hashlib
 import re
 import threading
+from collections.abc import Callable, Iterable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
 
 from nao_sim import suite
-from nao_sim.suite import SUITES, Suite, SuiteError, fetch, main
+from nao_sim.suite import (
+    PACKAGE,
+    VERSIONS,
+    SuiteError,
+    VendorFile,
+    Version,
+    fetch,
+    main,
+    opn_payload,
+    rootfs_chunks,
+)
 
-PAYLOAD = b"not really a suite\n" * 100_000  # ~1.9 MB: several chunks
 DOCKER = Path(__file__).resolve().parent.parent / "docker"
+SUITE = b"not really a suite\n" * 100_000  # ~1.9 MB: several chunks
+ROOTFS = bytes(range(256)) * 12_000  # ~3 MB: several chunks, compressed and not
+BASE = 1024
+
+
+def sha(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
+def make_opn(
+    payload: bytes,
+    compress: Callable[[bytes], bytes],
+    installer_kb: int = 4,
+    trailing: bytes = b"\0" * 5000,
+) -> bytes:
+    """A robot image laid out like Aldebaran's: header, installer script, compressed payload."""
+    data = compress(payload)
+    cmp_kb = -(-len(data) // BASE)
+    script = (
+        "#!/bin/sh\n# Set at image creation time\n"
+        f'SIZE_BASE="{BASE}"\nIMAGE_CMP_SIZE="{cmp_kb}"\n'
+        f'INSTALLER_SIZE="{installer_kb}"\nMAGIC_SIZE=4096\n'
+    ).encode()
+    return (
+        b"ALDIMAGE".ljust(4096, b"\0")
+        + script.ljust(installer_kb * BASE, b"\0")
+        + data.ljust(cmp_kb * BASE, b"\0")
+        + trailing
+    )
+
+
+def two_bzip2_streams(b: bytes) -> bytes:
+    return bz2.compress(b[:1000]) + bz2.compress(b[1000:])
+
+
+def two_gzip_members(b: bytes) -> bytes:
+    return gzip.compress(b[:1000]) + gzip.compress(b[1000:])
+
+
+@pytest.mark.parametrize(
+    ("compress", "compression"),
+    [
+        (bz2.compress, "bzip2"),
+        (gzip.compress, "gzip"),
+        (two_bzip2_streams, "bzip2"),
+        (two_gzip_members, "gzip"),
+    ],
+)
+def test_reads_the_root_filesystem_out_of_a_robot_image(
+    tmp_path, compress, compression
+):
+    opn = tmp_path / "nao.opn"
+    opn.write_bytes(make_opn(ROOTFS, compress, installer_kb=7))
+    payload = opn_payload(opn)
+    assert payload.offset == 4096 + 7 * BASE
+    assert payload.compression == compression
+    assert b"".join(rootfs_chunks(opn)) == ROOTFS
+
+
+def test_rejects_what_is_not_a_robot_image(tmp_path):
+    opn = tmp_path / "nao.opn"
+    opn.write_bytes(b"version https://git-lfs.github.com/spec/v1\n")
+    with pytest.raises(SuiteError, match="ALDIMAGE"):
+        opn_payload(opn)
+
+
+def test_rejects_a_truncated_robot_image(tmp_path):
+    opn = tmp_path / "nao.opn"
+    whole = make_opn(ROOTFS, bz2.compress, trailing=b"")
+    opn.write_bytes(whole[: len(whole) // 2])
+    with pytest.raises(SuiteError, match="truncated"):
+        b"".join(rootfs_chunks(opn))
 
 
 class Origin:
-    """A local stand-in for media.githubusercontent.com serving one file, counting requests."""
+    """A local stand-in for media.githubusercontent.com, counting requests per path."""
 
-    def __init__(self, body: bytes):
+    def __init__(self, files: dict[str, bytes]):
         origin = self
-        self.requests = 0
+        self.files = files
+        self.requests: list[str] = []
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
-                origin.requests += 1
+                origin.requests.append(self.path)
+                body = origin.files[self.path]
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -33,62 +119,98 @@ class Origin:
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/suite.tar.gz"
+        self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
 
     def close(self):
         self.server.shutdown()
         self.server.server_close()
 
 
+def echo_cat(rootfs: Iterable[bytes], path: str) -> Iterable[bytes]:
+    """Stands in for debugfs in Docker: the synthetic root filesystem *is* the package."""
+    return rootfs
+
+
+PKG = ROOTFS  # what echo_cat yields for a robot image made from ROOTFS
+OPN = make_opn(ROOTFS, bz2.compress)
+
+
 @pytest.fixture
 def origin():
-    o = Origin(PAYLOAD)
+    o = Origin({"/suite.tar.gz": SUITE, "/nao%20image.opn": OPN})
     yield o
     o.close()
 
 
-def pinned(url: str, body: bytes = PAYLOAD) -> Suite:
-    return Suite("2.1", url, "suite.tar.gz", hashlib.sha256(body).hexdigest())
+def version(
+    origin: Origin, package_sha256: str = sha(PKG), suite_body: bytes = SUITE
+) -> Version:
+    return Version(
+        "2.1",
+        VendorFile(f"{origin.base}/suite.tar.gz", sha(suite_body)),
+        VendorFile(f"{origin.base}/nao%20image.opn", sha(OPN)),
+        "/usr/share/naoqi/apps/animations.pkg",
+        package_sha256,
+    )
 
 
-def test_downloads_and_verifies_into_vendor(origin, tmp_path):
-    vendor = tmp_path / "vendor"  # created on demand
-    path = fetch(pinned(origin.url), vendor)
-    assert path == vendor / "suite.tar.gz"
-    assert path.read_bytes() == PAYLOAD
-    assert sorted(p.name for p in vendor.iterdir()) == ["suite.tar.gz"]  # no .part left
+def test_fills_the_version_folder(origin, tmp_path):
+    folder = fetch(version(origin), tmp_path, echo_cat)
+    assert folder == tmp_path / "2.1"
+    assert (folder / "suite.tar.gz").read_bytes() == SUITE
+    assert (folder / PACKAGE).read_bytes() == PKG
+    # The robot image it downloaded only to extract the package is gone, and nothing half-done is left.
+    assert sorted(p.name for p in folder.iterdir()) == [PACKAGE, "suite.tar.gz"]
 
 
-def test_keeps_a_suite_already_present(origin, tmp_path):
-    s = pinned(origin.url)
-    fetch(s, tmp_path)
-    fetch(s, tmp_path)
-    assert origin.requests == 1
+def test_downloads_nothing_when_everything_is_there(origin, tmp_path):
+    fetch(version(origin), tmp_path, echo_cat)
+    fetch(version(origin), tmp_path, echo_cat)
+    assert len(origin.requests) == 2  # the suite and the robot image, once each
+
+
+def test_uses_and_keeps_a_robot_image_the_user_put_there(origin, tmp_path):
+    (tmp_path / "2.1").mkdir()
+    (tmp_path / "2.1" / "nao image.opn").write_bytes(OPN)
+    fetch(version(origin), tmp_path, echo_cat)
+    assert origin.requests == ["/suite.tar.gz"]
+    assert (tmp_path / "2.1" / "nao image.opn").exists()
+    assert (tmp_path / "2.1" / PACKAGE).read_bytes() == PKG
+
+
+def test_rejects_an_extracted_package_with_the_wrong_hash(origin, tmp_path):
+    with pytest.raises(SuiteError, match="SHA-256"):
+        fetch(
+            version(origin, package_sha256=sha(b"another package")), tmp_path, echo_cat
+        )
+    assert sorted(p.name for p in (tmp_path / "2.1").iterdir()) == ["suite.tar.gz"]
 
 
 def test_rejects_a_download_with_the_wrong_hash(origin, tmp_path):
     with pytest.raises(SuiteError, match="SHA-256"):
-        fetch(pinned(origin.url, b"something else"), tmp_path)
-    assert list(tmp_path.iterdir()) == []
+        fetch(version(origin, suite_body=b"something else"), tmp_path, echo_cat)
+    assert list((tmp_path / "2.1").iterdir()) == []
 
 
 def test_leaves_a_mismatching_local_file_alone(origin, tmp_path):
     lfs_pointer = b"version https://git-lfs.github.com/spec/v1\noid sha256:...\n"
-    (tmp_path / "suite.tar.gz").write_bytes(lfs_pointer)
+    (tmp_path / "2.1").mkdir()
+    (tmp_path / "2.1" / "suite.tar.gz").write_bytes(lfs_pointer)
     with pytest.raises(SuiteError, match="Delete it"):
-        fetch(pinned(origin.url), tmp_path)
-    assert (tmp_path / "suite.tar.gz").read_bytes() == lfs_pointer
-    assert origin.requests == 0
+        fetch(version(origin), tmp_path, echo_cat)
+    assert (tmp_path / "2.1" / "suite.tar.gz").read_bytes() == lfs_pointer
+    assert origin.requests == []
 
 
 def test_cli_fetches_the_named_version_and_reports_failures(
     origin, tmp_path, monkeypatch, capsys
 ):
-    monkeypatch.setattr(suite, "SUITES", {"2.1": pinned(origin.url)})
+    monkeypatch.setattr(suite, "VERSIONS", {"2.1": version(origin)})
+    monkeypatch.setattr(suite, "docker_cat", echo_cat)
     assert main(["2.1", "--vendor", str(tmp_path)]) == 0
-    assert (tmp_path / "suite.tar.gz").read_bytes() == PAYLOAD
+    assert (tmp_path / "2.1" / PACKAGE).read_bytes() == PKG
 
-    (tmp_path / "suite.tar.gz").write_bytes(b"corrupt")
+    (tmp_path / "2.1" / "suite.tar.gz").write_bytes(b"corrupt")
     assert main(["--vendor", str(tmp_path)]) == 1
     assert "error:" in capsys.readouterr().err
 
@@ -96,11 +218,18 @@ def test_cli_fetches_the_named_version_and_reports_failures(
         main(["3.0", "--vendor", str(tmp_path)])
 
 
-@pytest.mark.parametrize("version", ["2.1", "2.8"])
-def test_pinned_suite_is_the_one_the_dockerfile_builds_from(version):
-    s = SUITES[version]
-    dockerfile = (DOCKER / f"Dockerfile.naoqi-{version}").read_text()
-    assert re.search(rf"^ARG SUITE={re.escape(s.filename)}$", dockerfile, re.MULTILINE)
-    assert s.url.startswith("https://media.githubusercontent.com/media/aldebaran/")
-    assert s.url.endswith("/" + s.filename)
-    assert re.fullmatch(r"[0-9a-f]{64}", s.sha256)
+@pytest.mark.parametrize("name", ["2.1", "2.8"])
+def test_the_dockerfile_builds_from_the_fetched_files(name):
+    v = VERSIONS[name]
+    dockerfile = (DOCKER / f"Dockerfile.naoqi-{name}").read_text()
+    assert re.search(
+        rf"^ARG SUITE={re.escape(v.suite.filename)}$", dockerfile, re.MULTILINE
+    )
+    assert f"COPY vendor/{name}/${{SUITE}} " in dockerfile
+    assert (
+        f"COPY vendor/{name}/{PACKAGE} /opt/naoqi/share/naoqi/apps/{PACKAGE}"
+        in dockerfile
+    )
+    for f in (v.suite, v.image):
+        assert f.url.startswith("https://media.githubusercontent.com/media/aldebaran/")
+        assert re.fullmatch(r"[0-9a-f]{64}", f.sha256)

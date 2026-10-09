@@ -21,6 +21,8 @@ services:
     depends_on: [tts]
     ports:
       - "127.0.0.1:9559:9559"
+    volumes:
+      - packages-2.1:/home/nao/.local/share/PackageManager
     extra_hosts:
       - "host.docker.internal:host-gateway"
   naoqi28:
@@ -36,5 +38,13 @@ services:
     depends_on: [tts]
     ports:
       - "127.0.0.1:9559:9559"
+    volumes:
+      - packages-2.8:/home/nao/.local/share/PackageManager
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+# Package stores (PackageManager's apps/ and pm.db), one per version: packages installed over qi
+# or Choregraphe survive `docker compose down`; `down -v` resets to the image's factory packages.
+volumes:
+  packages-2.1:
+  packages-2.8:

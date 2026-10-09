@@ -10,6 +10,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 |---|---|---|
 | [202610081257_baseline-tests-speech-path.md](202610081257_baseline-tests-speech-path.md) | Tests for the spike-built container and speech path (fast tier + live tier on 2.1 and 2.8), stop-during-synthesis fix, Python 3.12 and libqi dependency, self-managed live stacks; promotes seven specs to Implemented | Done |
 | [202610081600_suite-download.md](202610081600_suite-download.md) | `nao-sim-fetch-suite`: downloads the pinned Choregraphe suites from Aldebaran's GitHub repositories into `docker/vendor/`, hash-verified, skipping those already there | Done |
+| [202610081900_animations-package-and-package-store.md](202610081900_animations-package-and-package-store.md) | `animations.pkg` extracted from the public robot images by `nao-sim-fetch-suite` into `docker/vendor/<version>/`, installed as a system package at boot; package store volume per version; per-Dockerfile ignore files | Done |
 
 ## Status legend
 
