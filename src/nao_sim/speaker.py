@@ -1,5 +1,5 @@
 """The speaker: the simulated robot's loudspeaker on the host, a dumb PCM player the
-containers stream into (specs/devices.md, "Speaker").
+containers stream into (specs/host/devices.md, "Speaker").
 
 Protocol (TCP, one connection per stream): a JSON header line, then raw PCM until the
 sender closes.  {"cmd": "play", "rate": 22050, "channels": 1, "format": "s16le"}

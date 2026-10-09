@@ -80,7 +80,7 @@ Both Dockerfiles declare it: `HEALTHCHECK --interval=5s --timeout=5s --start-per
 - `NAO_SIM_VERSION` is a build argument of both Dockerfiles, kept as an environment variable in the image (default `dev`). `docker/compose.yaml` passes `${NAO_SIM_VERSION:-dev}`; `nao-sim fetch-and-build-images` passes the installed package version (the live tests build through it too). Baked at build rather than read at run time because it describes the override modules inside the image.
 - `NAO_SIM_NAOQI_VERSION` is set by each Dockerfile next to the suite it extracts.
 
-- There is no `NaoSim/Perception/Source`: perception runs in the clients, not in nao-sim ([_overview.md](_overview.md), "Perception and speech recognition").
+- There is no `NaoSim/Perception/Source`: perception runs in the clients, not in nao-sim ([_overview.md](../_overview.md), "Perception and speech recognition").
 
 ## Open questions
 

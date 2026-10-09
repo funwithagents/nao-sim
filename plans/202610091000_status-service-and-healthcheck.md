@@ -2,7 +2,7 @@
 
 **Status:** Done
 
-Implements `specs/status-service.md` (all sections): the `NaoSim` service on both NAOqi versions with its ALMemory keys, an entrypoint that verifies the replacements and fails loudly instead of printing a false "ready", a Docker healthcheck built on `NaoSim.isReady`, and the version build argument. Leaves out `nao-sim up` (which will consume the healthcheck) and boot-timing publication.
+Implements `specs/container/status-service.md` (all sections): the `NaoSim` service on both NAOqi versions with its ALMemory keys, an entrypoint that verifies the replacements and fails loudly instead of printing a false "ready", a Docker healthcheck built on `NaoSim.isReady`, and the version build argument. Leaves out `nao-sim up` (which will consume the healthcheck) and boot-timing publication.
 
 ## Scope
 
@@ -17,7 +17,7 @@ Implements `specs/status-service.md` (all sections): the `NaoSim` service on bot
 - `tests/test_entrypoint.py` — new: runs `entrypoint.sh` on the host with fake `naoqi-bin` and `qicli` on `PATH`; checks the call sequence per version, the timeout, the missing-replacement failure, the dead `naoqi-bin`, and `healthcheck.sh`
 - `tests-e2e/support.py` — `naoqi_version` per version, the version build arg, image environment and container health helpers
 - `tests-e2e/test_status_live.py` — new: identity and keys over qi, `isReady`, the container turns `healthy`
-- `specs/status-service.md`, `specs/container.md`, `specs/service-replacement.md`, `specs/testing.md`, `specs/_overview.md`, `specs/_index.md`, `AGENTS.md`, `README.md` — docs and statuses
+- `specs/container/status-service.md`, `specs/container/container.md`, `specs/container/service-replacement.md`, `specs/testing/testing.md`, `specs/_overview.md`, `specs/_index.md`, `AGENTS.md`, `README.md` — docs and statuses
 
 ## Steps
 

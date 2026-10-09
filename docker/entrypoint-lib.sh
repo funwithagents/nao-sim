@@ -1,7 +1,7 @@
 # What both versions' entrypoints share (entrypoint-2.1.sh, entrypoint-2.8.sh source it): starting
 # naoqi-bin, waiting for a settled service list, removing built-ins, loading our Python modules,
 # checking the replacements answer, and marking boot complete. Each version's script reads as its
-# exact procedure; see specs/container.md ("Entrypoint") and specs/service-replacement.md.
+# exact procedure; see specs/container/container.md ("Entrypoint") and specs/container/service-replacement.md.
 #
 # Any failure exits non-zero after terminating naoqi-bin, so a failed boot shows as an exited
 # container, never as a half-robot. Tunables (images never change them; the host-side tests do):

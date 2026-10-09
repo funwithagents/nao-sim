@@ -21,11 +21,11 @@ Structure and tooling for the nao-sim project itself: Python version, dependency
 - **Package layout:** `src/` layout — `src/nao_sim/...` — not flat, to avoid accidentally importing an uninstalled package from the repo root.
 - **Dependency/venv management:** `uv`. Dev tooling lives in the `dev` dependency group (`uv sync --dev`), not in runtime `dependencies`. Build backend: `hatchling` (wheel packages `src/nao_sim`).
 - **Linting/formatting:** `ruff`, excluding `docker/modules/` (Python 2.7) and the local `spike/` scripts.
-- **Testing:** `pytest`, in two physically-separated tiers — a fast, deterministic, no-network default run (`tests/`, the only tier `testpaths` collects) and an opt-in live tier (`tests-e2e/`) that builds and runs the nao-sim containers. Full strategy is specced in [testing.md](testing.md).
+- **Testing:** `pytest`, in two physically-separated tiers — a fast, deterministic, no-network default run (`tests/`, the only tier `testpaths` collects) and an opt-in live tier (`tests-e2e/`) that builds and runs the nao-sim containers. Full strategy is specced in [testing.md](testing/testing.md).
 - **Type checking:** `pyright` (`standard` mode), a dev dependency run via `uv run pyright`. Config lives in `[tool.pyright]` in `pyproject.toml`, targeting `src`, `tests`, and `tests-e2e`, pinned to the `.venv`. `docker/` is not itself in pyright's `include` (its code runs in container images whose dependencies are not in the host venv), but `extraPaths` lists `docker/modules` and `docker/tts`, so the tests that import that code type-check.
 - **Repo shape:**
   - `src/nao_sim/` — the package, one module per core concept.
-  - `specs/` — pre-implementation design docs, one per concept (this folder).
+  - `specs/` — pre-implementation design docs, one per concept, in one folder per architecture layer (`runtime/`, `container/`, `services/`, `host/`, `testing/`); this spec, the overview, the index and the template stay at the root.
   - `plans/` — implementation plans turning settled specs into buildable steps.
   - `tests/` at repo root, one test file per module under test.
   - `tests-e2e/` at repo root, for the live tier above — not collected by the default `pytest` run.

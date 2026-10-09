@@ -49,7 +49,7 @@ Each image is built from two Aldebaran files per version, kept in `docker/vendor
 
 #### Fetching the vendor files
 
-The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--vendor DIR]` ([api.md](api.md), "Images"; default: both versions into `docker/vendor/`), which then builds and verifies the images. `suite.fetch` (`src/nao_sim/suite.py`) makes `<vendor>/<version>/` hold the pinned suite and `animations.pkg`.
+The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--vendor DIR]` ([api.md](../runtime/api.md), "Images"; default: both versions into `docker/vendor/`), which then builds and verifies the images. `suite.fetch` (`src/nao_sim/suite.py`) makes `<vendor>/<version>/` hold the pinned suite and `animations.pkg`.
 
 - A file already there with the pinned hash is kept, so re-running is cheap: nothing is downloaded, and a file whose size and modification time match its entry in `<vendor>/hashes.json` (written after each verification) is not even hashed again. A missing or unreadable record only means hashing again.
 - A file there with another hash (a Git LFS pointer, a partial copy) is an error and is left untouched; the user deletes it to fetch again.
@@ -91,7 +91,7 @@ One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override 
 | Boot to ready | about 5 s | about 15 s |
 
 - `naoqi-bin` refuses to run as root: the image runs as user `nao` (uid 1000), which owns `/opt/naoqi`.
-- Labels `io.nao-sim.version` and `io.nao-sim.recipes` on the NAOqi and `tts` images, set by compose (`build.labels`, from `NAO_SIM_VERSION` and `NAO_SIM_RECIPES`) so neither Dockerfile changes; `check_images` reads them to refuse an image built by another nao-sim version or from other recipes ([api.md](api.md), "Images").
+- Labels `io.nao-sim.version` and `io.nao-sim.recipes` on the NAOqi and `tts` images, set by compose (`build.labels`, from `NAO_SIM_VERSION` and `NAO_SIM_RECIPES`) so neither Dockerfile changes; `check_images` reads them to refuse an image built by another nao-sim version or from other recipes ([api.md](../runtime/api.md), "Images").
 - Environment: `PATH`, `LD_LIBRARY_PATH=/opt/naoqi/lib`, `PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules`, `NAO_SIM_NAOQI_VERSION` (the suite's full version) and `NAO_SIM_VERSION` (build argument, default `dev`; see [status-service.md](status-service.md)). The per-version boot facts are constants in each version's entrypoint (see "Entrypoint"), not environment variables.
 
 ### Network layout
@@ -155,7 +155,7 @@ Each image matches a real NAO **on the same NAOqi version**, not the other versi
 
 - Entries a NAO autoloads that the desktop suite ships but does not load: 2.1 `expressiveness`, `basicawareness`, `autonomousblinking`, `autonomousmoves`, `aldiagnosis`, `facetracker`, `visionrecognition`, `alchestbutton`, `memorywatcher`, `notificationreader`, `voiceemotionanalysis`, `mecalogger`, `dcm_hal`; 2.8 `aldiagnosis`, `memorywatcher`, `voiceemotionanalysis`. Each loads with `launchLocal` on a running image, which stays healthy (`voiceemotionanalysis` and `mecalogger` register nothing).
 - The 2.1 entrypoint adds the four that make the autonomous abilities a NAO 2.1 runs (expressiveness, awareness, blinking, autonomous moves), launched in the robot's order with `autonomouslife` after them, since a NAO loads it after them and it may depend on them ("Entrypoint", `LATE`). The others are added when a client needs them (open questions); vision modules are not wanted.
-- Entries a NAO autoloads that the desktop suites do not ship at all (audio input, `ALSystem`, face detection, speech recognition, sound localization, photo and video capture, landmark and barcode detection, infrared, laser...) cannot be added. nao-sim provides `ALAudioDevice` itself; `ALSystem` stays absent (its absence tells a client the target is not a real robot); detection and recognition are the clients' ([_overview.md](_overview.md), "Perception and speech recognition").
+- Entries a NAO autoloads that the desktop suites do not ship at all (audio input, `ALSystem`, face detection, speech recognition, sound localization, photo and video capture, landmark and barcode detection, infrared, laser...) cannot be added. nao-sim provides `ALAudioDevice` itself; `ALSystem` stays absent (its absence tells a client the target is not a real robot); detection and recognition are the clients' ([_overview.md](../_overview.md), "Perception and speech recognition").
 
 ### Desktop NAOqi facts the rest of nao-sim relies on
 
@@ -175,5 +175,5 @@ Each image matches a real NAO **on the same NAOqi version**, not the other versi
 ## Open questions
 
 1. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
-2. **Starting the stack.** `nao-sim run` and `cleanup` ([cli.md](cli.md)) are not built; today it is `docker compose` by hand (see [README.md](../README.md)). `NaoSim.start()` waits on the container's health rather than on the log line ([api.md](api.md)).
+2. **Starting the stack.** `nao-sim run` and `cleanup` ([cli.md](../runtime/cli.md)) are not built; today it is `docker compose` by hand (see [README.md](../../README.md)). `NaoSim.start()` waits on the container's health rather than on the log line ([api.md](../runtime/api.md)).
 3. **More added built-ins.** The other shipped-but-not-autoloaded modules (2.1: `aldiagnosis`, `memorywatcher`, `alchestbutton`, `notificationreader`, `facetracker`, `visionrecognition`; 2.8: `aldiagnosis`, `memorywatcher`) are left out until a client needs one.

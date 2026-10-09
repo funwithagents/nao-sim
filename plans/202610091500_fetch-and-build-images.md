@@ -2,7 +2,7 @@
 
 **Status:** Done
 
-Implements `specs/api.md` ("Images: `fetch_and_build_images`", "Files on disk" for a checkout, the image part of "Errors"), the `fetch-and-build-images` command of `specs/cli.md`, and the image label of `specs/container.md`. Delivers the one slow step (fetch the vendor files, build the images, verify they boot) and the check `NaoSim.start()` will run on them; leaves out the `NaoSim` object, the config and every other CLI command, and the wheel layout (checkout only).
+Implements `specs/runtime/api.md` ("Images: `fetch_and_build_images`", "Files on disk" for a checkout, the image part of "Errors"), the `fetch-and-build-images` command of `specs/runtime/cli.md`, and the image label of `specs/container/container.md`. Delivers the one slow step (fetch the vendor files, build the images, verify they boot) and the check `NaoSim.start()` will run on them; leaves out the `NaoSim` object, the config and every other CLI command, and the wheel layout (checkout only).
 
 ## Scope
 

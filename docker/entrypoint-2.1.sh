@@ -4,9 +4,9 @@
 #
 # Replacing ALTextToSpeech: the in-process modules that hold a proxy to it are left out of the
 # autoload file, the built-in exits, our modules load, then those modules are launched and bind to
-# our replacement (specs/service-replacement.md, "Replacing a built-in"). They are launched with
+# our replacement (specs/container/service-replacement.md, "Replacing a built-in"). They are launched with
 # the built-ins a NAO autoloads but the desktop suite does not, in a NAO's autoload order
-# (specs/container.md, "Matching a NAO's modules").
+# (specs/container/container.md, "Matching a NAO's modules").
 . "$(dirname "$0")/entrypoint-lib.sh"
 
 REPLACED="ALTextToSpeech"                              # built-ins our modules take over

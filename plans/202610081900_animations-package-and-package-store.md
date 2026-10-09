@@ -2,7 +2,7 @@
 
 **Status:** Done
 
-Implements `specs/container.md` ("Vendor files and licensing", "Robot packages in the image", "Package store", the per-Dockerfile ignore files): `nao-sim-fetch-suite` fills `docker/vendor/<version>/` with the suite and the `animations.pkg` extracted from the public robot image, the images install it as a system package at boot, and a named volume per version keeps the package store across `docker compose down`. Leaves out the sound set (the user installs it) and `nao-sim up`.
+Implements `specs/container/container.md` ("Vendor files and licensing", "Robot packages in the image", "Package store", the per-Dockerfile ignore files): `nao-sim-fetch-suite` fills `docker/vendor/<version>/` with the suite and the `animations.pkg` extracted from the public robot image, the images install it as a system package at boot, and a named volume per version keeps the package store across `docker compose down`. Leaves out the sound set (the user installs it) and `nao-sim up`.
 
 ## Scope
 
@@ -15,7 +15,7 @@ Implements `specs/container.md` ("Vendor files and licensing", "Robot packages i
 - `tests-e2e/support.py` — vendor path per version, a way to restart the stack
 - `tests-e2e/test_packages_live.py` — new: `animations` installed at boot, a user package survives `down`/`up`
 - `tests-e2e/test_speech_live.py` — the animated-speech comment (the gestures now exist)
-- `specs/container.md`, `specs/_overview.md`, `README.md`, `AGENTS.md` — docs
+- `specs/container/container.md`, `specs/_overview.md`, `README.md`, `AGENTS.md` — docs
 
 ## Steps
 

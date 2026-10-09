@@ -6,7 +6,7 @@
 #
 # Replacing ALTextToSpeech: the package service that holds a proxy to it is stopped, the built-in
 # exits, our modules load, then that service starts again and binds to our replacement
-# (specs/service-replacement.md, "Replacing a built-in").
+# (specs/container/service-replacement.md, "Replacing a built-in").
 . "$(dirname "$0")/entrypoint-lib.sh"
 
 REPLACED="ALTextToSpeech"                                   # built-ins our modules take over

@@ -16,7 +16,7 @@ tests:
 
 ## Purpose
 
-nao-sim makes the container look like a real NAO by replacing or adding NAOqi services *inside* NAOqi, so any qi client on the host reaches them on 9559 exactly like built-ins and in-process modules (`ALAnimatedSpeech`, `ALDialog`...) call them instead of the originals. This spec is the reusable mechanism: how an override module is loaded, which object model it uses on each version, how a built-in is taken out first, and how an override reaches services that live on the host. The `ALTextToSpeech` replacement ([speech.md](speech.md)) is its first user; the planned `ALAudioDevice` and `ALAudioPlayer` replacements reuse it.
+nao-sim makes the container look like a real NAO by replacing or adding NAOqi services *inside* NAOqi, so any qi client on the host reaches them on 9559 exactly like built-ins and in-process modules (`ALAnimatedSpeech`, `ALDialog`...) call them instead of the originals. This spec is the reusable mechanism: how an override module is loaded, which object model it uses on each version, how a built-in is taken out first, and how an override reaches services that live on the host. The `ALTextToSpeech` replacement ([speech.md](../services/speech.md)) is its first user; the planned `ALAudioDevice` and `ALAudioPlayer` replacements reuse it.
 
 ## Decided
 
@@ -54,7 +54,7 @@ A replacement registers under the built-in's name, after the built-in has left b
 
 - Alternative for a built-in nobody needs: drop its C++ library from the autoload copy (`[core]`/`[extra]` entries are `lib<name>.so`). Note that `audioout` provides both `ALTextToSpeech` and `ALAudioPlayer`, so dropping it means replacing both.
 - A name that no built-in holds (`ALAudioDevice` on both versions) is registered directly, with no step 1, 2 or 4.
-- A replacement must carry whatever its callers connect to at start, not only the documented methods. On 2.8, `ALAnimatedSpeech` connects to `ALTextToSpeech`'s hidden signal `_started` and the process dies without it. The recording proxy and caller survey in [speech.md](speech.md) are the method for finding these.
+- A replacement must carry whatever its callers connect to at start, not only the documented methods. On 2.8, `ALAnimatedSpeech` connects to `ALTextToSpeech`'s hidden signal `_started` and the process dies without it. The recording proxy and caller survey in [speech.md](../services/speech.md) are the method for finding these.
 
 ### Calling services registered on the host
 

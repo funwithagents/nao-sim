@@ -2,7 +2,7 @@
 
 **Status:** Done
 
-Implements `specs/container.md` ("Entrypoint"): one script per NAOqi version, each reading top to bottom as that version's procedure, with the shared steps in a sourced library and the version's facts as constants in its script instead of image environment variables. The procedure itself is unchanged; replacing built-ins by not loading them is left out.
+Implements `specs/container/container.md` ("Entrypoint"): one script per NAOqi version, each reading top to bottom as that version's procedure, with the shared steps in a sourced library and the version's facts as constants in its script instead of image environment variables. The procedure itself is unchanged; replacing built-ins by not loading them is left out.
 
 ## Scope
 

@@ -25,7 +25,7 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 | `nao-sim cleanup` | Removes what a run that died without stopping left behind (see "Foreground runs") |
 | `nao-sim status` | The containers' health, the `NaoSim` service's versions and readiness, the attached device sources |
 | `nao-sim logs` | The containers' logs (`docker compose logs` on the `nao-sim` project) |
-| `nao-sim probe` | The capability report ([_overview.md](_overview.md), "Capability probe"; specified in its own spec) |
+| `nao-sim probe` | The capability report ([_overview.md](../_overview.md), "Capability probe"; specified in its own spec) |
 
 - The API is async: each command runs its coroutine with `asyncio.run`; Ctrl-C cancels it, and `run` still awaits `stop()` on the way out.
 - `run` starts nothing itself: every check (Docker, the images, the `viewer` extra, ports) happens in `NaoSim.start()` ([api.md](api.md), "Lifecycle"), and the CLI prints the error's message.
@@ -45,7 +45,7 @@ The `nao-sim` command is how a person runs a simulated NAO from a terminal. It i
 
 ### Existing commands
 
-The former `nao-sim-fetch-suite` is now `nao-sim fetch-and-build-images`, the only subcommand built so far. `nao-sim-speaker` ([devices.md](devices.md)) is not a user command: it exists only because the `NaoSim` object, which runs the speaker in-process ([api.md](api.md)), is not built yet. When `NaoSim` lands, it leaves `[project.scripts]` and does not become a `nao-sim` subcommand; `python -m nao_sim.speaker` stays for the rare stack started by hand with `docker compose` (debugging).
+The former `nao-sim-fetch-suite` is now `nao-sim fetch-and-build-images`, the only subcommand built so far. `nao-sim-speaker` ([devices.md](../host/devices.md)) is not a user command: it exists only because the `NaoSim` object, which runs the speaker in-process ([api.md](api.md)), is not built yet. When `NaoSim` lands, it leaves `[project.scripts]` and does not become a `nao-sim` subcommand; `python -m nao_sim.speaker` stays for the rare stack started by hand with `docker compose` (debugging).
 
 ## Open questions
 

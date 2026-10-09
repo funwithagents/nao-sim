@@ -67,8 +67,8 @@ _LIST_ITEM = re.compile(r"^\s*-\s+(.+?)\s*$")
 
 
 def _spec_files() -> list[Path]:
-    # Concept specs only — skip index/template/scratch files (`_index.md`, `_spec-template.md`, ...).
-    return sorted(p for p in _SPECS_DIR.glob("*.md") if not p.name.startswith("_"))
+    # Concept specs only, in every folder — skip index/template/scratch files (`_index.md`, `_spec-template.md`, ...).
+    return sorted(p for p in _SPECS_DIR.rglob("*.md") if not p.name.startswith("_"))
 
 
 def _parse_frontmatter(path: Path) -> dict[str, list[str]]:
@@ -96,7 +96,7 @@ def test_every_spec_declares_the_code_it_governs():
     for spec in _spec_files():
         front = _parse_frontmatter(spec)
         if not front.get("code"):
-            missing.append(spec.name)
+            missing.append(str(spec.relative_to(_SPECS_DIR)))
     assert not missing, (
         f"specs missing a non-empty `code:` frontmatter list: {missing}. "
         "Add a frontmatter block naming the files this spec governs so the "
@@ -110,7 +110,7 @@ def test_spec_frontmatter_paths_all_exist():
         front = _parse_frontmatter(spec)
         for rel in front.get("code", []) + front.get("tests", []):
             if not (_REPO_ROOT / rel).exists():
-                stale.append(f"{spec.name} -> {rel}")
+                stale.append(f"{spec.relative_to(_SPECS_DIR)} -> {rel}")
     assert not stale, (
         f"spec frontmatter points at paths that no longer exist: {sorted(stale)}. "
         "Update the `code:`/`tests:` lists when files are renamed or removed."

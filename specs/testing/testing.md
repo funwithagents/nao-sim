@@ -19,7 +19,7 @@ tests:
 
 ## Purpose
 
-nao-sim's testing strategy — the two-tier structure and what a good test looks like. It's a **cross-cutting practice**, not a runtime concept: nothing here ships in the library. It exists as a spec so the decisions have one honest home that stays in sync with the setup, rather than living half in [project.md](project.md) (the tooling choices) and half in [AGENTS.md](../AGENTS.md) (the operational how-to). The concrete shell commands to run each tier live in [AGENTS.md](../AGENTS.md) "Testing".
+nao-sim's testing strategy — the two-tier structure and what a good test looks like. It's a **cross-cutting practice**, not a runtime concept: nothing here ships in the library. It exists as a spec so the decisions have one honest home that stays in sync with the setup, rather than living half in [project.md](../project.md) (the tooling choices) and half in [AGENTS.md](../../AGENTS.md) (the operational how-to). The concrete shell commands to run each tier live in [AGENTS.md](../../AGENTS.md) "Testing".
 
 ## Two tiers, physically separated
 
@@ -49,7 +49,7 @@ If the package holds process-global or singleton state, both tiers carry an iden
 
 nao-sim is tested as what it is: containers that behave like a NAO in their API, reached over qi on `127.0.0.1:9559`. The live tests bring that stack up themselves; there is no target to configure.
 
-- **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it first runs `check_images` ([api.md](api.md), "Images"): current images are used as they are; missing or outdated ones (an edit under `docker/` included) are built and verified with `fetch_and_build_images` when the vendor files are in `docker/vendor/`, and the version skips otherwise. Then it runs `docker compose --profile <version> up -d` on `tts` and that version's NAOqi service, waits for `[entrypoint] nao-sim ready` in the container log, connects, and runs `docker compose down` at the end. Versions run one after the other, since both publish 9559.
+- **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it first runs `check_images` ([api.md](../runtime/api.md), "Images"): current images are used as they are; missing or outdated ones (an edit under `docker/` included) are built and verified with `fetch_and_build_images` when the vendor files are in `docker/vendor/`, and the version skips otherwise. Then it runs `docker compose --profile <version> up -d` on `tts` and that version's NAOqi service, waits for `[entrypoint] nao-sim ready` in the container log, connects, and runs `docker compose down` at the end. Versions run one after the other, since both publish 9559.
 - **Skip, never fail, without the means.** No Docker, or neither the version's suite tarball nor its image: that version's tests skip. A contributor (or CI) without the suites is never broken.
 - **Fail loudly on a conflict.** If 9559 or the speaker's 9562 is already taken (a stack or a `nao-sim-speaker` started by hand), the tests fail with that message rather than test someone else's stack.
 - **Connect with a retry**: the libqi 3 wheel fails about one connect in three against NAOqi 2.1, instantly, with `disconnected` (`support.connect`).
@@ -57,7 +57,7 @@ nao-sim is tested as what it is: containers that behave like a NAO in their API,
 
 ## Tooling
 
-- **`pytest`** is the runner; **`ruff`** lints/formats; **`pyright`** (`standard` mode) type-checks. All three are the gate after any change — lint, type check, and tests must pass before work is considered done (see [AGENTS.md](../AGENTS.md), "Verification").
+- **`pytest`** is the runner; **`ruff`** lints/formats; **`pyright`** (`standard` mode) type-checks. All three are the gate after any change — lint, type check, and tests must pass before work is considered done (see [AGENTS.md](../../AGENTS.md), "Verification").
 - **`pyright` covers test code too:** its `include` is `src`, `tests`, and `tests-e2e`, so tests are type-checked alongside the library rather than being a blind spot.
 
 ## Open questions

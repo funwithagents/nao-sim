@@ -2,7 +2,7 @@
 
 **Status:** Done
 
-Implements `specs/container.md` ("Suites and licensing"): `nao-sim-fetch-suite` downloads the pinned Choregraphe suites from Aldebaran's GitHub repositories into `docker/vendor/`, keeps a suite already there and verifies every file against `docker/suite-*.sha256`. Leaves out `nao-sim up` (which will call it) and the robot packages, which the user installs into the sim as on a robot.
+Implements `specs/container/container.md` ("Suites and licensing"): `nao-sim-fetch-suite` downloads the pinned Choregraphe suites from Aldebaran's GitHub repositories into `docker/vendor/`, keeps a suite already there and verifies every file against `docker/suite-*.sha256`. Leaves out `nao-sim up` (which will call it) and the robot packages, which the user installs into the sim as on a robot.
 
 ## Scope
 
@@ -10,7 +10,7 @@ Implements `specs/container.md` ("Suites and licensing"): `nao-sim-fetch-suite` 
 - `pyproject.toml` — `nao-sim-fetch-suite` script
 - `tests/test_suite.py` — download, keep-if-present, bad download, mismatching local file, CLI, pins match the Dockerfiles; against a local HTTP server (no network)
 - `tests-e2e/support.py` — the skip message names the command
-- `specs/container.md`, `specs/_overview.md`, `AGENTS.md`, `README.md` — the download, the licensing note, the project map
+- `specs/container/container.md`, `specs/_overview.md`, `AGENTS.md`, `README.md` — the download, the licensing note, the project map
 
 ## Steps
 

@@ -13,7 +13,7 @@ tests:
 
 ## Purpose
 
-A small speech engine container that turns a list of text, marker and pause items into audio. It streams the PCM to the host speaker ([devices.md](devices.md)) and replies with the exact timings. It knows nothing about NAOqi: tags, events and `say()` semantics stay in the `ALTextToSpeech` replacement ([speech.md](speech.md)).
+A small speech engine container that turns a list of text, marker and pause items into audio. It streams the PCM to the host speaker ([devices.md](../host/devices.md)) and replies with the exact timings. It knows nothing about NAOqi: tags, events and `say()` semantics stay in the `ALTextToSpeech` replacement ([speech.md](../services/speech.md)).
 
 It is its own container because:
 - the NAOqi images (glibc 2.19 on 2.1, Python 2.7, amd64 emulation on Apple Silicon) rule out every current engine;
@@ -55,7 +55,7 @@ It is its own container because:
 ### Failure behaviour
 
 - If the speaker is unreachable, the audio is dropped (logged) and `/say` still returns the timings, so callers keep their clock.
-- A new `/say` while one is still streaming starts a new stream. The speaker plays only the newest one (see [devices.md](devices.md)).
+- A new `/say` while one is still streaming starts a new stream. The speaker plays only the newest one (see [devices.md](../host/devices.md)).
 
 ## Open questions
 

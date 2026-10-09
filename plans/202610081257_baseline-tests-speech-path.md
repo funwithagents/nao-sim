@@ -2,11 +2,11 @@
 
 **Status:** Done
 
-Brings the code built during the validation spike under test so its specs can be promoted to `Implemented`. The specs are [container.md](../specs/container.md), [service-replacement.md](../specs/service-replacement.md), [speech.md](../specs/speech.md), [tts-engine.md](../specs/tts-engine.md) and [soundcard.md](../specs/soundcard.md). Along the way it:
+Brings the code built during the validation spike under test so its specs can be promoted to `Implemented`. The specs are [container.md](../specs/container/container.md), [service-replacement.md](../specs/container/service-replacement.md), [speech.md](../specs/services/speech.md), [tts-engine.md](../specs/container/tts-engine.md) and [soundcard.md](../specs/host/devices.md). Along the way it:
 
 - fixes the one known defect in that code, a stop during synthesis being lost (speech.md, open question 1);
 - moves the host code to Python 3.12 and makes libqi (`qi`) a runtime dependency, as in nao-viewer ([project.md](../specs/project.md) goes `Updated` → `Implemented`);
-- makes the live tier start and stop the containers itself, with no target URL ([testing.md](../specs/testing.md) goes `Updated` → `Implemented`).
+- makes the live tier start and stop the containers itself, with no target URL ([testing.md](../specs/testing/testing.md) goes `Updated` → `Implemented`).
 
 It does not address the other open questions of those specs: readiness timeout, healthcheck, load-failure checks, gate, host link.
 

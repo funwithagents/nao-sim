@@ -49,7 +49,7 @@ USER nao
 WORKDIR /opt/naoqi
 # 9559: naoqi-bin broker; override modules register through it (naoqi.ALModule), so it is the only port
 EXPOSE 9559
-# Healthy once NaoSim.isReady answers true on the public port (specs/status-service.md).
+# Healthy once NaoSim.isReady answers true on the public port (specs/container/status-service.md).
 HEALTHCHECK --interval=5s --timeout=5s --start-period=120s --retries=3 \
   CMD ["/opt/naoqi/bin/nao-sim-healthcheck.sh"]
 ENTRYPOINT ["/opt/naoqi/bin/nao-sim-entrypoint.sh"]

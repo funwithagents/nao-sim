@@ -2,7 +2,7 @@
 
 **Status:** Done
 
-Implements two refinements of `specs/api.md` ("Images") and `specs/container.md` ("Fetching the vendor files"), and the live-tier rule of `specs/testing.md`: the live tier builds and verifies a version only when its images do not pass `check_images`, and fetching re-hashes a vendor file only when it changed. Leaves the tests themselves unchanged: speech plays in real time on purpose.
+Implements two refinements of `specs/runtime/api.md` ("Images") and `specs/container/container.md` ("Fetching the vendor files"), and the live-tier rule of `specs/testing/testing.md`: the live tier builds and verifies a version only when its images do not pass `check_images`, and fetching re-hashes a vendor file only when it changed. Leaves the tests themselves unchanged: speech plays in real time on purpose.
 
 ## Scope
 

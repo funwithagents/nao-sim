@@ -32,7 +32,7 @@ It replaces the overview's "one host process started by `nao-sim up`" (now `nao-
 ### Construction
 
 - `NaoSim(config: NaoSimConfig | NaoqiVersion | None = None, *, sink: AudioSink | None = None)`. With no config it uses `NaoSimConfig()` ([config.md](config.md)). A bare version string is shorthand for `NaoSimConfig(naoqi=NaoqiSettings(version=...))`, so `NaoSim("2.8")` is the one-liner.
-- `sink` is where the speaker's audio goes ([devices.md](devices.md), "Audio sinks"). Without one, the config's `speaker` block picks it: `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A test passes a `MemorySink` and asserts on the audio actually played. As in tts-engine, the sink is fixed for the object's lifetime.
+- `sink` is where the speaker's audio goes ([devices.md](../host/devices.md), "Audio sinks"). Without one, the config's `speaker` block picks it: `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A test passes a `MemorySink` and asserts on the audio actually played. As in tts-engine, the sink is fixed for the object's lifetime.
 - `NaoSim.from_dict(data)`, `from_json(text)` and `from_json_file(path)` build the config, then the object (they take the same `sink=`).
 - Constructing it does nothing else: no Docker call, no thread, no port opened.
 - `config` (read-only) and `running: bool`.
@@ -49,9 +49,9 @@ The API is **async**, as `NaoBridge`: `await sim.start()`, `await sim.stop()`, `
    - the `viewer` extra is installed when the config needs it (`headless = false`, or `camera.source = "render"`; the error names the extra);
    - every configured source is built (see [config.md](config.md), "Sources not built yet") and its file exists (`audio.wav`);
    - ports 9559 and 9562 are free (another nao-sim, a hand-started stack or speaker).
-2. **Speaker**: start the host speaker ([devices.md](devices.md)) in-process, feeding the sink.
+2. **Speaker**: start the host speaker ([devices.md](../host/devices.md)) in-process, feeding the sink.
 3. **Containers**: `docker compose up -d` (no build) for the `tts` service and the version's NAOqi service, with the environment generated from the config (`NAO_SIM_TTS_ENGINE` = `speech.engine`, the version's profile, `2.1` or `2.8`). The compose project is always `nao-sim`.
-4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error. Verified images can still fail here (a volume, the host), so this wait happens on every start.
+4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](../container/status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error. Verified images can still fail here (a volume, the host), so this wait happens on every start.
 5. **Host devices**: the camera feeder and the microphone, as the config's sources ask (each specified by its own device spec). Each writes its `NaoSim/*/Source` key.
 6. **Simulated world**: when the config calls for it (the table in [config.md](config.md), "The viewer and the camera"), build a `NaoViewer` in sim mode from the `viewer` block and `url`, and `launch()` it (in `asyncio.to_thread`; nao-viewer's API is synchronous). Its `LaunchError` fails the start like any other step.
 
@@ -65,7 +65,7 @@ If any step fails, everything already started is stopped, in reverse order, and 
 
 Everything slow or downloaded happens once, before any start, in `await fetch_and_build_images(versions=None)` (CLI: `nao-sim fetch-and-build-images [2.1] [2.8]`, [cli.md](cli.md)); with no versions, both. For each version, in order:
 
-1. **Fetch** the vendor files: the pinned suite and `animations.pkg`, with the rules of [container.md](container.md) ("Fetching the vendor files": kept when the hash matches, `.part` downloads, extraction from the robot image). It replaces the former `nao-sim-fetch-suite` command.
+1. **Fetch** the vendor files: the pinned suite and `animations.pkg`, with the rules of [container.md](../container/container.md) ("Fetching the vendor files": kept when the hash matches, `.part` downloads, extraction from the robot image). It replaces the former `nao-sim-fetch-suite` command.
 2. **Build** the version's NAOqi image and the `tts` image with the installed nao-sim version as build argument (`NAO_SIM_VERSION`) and as the label `io.nao-sim.version`, and the digest of the recipes as the label `io.nao-sim.recipes`: SHA-256 over every file under `docker/` with its relative path, leaving out `vendor/` (pinned by hash already), hidden files and Python caches. Docker's cache keeps a rebuild cheap.
 3. **Verify**: boot the version's containers (compose project `nao-sim`) until the NAOqi one is `healthy` (within 240 s) and the `tts` engine answers its `/health`, then take them down, whatever happened. The verified image IDs are recorded (`images.json`, see "Files on disk"). A build that does not boot is reported with the end of its log and not recorded.
 
@@ -110,7 +110,7 @@ The checkout layout is today's. The wheel layout, and how the recipes become pac
 
 ### Naming
 
-The `NaoSim` *class* (`nao_sim.NaoSim`, on the host) keeps the name of the `NaoSim` *service* inside NAOqi ([status-service.md](status-service.md)), which nao-viewer already relies on: the class starts the stack, the service reports on it from inside, and `status()` reads the service. Specs and logs say "the `NaoSim` object" or "the `NaoSim` service".
+The `NaoSim` *class* (`nao_sim.NaoSim`, on the host) keeps the name of the `NaoSim` *service* inside NAOqi ([status-service.md](../container/status-service.md)), which nao-viewer already relies on: the class starts the stack, the service reports on it from inside, and `status()` reads the service. Specs and logs say "the `NaoSim` object" or "the `NaoSim` service".
 
 ### Front door
 

@@ -2,12 +2,12 @@
 
 **Status:** Done
 
-Implements `specs/tts-engine.md` ("Image", the `SIGTERM` bullet). Measured with `docker stop` on a healthy 2.8 stack: the NAOqi container stops in 0.2 s (its entrypoint traps `TERM`), the `tts` container in 10.2 s with exit code 137, because its Python server is PID 1 and ignores `SIGTERM`. Every stack stop paid those 10 s (live-tier teardowns, the packages test's down and up). Leaves the NAOqi side unchanged.
+Implements `specs/container/tts-engine.md` ("Image", the `SIGTERM` bullet). Measured with `docker stop` on a healthy 2.8 stack: the NAOqi container stops in 0.2 s (its entrypoint traps `TERM`), the `tts` container in 10.2 s with exit code 137, because its Python server is PID 1 and ignores `SIGTERM`. Every stack stop paid those 10 s (live-tier teardowns, the packages test's down and up). Leaves the NAOqi side unchanged.
 
 ## Scope
 
 - `docker/tts/server.py` — a `SIGTERM` handler that exits with code 0.
-- `specs/tts-engine.md` — the bullet (the spec stays `Implemented`: the code matches it again).
+- `specs/container/tts-engine.md` — the bullet (the spec stays `Implemented`: the code matches it again).
 
 ## Steps
 

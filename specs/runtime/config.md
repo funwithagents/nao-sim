@@ -15,7 +15,7 @@ One declarative description of *which simulated NAO to run and which devices to 
 
 It follows nao-bridge's configuration conventions on purpose (its `specs/config.md`), so the two packages' files look alike and a nao-sim config can be pasted into a nao-bridge one unchanged.
 
-This config is the **host-level** description. The container keeps its own interface, the entrypoint's environment variables ([container.md](container.md), "Entrypoint"); `NaoSim` generates the compose environment from the config, and nobody writes those variables by hand any more.
+This config is the **host-level** description. The container keeps its own interface, the entrypoint's environment variables ([container.md](../container/container.md), "Entrypoint"); `NaoSim` generates the compose environment from the config, and nobody writes those variables by hand any more.
 
 ## Decided
 
@@ -102,7 +102,7 @@ class AudioSettings:
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
 - **`NaoSimConfig()` is valid and useful**: NAOqi 2.1 with speech on the host loudspeaker, the viewer window on the `empty` scene, and no camera or microphone source (each `NaoSim/*/Source` key stays `none`).
-- The `speaker` block picks the speaker's audio sink when the caller passes none ([devices.md](devices.md), "Audio sinks"; [api.md](api.md)): `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A sink passed in code (`MemorySink` in tests) wins over the block.
+- The `speaker` block picks the speaker's audio sink when the caller passes none ([devices.md](../host/devices.md), "Audio sinks"; [api.md](api.md)): `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A sink passed in code (`MemorySink` in tests) wins over the block.
 - Paths (`speaker.record`, `audio.wav`, and `viewer.scene` when it ends in `.xml`) are resolved relative to the config file when loaded with `from_json_file`, and relative to the working directory otherwise.
 
 ### Constructors and validation
@@ -149,6 +149,6 @@ The config accepts every source value from the start (`webcam`, `render`, `mic`,
 
 ## Open questions
 
-1. **More blocks.** Candidates, each deferred until its spec needs it: `gate` (the microphone gate's tail, default 300 ms), `speech.language` and voice, the speaker's output device and volume ([devices.md](devices.md), open questions), a vendor directory other than the default ([api.md](api.md), "Files on disk"), ports (today 9559 and 9562 are fixed, so one nao-sim runs per machine). Adding a block does not break existing files.
+1. **More blocks.** Candidates, each deferred until its spec needs it: `gate` (the microphone gate's tail, default 300 ms), `speech.language` and voice, the speaker's output device and volume ([devices.md](../host/devices.md), open questions), a vendor directory other than the default ([api.md](api.md), "Files on disk"), ports (today 9559 and 9562 are fixed, so one nao-sim runs per machine). Adding a block does not break existing files.
 2. **File format.** JSON, as nao-bridge. TOML would allow comments in example files; switching later would mean a second loader, so decide before the CLI ships.
 3. **Webcam selection.** An index (`device: 0`) is what OpenCV takes, but indices are not stable across reboots or USB changes; a name match may be needed. Decide with the video-injection spec.

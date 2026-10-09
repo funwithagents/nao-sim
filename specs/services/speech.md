@@ -16,9 +16,9 @@ tests:
 
 On nao-sim, `ALTextToSpeech.say()` speaks with a real voice and keeps NAOqi's contract: it blocks for the real audio and raises the events and bookmarks that `ALAnimatedSpeech`, Choregraphe boxes and existing scripts rely on.
 
-The desktop virtual robot's built-in TTS is a simulator, so it is replaced inside NAOqi ([service-replacement.md](service-replacement.md)) rather than listened to. The replacement:
+The desktop virtual robot's built-in TTS is a simulator, so it is replaced inside NAOqi ([service-replacement.md](../container/service-replacement.md)) rather than listened to. The replacement:
 - parses NAOqi's tags;
-- asks the engine ([tts-engine.md](tts-engine.md)) to speak; the engine streams to the host speaker ([devices.md](devices.md));
+- asks the engine ([tts-engine.md](../container/tts-engine.md)) to speak; the engine streams to the host speaker ([devices.md](../host/devices.md));
 - raises the events on its own clock, from the timings the engine returns.
 
 Only one request and one reply cross from the NAOqi container per sentence, and no events travel back. Clients call `say()` and listen to the events exactly as on a NAO: nothing in them is nao-sim-specific.
@@ -32,7 +32,7 @@ Only one request and one reply cross from the NAOqi container per sentence, and 
   - `say()` returns early;
   - consecutive sentences overlap;
   - gestures land on simulated bookmarks.
-- Event listening stays a documented fallback only for a version where replacement is impossible ([_overview.md](_overview.md), "Fallback: listening to TTS events"). No such version is known.
+- Event listening stays a documented fallback only for a version where replacement is impossible ([_overview.md](../_overview.md), "Fallback: listening to TTS events"). No such version is known.
 
 ### The contract (measured on 2.1.4.13 and 2.8.7.4)
 
@@ -84,4 +84,4 @@ Only one request and one reply cross from the NAOqi container per sentence, and 
 1. **Missing methods.** `getLanguageEncoding` and `sayToFileAndPlay` are not implemented, and the box library's `stop` is not a method of either replacement: 2.1 maps `stop` to the `ALModule` generic. Check what the Say box's `stop` does against the replacement.
 2. **Microphone gate** (mute the microphone while playing, plus a 300 ms tail) and **subtitles** in the sim window are not built. Both depend on the host link.
 3. **Duration tolerance** against a NAO's own `say()` (proposed ±20% per sentence) is not agreed, and no reference durations are available yet.
-4. **Word events**: `CurrentWord` and `PositionOfCurrentWord` are not raised in v1 (see [tts-engine.md](tts-engine.md)).
+4. **Word events**: `CurrentWord` and `PositionOfCurrentWord` are not raised in v1 (see [tts-engine.md](../container/tts-engine.md)).

@@ -2,14 +2,14 @@
 
 **Status:** Done
 
-Implements the change to `specs/status-service.md` ("ALMemory keys"): perception runs in the clients, not in nao-sim, so the `NaoSim` status module stops writing `NaoSim/Perception/Source`. The camera and audio source keys, the versions and readiness are unchanged; nothing else in the service moves.
+Implements the change to `specs/container/status-service.md` ("ALMemory keys"): perception runs in the clients, not in nao-sim, so the `NaoSim` status module stops writing `NaoSim/Perception/Source`. The camera and audio source keys, the versions and readiness are unchanged; nothing else in the service moves.
 
 ## Scope
 
 - `docker/modules/nao_sim_status_core.py` — `DEVICES` loses `"Perception"`
 - `tests/test_status_core.py` — the keys written at load no longer include `NaoSim/Perception/Source`
 - `tests-e2e/test_status_live.py` — the live target no longer has the key (checked with `ALMemory.getDataListName()`, since `getData` on a missing key raises)
-- `specs/status-service.md`, `specs/_index.md` — drop the "as built" note, status back to `Implemented`
+- `specs/container/status-service.md`, `specs/_index.md` — drop the "as built" note, status back to `Implemented`
 
 ## Steps
 
