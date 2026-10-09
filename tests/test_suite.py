@@ -9,15 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from nao_sim import suite
+from nao_sim.errors import FetchError
 from nao_sim.suite import (
     PACKAGE,
     VERSIONS,
-    SuiteError,
     VendorFile,
     Version,
     fetch,
-    main,
     opn_payload,
     rootfs_chunks,
 )
@@ -85,7 +83,7 @@ def test_reads_the_root_filesystem_out_of_a_robot_image(
 def test_rejects_what_is_not_a_robot_image(tmp_path):
     opn = tmp_path / "nao.opn"
     opn.write_bytes(b"version https://git-lfs.github.com/spec/v1\n")
-    with pytest.raises(SuiteError, match="ALDIMAGE"):
+    with pytest.raises(FetchError, match="ALDIMAGE"):
         opn_payload(opn)
 
 
@@ -93,7 +91,7 @@ def test_rejects_a_truncated_robot_image(tmp_path):
     opn = tmp_path / "nao.opn"
     whole = make_opn(ROOTFS, bz2.compress, trailing=b"")
     opn.write_bytes(whole[: len(whole) // 2])
-    with pytest.raises(SuiteError, match="truncated"):
+    with pytest.raises(FetchError, match="truncated"):
         b"".join(rootfs_chunks(opn))
 
 
@@ -179,7 +177,7 @@ def test_uses_and_keeps_a_robot_image_the_user_put_there(origin, tmp_path):
 
 
 def test_rejects_an_extracted_package_with_the_wrong_hash(origin, tmp_path):
-    with pytest.raises(SuiteError, match="SHA-256"):
+    with pytest.raises(FetchError, match="SHA-256"):
         fetch(
             version(origin, package_sha256=sha(b"another package")), tmp_path, echo_cat
         )
@@ -187,7 +185,7 @@ def test_rejects_an_extracted_package_with_the_wrong_hash(origin, tmp_path):
 
 
 def test_rejects_a_download_with_the_wrong_hash(origin, tmp_path):
-    with pytest.raises(SuiteError, match="SHA-256"):
+    with pytest.raises(FetchError, match="SHA-256"):
         fetch(version(origin, suite_body=b"something else"), tmp_path, echo_cat)
     assert list((tmp_path / "2.1").iterdir()) == []
 
@@ -196,26 +194,10 @@ def test_leaves_a_mismatching_local_file_alone(origin, tmp_path):
     lfs_pointer = b"version https://git-lfs.github.com/spec/v1\noid sha256:...\n"
     (tmp_path / "2.1").mkdir()
     (tmp_path / "2.1" / "suite.tar.gz").write_bytes(lfs_pointer)
-    with pytest.raises(SuiteError, match="Delete it"):
+    with pytest.raises(FetchError, match="Delete it"):
         fetch(version(origin), tmp_path, echo_cat)
     assert (tmp_path / "2.1" / "suite.tar.gz").read_bytes() == lfs_pointer
     assert origin.requests == []
-
-
-def test_cli_fetches_the_named_version_and_reports_failures(
-    origin, tmp_path, monkeypatch, capsys
-):
-    monkeypatch.setattr(suite, "VERSIONS", {"2.1": version(origin)})
-    monkeypatch.setattr(suite, "docker_cat", echo_cat)
-    assert main(["2.1", "--vendor", str(tmp_path)]) == 0
-    assert (tmp_path / "2.1" / PACKAGE).read_bytes() == PKG
-
-    (tmp_path / "2.1" / "suite.tar.gz").write_bytes(b"corrupt")
-    assert main(["--vendor", str(tmp_path)]) == 1
-    assert "error:" in capsys.readouterr().err
-
-    with pytest.raises(SystemExit):
-        main(["3.0", "--vendor", str(tmp_path)])
 
 
 @pytest.mark.parametrize("name", ["2.1", "2.8"])

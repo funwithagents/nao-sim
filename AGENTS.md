@@ -19,7 +19,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 | `plans/` | Implementation plans turning settled specs into buildable steps — indexed by [plans/_index.md](plans/_index.md) |
 | `tests/` | Fast, deterministic, no-network tests; mirrors the `src/nao_sim/` module structure |
 | `tests-e2e/` | Opt-in live tests that start the nao-sim containers themselves, once per NAOqi version (not collected by default `pytest`) |
-| `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh` ([container.md](specs/container.md)), `healthcheck.sh` ([status-service.md](specs/status-service.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/service-replacement.md), [speech.md](specs/speech.md), [status-service.md](specs/status-service.md)); `tts/`, the speech engine container ([tts-engine.md](specs/tts-engine.md)); `vendor/<version>/`, the suite tarball and `animations.pkg` fetched by `nao-sim-fetch-suite` (gitignored) |
+| `docker/` | Container recipes: `Dockerfile.naoqi-2.1`, `Dockerfile.naoqi-2.8`, `compose.yaml`, `entrypoint.sh` ([container.md](specs/container.md)), `healthcheck.sh` ([status-service.md](specs/status-service.md)); `modules/`, Python 2.7 override modules loaded inside NAOqi ([service-replacement.md](specs/service-replacement.md), [speech.md](specs/speech.md), [status-service.md](specs/status-service.md)); `tts/`, the speech engine container ([tts-engine.md](specs/tts-engine.md)); `vendor/<version>/`, the suite tarball and `animations.pkg` fetched by `nao-sim fetch-and-build-images`, and `vendor/images.json`, the verified image IDs (gitignored) |
 | `spike/` | Local-only investigation scripts and measurement log (untracked, not committed); findings are folded into the specs |
 
 ### `src/nao_sim/` modules
@@ -28,9 +28,12 @@ Where things live. This is a coarse, module-level map — for the full file inve
 
 | Module | Role | Spec |
 |---|---|---|
-| `src/nao_sim/__init__.py` | Package glue (no spec needed) | — |
 | `src/nao_sim/soundcard.py` | Host sound card: TCP PCM player the containers stream into (`nao-sim-soundcard`) | [soundcard.md](specs/soundcard.md) |
-| `src/nao_sim/suite.py` | Fetches the pinned Choregraphe suites and the robot image's `animations` package into `docker/vendor/<version>/` (`nao-sim-fetch-suite`) | [container.md](specs/container.md) |
+| `src/nao_sim/__init__.py` | Front door: re-exports `fetch_and_build_images`, `check_images` and the errors | [api.md](specs/api.md) |
+| `src/nao_sim/cli.py` | The `nao-sim` command, a thin shell over the library (`fetch-and-build-images` so far) | [cli.md](specs/cli.md) |
+| `src/nao_sim/errors.py` | `NaoSimError` and its subclasses, shared by the modules | [api.md](specs/api.md) |
+| `src/nao_sim/docker_images.py` | `fetch_and_build_images` (fetch, build with the version label, verify the boot, record) and `check_images` (what a start checks) | [api.md](specs/api.md), [container.md](specs/container.md) |
+| `src/nao_sim/suite.py` | Fetches the pinned Choregraphe suites and the robot image's `animations` package into `docker/vendor/<version>/` (first step of `fetch-and-build-images`) | [container.md](specs/container.md) |
 
 **Keep this map current:** when you add, rename, or remove a top-level `src/nao_sim/` module or a root directory, update the map in the same change — same discipline as keeping spec/plan statuses honest (below). A test (`tests/test_project_map.py`) enforces that every `src/nao_sim/*.py` module appears here and vice-versa — and that the spec frontmatter (see below) stays honest too.
 

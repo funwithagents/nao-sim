@@ -12,6 +12,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 | [202610081600_suite-download.md](202610081600_suite-download.md) | `nao-sim-fetch-suite`: downloads the pinned Choregraphe suites from Aldebaran's GitHub repositories into `docker/vendor/`, hash-verified, skipping those already there | Done |
 | [202610081900_animations-package-and-package-store.md](202610081900_animations-package-and-package-store.md) | `animations.pkg` extracted from the public robot images by `nao-sim-fetch-suite` into `docker/vendor/<version>/`, installed as a system package at boot; package store volume per version; per-Dockerfile ignore files | Done |
 | [202610091000_status-service-and-healthcheck.md](202610091000_status-service-and-healthcheck.md) | `NaoSim` status service on 2.1 and 2.8 with its ALMemory keys, entrypoint that verifies the replacements and fails loudly, Docker healthcheck on `NaoSim.isReady`, version build argument | Done |
+| [202610091500_fetch-and-build-images.md](202610091500_fetch-and-build-images.md) | `nao-sim fetch-and-build-images`: fetch the vendor files, build the images with an `io.nao-sim.version` label, verify they boot and record them; `check_images` for starts; the `nao-sim` command, `NaoSimError` hierarchy; compose project `nao-sim`; live tier builds through it | Done |
 
 ## Status legend
 

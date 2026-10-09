@@ -1,13 +1,13 @@
 """Helpers for the opt-in live tier: the nao-sim stacks and the host sound card.
 
-The live tests drive their own stack: they build and start a version's containers with
-`docker compose`, wait for the entrypoint's ready line, and take them down afterwards. A
-version whose suite (or image) is missing, or a machine without Docker, skips, never fails.
+The live tests drive their own stack: they build and verify a version's images with
+`fetch_and_build_images`, start its containers with `docker compose`, wait for the entrypoint's
+ready line, and take them down afterwards. A version whose suite (or image) is missing, or a
+machine without Docker, skips, never fails.
 """
 
-import importlib.metadata
+import asyncio
 import json
-import os
 import shutil
 import socket
 import subprocess
@@ -20,7 +20,8 @@ from pathlib import Path
 import pytest
 import qi
 
-from nao_sim import suite
+from nao_sim import docker_images, suite
+from nao_sim.errors import NaoSimError
 
 REPO = Path(__file__).resolve().parent.parent
 COMPOSE = REPO / "docker" / "compose.yaml"
@@ -36,7 +37,7 @@ class Version:
     service: str  # compose service
     container: str
     image: str
-    profile: str | None
+    profile: str  # compose profile
     tts_log: (
         str  # JSON-lines log of the ALTextToSpeech replacement, inside the container
     )
@@ -47,10 +48,10 @@ VERSIONS = {
     "2.1": Version(
         "2.1",
         "2.1.4.13",
-        "naoqi",
-        "nao-sim-naoqi",
+        "naoqi21",
+        "nao-sim-naoqi21",
         "nao-sim/naoqi:2.1.4.13",
-        None,
+        "2.1",
         "/home/nao/tts_almodule.jsonl",
         "nao-sim ALModule replacement",
     ),
@@ -105,35 +106,39 @@ class Stack:
 
     def __init__(self, version: Version):
         self.version = version
-        profile = ["--profile", version.profile] if version.profile else []
-        self._compose = ["docker", "compose", "-f", str(COMPOSE), *profile]
+        self._compose = [
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE),
+            "--profile",
+            version.profile,
+        ]
 
     def up(self, timeout: float = 240) -> None:
         v = self.version
         vendored = suite.VERSIONS[v.name]
         folder = VENDOR / v.name
-        build = (folder / vendored.suite.filename).exists() and (
-            folder / suite.PACKAGE
-        ).exists()
-        if not build and _run("docker", "image", "inspect", v.image).returncode != 0:
-            pytest.skip(
-                f"NAOqi {v.name}: no suite and package in docker/vendor/{v.name}/ "
-                f"(uv run nao-sim-fetch-suite {v.name}) and no {v.image} image"
-            )
         if _port_taken(9559):
             pytest.fail("127.0.0.1:9559 is taken: stop the running nao-sim stack first")
+        if (folder / vendored.suite.filename).exists() and (
+            folder / suite.PACKAGE
+        ).exists():
+            # The one slow step, as a user runs it: build from the checkout and verify.
+            try:
+                asyncio.run(docker_images.fetch_and_build_images([v.name]))
+            except NaoSimError as e:
+                pytest.fail(f"fetch-and-build-images failed for {v.name}: {e}")
+        else:
+            try:
+                docker_images.check_images(v.name)
+            except NaoSimError as e:
+                pytest.skip(
+                    f"NAOqi {v.name}: no suite and package in docker/vendor/{v.name}/ "
+                    f"and no usable images ({e})"
+                )
         since = str(int(time.time()))
-        cmd = [
-            *self._compose,
-            "up",
-            "-d",
-            *(["--build"] if build else []),
-            "tts",
-            v.service,
-        ]
-        # The image reports the checkout's version through NaoSim.getVersion().
-        env = {**os.environ, "NAO_SIM_VERSION": importlib.metadata.version("nao-sim")}
-        res = _run(*cmd, timeout=1800, env=env)
+        res = _run(*self._compose, "up", "-d", "tts", v.service, timeout=600)
         if res.returncode != 0:
             pytest.fail(f"docker compose up failed for {v.name}:\n{res.stderr[-3000:]}")
         end = time.time() + timeout

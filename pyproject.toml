@@ -12,8 +12,8 @@ dependencies = [
 ]
 
 [project.scripts]
+nao-sim = "nao_sim.cli:main"
 nao-sim-soundcard = "nao_sim.soundcard:main"
-nao-sim-fetch-suite = "nao_sim.suite:main"
 
 [build-system]
 requires = ["hatchling"]

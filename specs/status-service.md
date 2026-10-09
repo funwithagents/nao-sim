@@ -20,7 +20,7 @@ tests:
 
 ## Purpose
 
-The desktop `naoqi-bin` has no `ALSystem` and no version key in ALMemory ([container.md](container.md), "Desktop NAOqi facts"), so a client has no standard way to learn what it is talking to. The `NaoSim` service is nao-sim's identity: its existence says the target is nao-sim, it reports the nao-sim and NAOqi versions, publishes which host devices are attached, and says whether boot is complete. The Docker healthcheck is built on it, and so will `nao-sim up` and `nao-sim status` be.
+The desktop `naoqi-bin` has no `ALSystem` and no version key in ALMemory ([container.md](container.md), "Desktop NAOqi facts"), so a client has no standard way to learn what it is talking to. The `NaoSim` service is nao-sim's identity: its existence says the target is nao-sim, it reports the nao-sim and NAOqi versions, publishes which host devices are attached, and says whether boot is complete. The Docker healthcheck is built on it, and so will `nao-sim run` and `nao-sim status` be.
 
 It is also a contract with the other packages of the toolkit: nao-viewer's pose source identifies a target as `nao-sim` when the `NaoSim` service exists and reads its version from the ALMemory key `NaoSim/Version`; nao-bridge plans `nao.info.target` the same way. The service name and these keys do not change without a coordinated release.
 
@@ -72,11 +72,11 @@ So a container that is `running` and printed the ready line has its overrides in
 
 `docker/healthcheck.sh` calls `NaoSim.isReady` with `qicli` on the **public** port, `tcp://127.0.0.1:9559`, and succeeds when the answer is `true`. The two suites' `qicli` differ: 2.1 prints `NaoSim.isReady: true`, 2.8 prints `true` followed by its `[W] qitype.signal` warnings on stdout; the script reads the first line and drops any `name: ` prefix. On 2.8 that goes through the suite's gateway, so a health of `healthy` also means the relay works; on 2.1 it is the broker itself.
 
-Both Dockerfiles declare it: `HEALTHCHECK --interval=5s --timeout=5s --start-period=120s --retries=3`. The container is `starting` during boot (about 5 s on 2.1, 15 s on 2.8, plus module loading), `healthy` within one interval of the ready line, and `unhealthy` if NAOqi stops answering. `docker compose ps` and `docker inspect -f '{{.State.Health.Status}}'` show it; `nao-sim up` will wait on it rather than on the log line.
+Both Dockerfiles declare it: `HEALTHCHECK --interval=5s --timeout=5s --start-period=120s --retries=3`. The container is `starting` during boot (about 5 s on 2.1, 15 s on 2.8, plus module loading), `healthy` within one interval of the ready line, and `unhealthy` if NAOqi stops answering. `docker compose ps` and `docker inspect -f '{{.State.Health.Status}}'` show it; `NaoSim.start()` (behind `nao-sim run`) will wait on it rather than on the log line.
 
 ### Versions
 
-- `NAO_SIM_VERSION` is a build argument of both Dockerfiles, kept as an environment variable in the image (default `dev`). `docker/compose.yaml` passes `${NAO_SIM_VERSION:-dev}`; `nao-sim up` will pass the installed package version, and the live tests pass the checkout's. Baked at build rather than read at run time because it describes the override modules inside the image.
+- `NAO_SIM_VERSION` is a build argument of both Dockerfiles, kept as an environment variable in the image (default `dev`). `docker/compose.yaml` passes `${NAO_SIM_VERSION:-dev}`; `nao-sim fetch-and-build-images` passes the installed package version (the live tests build through it too). Baked at build rather than read at run time because it describes the override modules inside the image.
 - `NAO_SIM_NAOQI_VERSION` is set by each Dockerfile next to the suite it extracts.
 
 ## Open questions

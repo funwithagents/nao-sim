@@ -16,7 +16,6 @@ variables locate the payload, then the compressed ext3 root filesystem (bzip2 on
 writes the package to stdout: no ext3 tooling or mount is needed on the host.
 """
 
-import argparse
 import bz2
 import hashlib
 import re
@@ -30,6 +29,8 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from nao_sim.errors import FetchError
+
 VENDOR = Path(__file__).resolve().parents[2] / "docker" / "vendor"
 CHUNK = 1 << 20
 PACKAGE = "animations.pkg"
@@ -37,10 +38,6 @@ PACKAGE = "animations.pkg"
 # Git LFS files are served from media.githubusercontent.com; the raw URL returns the pointer.
 _V5 = "https://media.githubusercontent.com/media/aldebaran/NAO-V5-ressources/main/"
 _V6 = "https://media.githubusercontent.com/media/aldebaran/nao6-binaries/master/"
-
-
-class SuiteError(Exception):
-    pass
 
 
 @dataclass(frozen=True)
@@ -111,7 +108,7 @@ def _present(path: Path, sha256: str) -> bool:
     if not path.exists():
         return False
     if _sha256(path) != sha256:
-        raise SuiteError(
+        raise FetchError(
             f"{path} is not the pinned file (SHA-256 mismatch; a Git LFS pointer or a "
             "partial copy?). Delete it to fetch it again."
         )
@@ -129,7 +126,7 @@ def _write(chunks: Iterable[bytes], dest: Path, sha256: str, source: str) -> Non
                 f.write(chunk)
                 h.update(chunk)
         if h.hexdigest() != sha256:
-            raise SuiteError(
+            raise FetchError(
                 f"{source}: got SHA-256 {h.hexdigest()}, expected {sha256}"
             )
         part.rename(dest)
@@ -175,7 +172,7 @@ def opn_payload(opn: Path) -> OpnPayload:
     with opn.open("rb") as f:
         head = f.read(4096 + 128 * 1024)
         if not head.startswith(b"ALDIMAGE"):
-            raise SuiteError(f"{opn} is not a NAO robot image (no ALDIMAGE header)")
+            raise FetchError(f"{opn} is not a NAO robot image (no ALDIMAGE header)")
         found = dict(
             re.findall(
                 rb'^(MAGIC_SIZE|SIZE_BASE|INSTALLER_SIZE|IMAGE_CMP_SIZE)="?(\d+)"?\s*$',
@@ -194,7 +191,7 @@ def opn_payload(opn: Path) -> OpnPayload:
                 )
             )
         except KeyError as e:
-            raise SuiteError(
+            raise FetchError(
                 f"{opn}: installer variable {e.args[0].decode()} not found"
             ) from None
         offset = magic + installer * base
@@ -203,7 +200,7 @@ def opn_payload(opn: Path) -> OpnPayload:
     for compression, m in _MAGIC.items():
         if start.startswith(m):
             return OpnPayload(offset, size * base, compression)
-    raise SuiteError(f"{opn}: unknown compression at byte {offset} ({start.hex()})")
+    raise FetchError(f"{opn}: unknown compression at byte {offset} ({start.hex()})")
 
 
 def rootfs_chunks(opn: Path) -> Iterator[bytes]:
@@ -244,7 +241,7 @@ def rootfs_chunks(opn: Path) -> Iterator[bytes]:
                 data = d.unused_data
                 d = None
     if d is not None:
-        raise SuiteError(f"{opn}: the compressed root filesystem is truncated")
+        raise FetchError(f"{opn}: the compressed root filesystem is truncated")
 
 
 # Runs in alpine: store the filesystem streamed on stdin, then print one file of it ($0).
@@ -268,7 +265,7 @@ def docker_cat(rootfs: Iterable[bytes], path: str) -> Iterator[bytes]:
                 stdin.write(chunk)
         except BrokenPipeError:
             pass
-        except (SuiteError, OSError, zlib.error) as e:  # bad payload: re-raised below
+        except (FetchError, OSError, zlib.error) as e:  # bad payload: re-raised below
             failed.append(e)
             proc.kill()
         finally:
@@ -281,7 +278,7 @@ def docker_cat(rootfs: Iterable[bytes], path: str) -> Iterator[bytes]:
     if failed:
         raise failed[0]
     if proc.wait() != 0:
-        raise SuiteError(
+        raise FetchError(
             f"extracting {path} with docker failed (exit {proc.returncode})"
         )
 
@@ -311,29 +308,3 @@ def fetch(version: Version, vendor: Path = VENDOR, cat: Cat = docker_cat) -> Pat
             if not users:
                 opn.unlink(missing_ok=True)
     return folder
-
-
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
-        description="Fetch the pinned Choregraphe suite and the robot's animations package "
-        "(Aldebaran's software, from Aldebaran's GitHub repositories) into docker/vendor/<version>/, "
-        "verifying their SHA-256."
-    )
-    ap.add_argument("versions", nargs="*", help=f"{', '.join(VERSIONS)} (default: all)")
-    ap.add_argument("--vendor", type=Path, default=VENDOR, help="default: %(default)s")
-    a = ap.parse_args(argv)
-    if unknown := [v for v in a.versions if v not in VERSIONS]:
-        ap.error(
-            f"unknown version(s) {', '.join(unknown)}; choose from {', '.join(VERSIONS)}"
-        )
-    try:
-        for v in a.versions or VERSIONS:
-            fetch(VERSIONS[v], a.vendor, docker_cat)
-    except (SuiteError, OSError) as e:
-        _log(f"error: {e}")
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

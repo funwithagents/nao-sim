@@ -1,7 +1,12 @@
+# The project is always `nao-sim` (containers, network, the package store volumes).
+name: nao-sim
+
 services:
   tts:
     build:
       context: ./tts
+      labels:
+        io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
     image: nao-sim/tts:dev
     container_name: nao-sim-tts
     environment:
@@ -9,15 +14,18 @@ services:
       NAO_SIM_TTS_ENGINE: piper
     extra_hosts:
       - "host.docker.internal:host-gateway"
-  naoqi:
+  naoqi21:
+    profiles: ["2.1"]
     build:
       context: .
       dockerfile: Dockerfile.naoqi-2.1
       args:
         NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
+      labels:
+        io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
     image: nao-sim/naoqi:2.1.4.13
     platform: linux/amd64
-    container_name: nao-sim-naoqi
+    container_name: nao-sim-naoqi21
     environment:
       NAO_SIM_TTS_URL: http://tts:8080
     depends_on: [tts]
@@ -34,6 +42,8 @@ services:
       dockerfile: Dockerfile.naoqi-2.8
       args:
         NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
+      labels:
+        io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
     image: nao-sim/naoqi:2.8.7.4
     platform: linux/amd64
     container_name: nao-sim-naoqi28

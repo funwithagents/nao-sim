@@ -9,7 +9,7 @@ This overview is the map of the whole project and the authority for nao-sim; the
 ## Goals
 
 - Existing qi code, including Choregraphe behaviours, runs on nao-sim on NAOqi 2.1.4.13 and 2.8 and gets speech, audio, camera images and perception through the standard NAOqi services, with their documented methods, events and timing.
-- One command (`nao-sim up`) reaches a running simulated NAO, given Docker and the user's Choregraphe suite, on the platforms the libqi wheels cover (today macOS arm64 and Linux x86_64; see [Packaging](#packaging-and-platforms)).
+- One command (`nao-sim run`, after the one-time `nao-sim fetch-and-build-images`) reaches a running simulated NAO, given Docker and the user's Choregraphe suite, on the platforms the libqi wheels cover (today macOS arm64 and Linux x86_64; see [Packaging](#packaging-and-platforms)).
 - No Aldebaran binary, robot package, mesh or derived file lands in the repository, a package or a published image.
 
 ## Scope
@@ -33,9 +33,10 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | Override modules | Inside NAOqi (Python 2.7) | Replace or add NAOqi services in-process, so in-process callers (`ALAnimatedSpeech`, `ALDialog`) and host clients both reach them | [service-replacement.md](service-replacement.md) |
 | `tts` container | Docker, native architecture | Turns text, marker and pause items into audio with exact marker offsets (Piper, eSpeak NG) and streams it to the host | [tts-engine.md](tts-engine.md) |
 | Host sound card | Host (Python 3) | Plays the PCM it receives; `--silent`/`--record` for tests | [soundcard.md](soundcard.md) |
-| Host services (planned) | Host (Python 3) | Microphone, camera, perception feed, link to the containers | [Host services](#host-services) |
+| `NaoSim` object and config (planned) | Host (Python 3), in the caller's process | Built from a `NaoSimConfig`; `start()`/`stop()` run the containers, the host devices and the simulated world. Behind the CLI, the live tests and nao-bridge's `sim` backend | [api.md](api.md), [config.md](config.md) |
+| Host services (planned) | Host (Python 3), owned by a running `NaoSim` | Microphone, camera, perception feed, link to the containers | [Host services](#host-services) |
 | Simulated world (planned) | Host, its own process (`nao-viewer sim`) | The NAO model posed from nao-sim's NAOqi in a scene, the window, head-camera renders | [Simulated world: nao-viewer](#simulated-world-nao-viewer) |
-| `nao-sim` CLI (planned) | Host | `up`, `down`, `status`, `logs`, `probe` | [CLI](#cli) |
+| `nao-sim` CLI (planned) | Host | `fetch-and-build-images`, `run`, `cleanup`, `status`, `logs`, `probe`, over the `NaoSim` object | [cli.md](cli.md) |
 
 - Clients reach every NAOqi service, built-in or replaced, on `127.0.0.1:9559`, as on a NAO. On 2.8, the suite's own `qi-secure-gateway` serves that port and relays the service processes, as on a NAO 6.
 - The containers reach the host through `host.docker.internal` (`host-gateway` on Linux). Today only the `tts` container does, to stream speech to the sound card on 9562.
@@ -51,12 +52,13 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | `tts` container | Built and tested ([tts-engine.md](tts-engine.md)) |
 | Host sound card | Built and tested ([soundcard.md](soundcard.md)) |
 | `NaoSim` status service, healthcheck | Built and tested ([status-service.md](status-service.md)) |
+| `NaoSim` object and `NaoSimConfig` | Draft ([api.md](api.md), [config.md](config.md)) |
 | Host link and host services | Planned; the sound card's protocol predates the design |
 | `ALAudioDevice` replacement | Planned |
 | Video injection | Measured (`putImage` works on both versions), not built |
 | `ALAudioPlayer` shim and replacement | Measured (shim approach), not built |
 | Perception replacements | Measured (fake population drives awareness on both versions), not built |
-| CLI | Planned; today the stack is started with `docker compose` (see [README.md](../README.md)) |
+| CLI | Draft ([cli.md](cli.md)); today the stack is started with `docker compose` (see [README.md](../README.md)) |
 | Simulated world (nao-viewer sim mode) | Designed on the nao-viewer side (draft); not built on either side |
 | Capability probe | Spike scripts only |
 | Speech recognition | v2 |
@@ -99,7 +101,7 @@ The **`NaoSim` status service** ([status-service.md](status-service.md)) is the 
 
 ## Host services
 
-- One Python 3 process started by `nao-sim up`: webcam capture, microphone capture or WAV replay, the sound card, the camera feeder (webcam or sim renders into `ALVideoDevice`), optional local speech recognition. It launches and drives the simulated world as a separate process (see [Simulated world: nao-viewer](#simulated-world-nao-viewer)).
+- Owned by a running `NaoSim` object ([api.md](api.md)), in the process that started it (`nao-sim run`, a test, nao-bridge): webcam capture, microphone capture or WAV replay, the sound card, the camera feeder (webcam or sim renders into `ALVideoDevice`), optional local speech recognition. It launches and drives the simulated world as a separate process (see [Simulated world: nao-viewer](#simulated-world-nao-viewer)).
 - The host knows nothing about NAOqi: no tags, no events, no `say()` semantics. It is a set of devices. Where the host does need NAOqi (camera injection, the perception feed; the sim process reading joint state), it is an ordinary qi client.
 - **Host link** (design, not built): the override modules and the `tts` container connect out to the host on one TCP port, with length-prefixed messages (`u32 header_len | u32 payload_len | JSON header | raw payload`, the framing nao-viewer's sim protocol already uses):
   - host to container: microphone PCM chunks, camera frames already in NAO format;
@@ -113,9 +115,9 @@ nao-viewer is a separate package (its own repository) that owns the NAO MuJoCo m
 
 | | nao-viewer (sim process) | nao-sim (host process) |
 | --- | --- | --- |
-| Process | `nao-viewer sim --naoqi URL [--scene FILE] [--port N] [--headless] [--variant V]`, its own process, so MuJoCo's window, OpenGL and the macOS `mjpython` constraint stay out of nao-sim | Launches it, and stops it on `nao-sim down` |
+| Process | `nao-viewer sim --naoqi URL [--scene FILE] [--port N] [--headless] [--variant V]`, its own process, so MuJoCo's window, OpenGL and the macOS `mjpython` constraint stay out of nao-sim | Launches it, and stops it when the `NaoSim` stops |
 | Robot pose | Reads it from nao-sim's NAOqi over qi, like any client | Nothing: NAOqi is the source of truth |
-| Scene | Loads and renders it (`scenes/default.xml`: floor, lights, a table with objects in front of the robot) | Chooses the scene file (`nao-sim up --scene FILE`) |
+| Scene | Loads and renders it (`scenes/default.xml`: floor, lights, a table with objects in front of the robot) | Chooses the scene file (`viewer.scene` in [config.md](config.md)) |
 | Head cameras | Renders RGB frames of `CameraTop`/`CameraBottom` on request, at the robot's current pose | Decides which camera, resolution and rate from `ALVideoDevice.getSubscribers()`, converts to the NAO colorspace, calls `putImage` |
 | Model variant | Mesh model if the user ran `nao-viewer fetch-meshes`, else the primitive model | Nothing: the meshes never pass through nao-sim |
 
@@ -124,7 +126,7 @@ nao-viewer is a separate package (its own repository) that owns the NAO MuJoCo m
 - With `--camera render` the loop closes: NAOqi moves the head, the sim renders what that camera sees, nao-sim injects it, NAOqi serves it to its subscribers.
 - Planned sim operations that nao-sim will consume: touch events from clicks on the robot (`ALTouch`, an awareness stimulus) and human figures in scenes with their positions (the [perception](#perception) feed without a webcam). Each comes as a new operation of the sim protocol.
 - **Dependency**: through an extra, `nao-sim[viewer]`, which pulls nao-viewer (and with it MuJoCo). Without it, nao-sim runs with no window and no render camera: every NAOqi API, speech, microphone, webcam camera and perception from the webcam all work, which suits CI and servers; what is lost is the robot in its scene, the render camera, touch from clicks and people placed in the scene. nao-viewer depends on libqi only, never on nao-sim, so the chain stays one-way. `nao-bridge[sim]` pulls `nao-sim[viewer]`, so the full experience stays one install.
-- **`headless` setting** (nao-sim's configuration, default `false`; `--headless` on `up`): it decides the window, and the camera decides whether the sim runs at all:
+- **`headless` setting** (`viewer.headless` in [config.md](config.md), default `false`): it decides the window, and the camera decides whether the sim runs at all:
 
   | `headless` | Camera | Sim process | Needs `nao-sim[viewer]` |
   | --- | --- | --- | --- |
@@ -132,7 +134,7 @@ nao-viewer is a separate package (its own repository) that owns the NAO MuJoCo m
   | `true` | `render` | `nao-viewer sim --headless` (no window, also on macOS without `mjpython`) | Yes |
   | `true` | `webcam` or none | None | No |
 
-  When the extra is needed and missing, `nao-sim up` fails before starting anything, with a message naming the extra.
+  When the extra is needed and missing, `NaoSim.start()` fails before starting anything, with a message naming the extra.
 
 ## Speech
 
@@ -221,14 +223,17 @@ An optional `ALSpeechRecognition` replacement in the container, backed by a host
 
 ## CLI
 
+Specified in [cli.md](cli.md).
+
 | Command | Purpose |
 | --- | --- |
-| `nao-sim up --naoqi 2.1\|2.8 --suite PATH [--camera webcam:0\|render] [--audio mic\|wav:FILE] [--scene FILE] [--headless]` | Build the image if needed, start the containers and the host services, and launch the sim (with `nao-sim[viewer]`; `--headless` overrides the `headless` setting, see [Simulated world](#simulated-world-nao-viewer)) |
-| `nao-sim down` | Stop everything |
+| `nao-sim fetch-and-build-images [2.1] [2.8]` | Fetch the vendor files, build and verify the images: the one slow step, before `run` ([api.md](api.md), "Images") |
+| `nao-sim run [--config FILE]` | Load a `NaoSimConfig` ([config.md](config.md); none: the defaults), start a `NaoSim` ([api.md](api.md)) and stay in the foreground until Ctrl-C, which stops everything |
+| `nao-sim cleanup` | Remove the containers a run that died without stopping left behind |
 | `nao-sim status` / `nao-sim logs` | Health of the containers, the overrides and the host link |
 | `nao-sim probe` | Capability report (see below) |
 
-The first `up` checks Docker and asks for the suite path. Today the stack is started with `docker compose` by hand; the live tests' stack helpers (`tests-e2e/support.py`) are the first code that starts and stops it, and should call the CLI once it exists.
+The CLI is a thin shell over the `NaoSim` object: `run` is `NaoSim.from_json_file(FILE).start()` then waiting for Ctrl-C, and every check (Docker, verified images, the viewer extra) happens in `start()`. Today the stack is started with `docker compose` by hand; the live tests' stack helpers (`tests-e2e/support.py`) are the first code that starts and stops it, and move to `NaoSim` once it exists.
 
 ## Capability probe
 
@@ -267,8 +272,8 @@ Two tiers ([testing.md](testing.md)): a fast, deterministic `tests/` tier with n
 1. **Validation spike** (done, Oct 8, 2026): a module loaded into NAOqi serves a host client; a host-registered service is called back from the container; the built-in `ALTextToSpeech` is replaced, with `ALAnimatedSpeech` using the replacement. On 2.1 and 2.8.
 2. **Speech path** (done except gate and subtitles): `ALTextToSpeech` replacement, `tts` container, host sound card, under test on both versions (plan [202610081257](../plans/202610081257_baseline-tests-speech-path.md)).
    - Still to exit: a Choregraphe behaviour with animated speech and the `animations` package runs with gestures on their words; sound files play through the `ALAudioPlayer` shim; reference sentences within the agreed duration tolerance.
-3. **Container and probe** (started): `NaoSim` status service, healthcheck and entrypoint hardening (done, [status-service.md](status-service.md)); `nao-sim up`/`down`, the host-link spec, the probe with committed reports for 2.1 and 2.8.
-   - Exit: `nao-sim up` works on Linux and macOS; capability reports committed.
+3. **Container and probe** (started): `NaoSim` status service, healthcheck and entrypoint hardening (done, [status-service.md](status-service.md)); `NaoSimConfig` and the `NaoSim` object ([config.md](config.md), [api.md](api.md)), `nao-sim run`/`cleanup` over them, the host-link spec, the probe with committed reports for 2.1 and 2.8.
+   - Exit: `nao-sim run` works on Linux and macOS; capability reports committed.
 4. **Media**: video injection (webcam and render), the sim window through `nao-sim[viewer]`, `ALAudioDevice` replacement, microphone gate.
    - Exit: a vision script and an audio script written against the standard NAOqi services run unchanged on nao-sim.
 5. **Perception**: `ALFaceDetection`, `ALPeoplePerception` and `ALMovementDetection` replacements backed by host detection, feeding the built-in awareness and tracking; human figures in world scenes.
@@ -285,7 +290,7 @@ Two tiers ([testing.md](testing.md)): a fast, deterministic `tests/` tier with n
 - [ ] **Docker Desktop**: everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is to confirm.
 - [ ] **Speech duration tolerance**: how close `say()` must be to a NAO's own durations (proposed ±20% per sentence), and the reference values.
 - [ ] **Virtual robot sensors**: what `getAngles(..., True)` and the ALMemory sensor keys return on the desktop NAOqi (likely the commanded values); matters for the sim's pose and the render camera.
-- [ ] **Sim lifecycle**: whether closing the sim window restarts the sim or means `nao-sim down` (nao-viewer's client only reports `SimClosed`; the decision is nao-sim's).
+- [ ] **Sim lifecycle**: whether closing the sim window restarts the sim or stops the run (nao-viewer's client only reports `SimClosed`; the decision is nao-sim's).
 - [ ] **Render-camera throughput**: the sim protocol pulls one frame per request (0.9 MB per VGA frame over loopback). Two cameras at 30 fps may need a streaming operation or shared memory on the nao-viewer side; to decide with measurements.
 - [ ] **NAO V6 geometry**: nao-viewer's model is V5 (camera field of view 47.64° vertical). Whether 2.8 (NAO V6) needs its own model is open on the nao-viewer side.
 - **Emulation speed**: the NAOqi images run under amd64 emulation on Apple Silicon. Measured boot is about 5 s (2.1) and 15 s (2.8) with no visible lag; the probe records timing if that changes.

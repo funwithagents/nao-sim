@@ -8,7 +8,11 @@ code:
   - docker/Dockerfile.naoqi-2.1.dockerignore
   - docker/Dockerfile.naoqi-2.8.dockerignore
   - src/nao_sim/suite.py
+  - src/nao_sim/docker_images.py
 tests:
+  - tests/test_suite.py
+  - tests/test_docker_images.py
+  - tests-e2e/test_docker_images_live.py
   - tests-e2e/test_speech_live.py
   - tests/test_suite.py
   - tests/test_entrypoint.py
@@ -40,13 +44,13 @@ Each image is built from two Aldebaran files per version, kept in `docker/vendor
 - Neither suite has the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs): the robot image is its only public source. Both versions' packages are behaviours (`.xar`) and `.ogg` only, no native code, with the same 224 `Stand/Gestures` behaviours. The robot images have no sound set: that stays the user's to install (see "Package store").
 - The download fetches Aldebaran's own public files to the user's machine, as the user would by hand; nothing is redistributed.
 
-#### `nao-sim-fetch-suite`
+#### Fetching the vendor files
 
-`nao-sim-fetch-suite [2.1] [2.8] [--vendor DIR]` (`src/nao_sim/suite.py`; default: both versions into `docker/vendor/`) makes `<vendor>/<version>/` hold the pinned suite and `animations.pkg`.
+The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--vendor DIR]` ([api.md](api.md), "Images"; default: both versions into `docker/vendor/`), which then builds and verifies the images. `suite.fetch` (`src/nao_sim/suite.py`) makes `<vendor>/<version>/` hold the pinned suite and `animations.pkg`.
 
 - A file already there with the pinned hash is kept, so re-running is cheap (it hashes the files, nothing is downloaded).
 - A file there with another hash (a Git LFS pointer, a partial copy) is an error and is left untouched; the user deletes it to fetch again.
-- Every download goes to `<file>.part`, is hashed while it streams and takes its final name only if the hash matches; otherwise it is deleted and the command fails (exit 1).
+- Every download goes to `<file>.part`, is hashed while it streams and takes its final name only if the hash matches; otherwise it is deleted and the step fails with a `FetchError` (the command exits 1).
 - `animations.pkg`, when missing, is extracted from the version's robot image:
   1. The image (`.opn`) is used from `<vendor>/<version>/` if the user put it there with the pinned hash, otherwise downloaded there and deleted after the extraction (a user's own copy is kept).
   2. Layout of a `.opn`: a 4096-byte `ALDIMAGE` header, an installer shell script whose variables give `MAGIC_SIZE`, `SIZE_BASE`, `INSTALLER_SIZE` and `IMAGE_CMP_SIZE`, then the compressed ext3 root filesystem at byte `MAGIC_SIZE + INSTALLER_SIZE × SIZE_BASE`, `IMAGE_CMP_SIZE × SIZE_BASE` bytes long (bzip2 on 2.1, gzip on 2.8, told apart by their magic bytes). The host decompresses it in Python.
@@ -84,6 +88,7 @@ One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override 
 | Boot to ready | about 5 s | about 15 s |
 
 - `naoqi-bin` refuses to run as root: the image runs as user `nao` (uid 1000), which owns `/opt/naoqi`.
+- Label `io.nao-sim.version` on the NAOqi and `tts` images, set by compose (`build.labels`, from `NAO_SIM_VERSION`) so neither Dockerfile changes; `NaoSim.start()` reads it to refuse an image built by another nao-sim version ([api.md](api.md)).
 - Environment: `PATH`, `LD_LIBRARY_PATH=/opt/naoqi/lib`, `PYTHONPATH=/opt/naoqi/lib:/opt/naoqi/modules`, `NAO_SIM_NAOQI_VERSION` (the suite's full version) and `NAO_SIM_VERSION` (build argument, default `dev`; see [status-service.md](status-service.md)), plus the per-version entrypoint defaults below.
 
 ### Network layout
@@ -98,8 +103,10 @@ Port 9559 is the only port, published on the host as `127.0.0.1:9559`.
 `docker/compose.yaml` has three services:
 
 - `tts`: the speech engine ([tts-engine.md](tts-engine.md)), native architecture.
-- `naoqi` (2.1, default).
+- `naoqi21` (2.1, profile `2.1`).
 - `naoqi28` (2.8, profile `2.8`).
+
+Each NAOqi service sits behind its version's profile, with symmetric names (`naoqi21`/`naoqi28`, containers `nao-sim-naoqi21`/`nao-sim-naoqi28`), so a version is always named: `docker compose --profile 2.1 up -d tts naoqi21`. A bare `docker compose up` starts only `tts`.
 
 Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and each mounts its package store volume (`packages-2.1`, `packages-2.8`; see "Package store"). They reach the engine at `http://tts:8080` (`NAO_SIM_TTS_URL`) and the host through `host.docker.internal` (`host-gateway` on Linux).
 
@@ -154,4 +161,4 @@ Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited c
 ## Open questions
 
 1. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
-2. **Starting the stack.** `nao-sim up` and `down` (build if needed, pick the version, start the host services) are not built; today it is `docker compose` by hand (see [README.md](../README.md)). It should wait on the container's health rather than on the log line.
+2. **Starting the stack.** `nao-sim run` and `cleanup` ([cli.md](cli.md)) are not built; today it is `docker compose` by hand (see [README.md](../README.md)). `NaoSim.start()` waits on the container's health rather than on the log line ([api.md](api.md)).
