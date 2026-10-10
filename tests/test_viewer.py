@@ -7,6 +7,7 @@ import sys
 import threading
 
 import nao_viewer
+import numpy as np
 import pytest
 
 from nao_sim import viewer
@@ -77,6 +78,13 @@ class FakeNaoViewer:
     def wait(self, timeout=None):
         return self.exited.wait(timeout)
 
+    def camera_frame(self, camera, width, height):
+        if not self.running:
+            raise nao_viewer.ViewerClosed("the viewer process has exited")
+        image = np.zeros((height, width, 3), np.uint8)
+        image[..., 0] = 1 if camera == "top" else 2
+        return nao_viewer.CameraFrame(image, camera, pose_seq=1, pose_age=0.01)
+
     def close(self):
         self.running = False
         self.exited.set()
@@ -116,3 +124,15 @@ def test_closing_it_ourselves_logs_nothing(fake_viewer, caplog):
         world.close()
     assert not world.running
     assert caplog.records == []
+
+
+def test_camera_frames_come_from_the_viewer_until_it_is_closed(fake_viewer):
+    world = viewer.SimWorld("config")
+    world.launch()
+
+    frame = world.camera_frame("top", 640, 480)
+    assert frame.shape == (480, 640, 3) and frame[0, 0, 0] == 1
+
+    fake_viewer[0].close()  # the user closes the window
+    with pytest.raises(viewer.WorldClosed):
+        world.camera_frame("top", 640, 480)

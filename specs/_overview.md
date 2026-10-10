@@ -57,10 +57,10 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | `NaoSimConfig`, `NaoSim` object, CLI | Built and tested: `nao-sim run`/`status`/`cleanup`/`logs`, the live tier runs through `NaoSim` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md)) |
 | Host link | Draft ([devices.md](host/devices.md)) |
 | Audio input, `ALAudioDevice` replacement, microphone gate | Draft ([audio-input.md](host/audio-input.md), [audio-device.md](services/audio-device.md)) |
-| Video input | Draft; `putImage` measured on both versions ([video-input.md](host/video-input.md)) |
+| Video input | Built and tested with the render source on both versions: VGA `CameraTop` frames at `video_input.fps`, NAOqi converting per subscriber; the webcam and the bottom camera are next ([video-input.md](host/video-input.md)) |
 | Touch input | Draft ([touch-input.md](host/touch-input.md)) |
 | `ALAudioPlayer` shim and replacement | Draft; shim approach measured ([audio-player.md](services/audio-player.md)) |
-| Simulated world (nao-viewer sim mode) | Built on the nao-viewer side (`NaoViewer` in sim mode, windowed and headless, `camera_frame`); the window is wired into nao-sim, the headless render camera is not ([viewer.md](host/viewer.md), Stable) |
+| Simulated world (nao-viewer sim mode) | Built and tested: the window, and the headless viewer rendering the top camera for the video input, in the live tier and CI ([viewer.md](host/viewer.md)) |
 | Distribution (uv git dependency: wheel with the recipes, user data directory) | Implemented ([project.md](project.md), "Distribution") |
 | CI | Implemented ([ci.md](testing/ci.md)) |
 | Capability probe | Spike scripts only; deferred (see [below](#capability-probe)) |
@@ -99,7 +99,7 @@ Details and measurements: [container.md](container/container.md) and [service-re
 
 Specified in [container.md](container/container.md), including the robot packages: the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs) is extracted from the public robot image and installed at boot as a system package; the user installs anything else (the sound set) as on a robot, and a volume per version keeps it. Each image also matches the modules a NAO of its version runs: on 2.1 the entrypoint launches the autonomous abilities the desktop suite ships without loading (`ALBasicAwareness`, `ALAutonomousMoves`, blinking, expressiveness), then Autonomous Life after them ("Matching a NAO's modules").
 
-The **`NaoSim` status service** ([status-service.md](container/status-service.md)) is the identity of a nao-sim target: the desktop `naoqi-bin` has no `ALSystem`, so this is how a client learns that the target is nao-sim, the nao-sim and NAOqi versions, which host devices are attached (`NaoSim/Camera/Source`, `NaoSim/Audio/Source`, `none` until the devices are built; `NaoSim/Audio/Channels` comes with the audio input) and whether boot is complete (`NaoSim/Ready`). The Docker healthcheck calls it. nao-viewer already relies on it (service exists means `nao-sim`), so the name and the keys are a contract between the packages. The images will also pin `VideoInput.xml` to `SimulatorCam`, with the video input ([video-input.md](host/video-input.md), "The image side").
+The **`NaoSim` status service** ([status-service.md](container/status-service.md)) is the identity of a nao-sim target: the desktop `naoqi-bin` has no `ALSystem`, so this is how a client learns that the target is nao-sim, the nao-sim and NAOqi versions, which host devices are attached (`NaoSim/Camera/Source`, `NaoSim/Audio/Source`, `none` until the devices are built; `NaoSim/Audio/Channels` comes with the audio input) and whether boot is complete (`NaoSim/Ready`). The Docker healthcheck calls it. nao-viewer already relies on it (service exists means `nao-sim`), so the name and the keys are a contract between the packages.
 
 ## Host services
 
@@ -146,7 +146,7 @@ Clients get camera images and microphone audio through the standard NAOqi servic
 
 | | NAOqi side | Host side |
 | --- | --- | --- |
-| Video | `ALVideoDevice` in `SimulatorCam` mode, fed with the public `putImage`: no module | [video-input.md](host/video-input.md): nao-viewer render first, webcam after |
+| Video | `ALVideoDevice` as shipped (`VideoDevice.xml` already selects the simulator), fed with the public `putImage`: no module | [video-input.md](host/video-input.md): nao-viewer render first, webcam after; VGA `CameraTop` frames at a fixed rate, NAOqi converting per subscriber |
 | Audio in | A replacement `ALAudioDevice`, [audio-device.md](services/audio-device.md) | [audio-input.md](host/audio-input.md): WAV replay first, host microphone after; the microphone gate |
 | Sound files | The `sndfile-play` shim, then a replacement `ALAudioPlayer`, [audio-player.md](services/audio-player.md) | [audio-output.md](host/audio-output.md) |
 
@@ -207,7 +207,7 @@ Built as [project.md](project.md) ("Distribution") specifies: another project de
 
 ## Testing
 
-Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tier with no Docker, and an opt-in `tests-e2e/` tier that builds, starts and stops each version's stack itself. CI ([ci.md](testing/ci.md)) runs both on GitHub's hosted `ubuntu-24.04` runners, with no self-hosted runner, as reachy-mini-bridge's CI does: a static gate, the fast tier, and a live matrix over 2.1 and 2.8 that fetches, builds and caches the images itself (never pushed), with a headless viewer and the render camera once the viewer is built. Downstream repositories (nao-viewer, nao-bridge) pin a nao-sim commit for their own live jobs; nao-sim's CI does not test them.
+Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tier with no Docker, and an opt-in `tests-e2e/` tier that builds, starts and stops each version's stack itself. CI ([ci.md](testing/ci.md)) runs both on GitHub's hosted `ubuntu-24.04` runners, with no self-hosted runner, as reachy-mini-bridge's CI does: a static gate, the fast tier, and a live matrix over 2.1 and 2.8 that fetches, builds and caches the images itself (never pushed), with a headless viewer and the render camera. Downstream repositories (nao-viewer, nao-bridge) pin a nao-sim commit for their own live jobs; nao-sim's CI does not test them.
 
 ## Milestones
 
@@ -218,7 +218,7 @@ The toolkit document numbers the milestones across the three packages; nao-sim's
    - Still to exit: a Choregraphe behaviour with animated speech and the `animations` package runs with gestures on their words; sound files play through the `ALAudioPlayer` shim; reference sentences within the agreed duration tolerance.
 3. **nao-sim run and CI** (done, Oct 9, 2026; toolkit 2 and 4): status service, healthcheck and `fetch-and-build-images`; `NaoSimConfig` and the `NaoSim` object with the audio sinks and the sim window, `nao-sim run`/`cleanup`/`status`/`logs` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md), [audio-output.md](host/audio-output.md), [viewer.md](host/viewer.md)), CI on both versions ([ci.md](testing/ci.md)), the distribution as a uv git dependency ([project.md](project.md)) (all done).
    - Exit (met): `nao-sim run` works on Linux and macOS; CI green on both versions.
-4. **Media** (toolkit 6), in this order: the render camera ([video-input.md](host/video-input.md), the viewer's headless renders), so CI tests the camera loop from the start; the host link, `ALAudioDevice` and the audio input with WAV replay and the microphone gate ([devices.md](host/devices.md), [audio-device.md](services/audio-device.md), [audio-input.md](host/audio-input.md)); the `ALAudioPlayer` shim ([audio-player.md](services/audio-player.md)); then the webcam, the host microphone and touch ([touch-input.md](host/touch-input.md)).
+4. **Media** (toolkit 6), in this order: the render camera ([video-input.md](host/video-input.md), the viewer's headless renders), so CI tests the camera loop from the start (done, Oct 9, 2026); the host link, `ALAudioDevice` and the audio input with WAV replay and the microphone gate ([devices.md](host/devices.md), [audio-device.md](services/audio-device.md), [audio-input.md](host/audio-input.md)); the `ALAudioPlayer` shim ([audio-player.md](services/audio-player.md)); then the webcam, the host microphone and touch ([touch-input.md](host/touch-input.md)).
    - Exit: a vision script and an audio script written against the standard NAOqi services run unchanged on nao-sim.
 5. **NAOqi 2.8 validation** (toolkit 8): the capability probe and its committed reports for 2.1 and 2.8.
 

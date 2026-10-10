@@ -22,6 +22,8 @@ MonoPolicy = Literal["duplicate", "silence"]
 VideoInputSource = Literal["none", "render", "webcam"]
 ViewerVariant = Literal["auto", "placeholder", "aldebaran"]
 
+MAX_FPS = 30  # a NAO camera's highest frame rate
+
 
 class ConfigError(ValueError):
     """An invalid config; `key` is the offending key path (`audio_input.wav`)."""
@@ -270,10 +272,15 @@ class VideoInputSettings(_Loaders):
     """The video input, injected into ALVideoDevice (specs/host/video-input.md)."""
 
     source: VideoInputSource = "none"
+    fps: int = 15  # frames injected per second into CameraTop
     device: int = 0  # webcam index, used by "webcam"
 
     def __post_init__(self) -> None:
         _check_choice(self.source, VideoInputSource, "source")
+        if not 1 <= self.fps <= MAX_FPS:
+            raise ConfigError(
+                f"must be an integer from 1 to {MAX_FPS}, got {self.fps!r}", key="fps"
+            )
         if self.device < 0:
             raise ConfigError(
                 f"must be a non-negative integer, got {self.device!r}", key="device"
@@ -281,7 +288,9 @@ class VideoInputSettings(_Loaders):
 
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
-        return _parse_block(cls, data, path, {"source": _as_str, "device": _as_int})
+        return _parse_block(
+            cls, data, path, {"source": _as_str, "fps": _as_int, "device": _as_int}
+        )
 
 
 @dataclass(frozen=True)

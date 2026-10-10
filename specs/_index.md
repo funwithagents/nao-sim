@@ -6,7 +6,7 @@ nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe su
 - **Host**: dumb devices named after their role (the audio output today; audio, video and touch inputs planned), Python 3.12–3.13 with libqi. Perception and speech recognition are the clients' job, not nao-sim's.
 - **Simulated world** (planned, optional): the `nao-sim[viewer]` extra pulls nao-viewer, whose sim mode poses the NAO model from nao-sim's NAOqi in a scene and renders the head cameras that nao-sim injects into `ALVideoDevice`.
 
-Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement, `tts` engine, audio output) the `NaoSim` status service with the Docker healthcheck, and `nao-sim run`: the `NaoSim` object with its config, the sim window and the CLI; CI runs both test tiers on both versions; another project depends on nao-sim from git with uv. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
+Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement, `tts` engine, audio output) the `NaoSim` status service with the Docker healthcheck, and `nao-sim run`: the `NaoSim` object with its config, the sim window and the CLI; the render camera (the headless viewer's top-camera frames injected into `ALVideoDevice`); CI runs both test tiers on both versions; another project depends on nao-sim from git with uv. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
 
 ## Specs
 
@@ -26,7 +26,7 @@ The host-side front door: the config, the `NaoSim` object and the `nao-sim` comm
 
 | Spec | Description | Status |
 |---|---|---|
-| [config.md](runtime/config.md) | `NaoSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input`, viewer with its scene and variant), nao-bridge's loader conventions (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embedded as nao-bridge's `sim` block, JSON | Implemented |
+| [config.md](runtime/config.md) | `NaoSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with its frame rate, viewer with its scene and variant), nao-bridge's loader conventions (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embedded as nao-bridge's `sim` block, JSON | Implemented |
 | [api.md](runtime/api.md) | The `NaoSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and nao-bridge's `sim` backend | Implemented |
 | [cli.md](runtime/cli.md) | The `nao-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Implemented |
 
@@ -60,9 +60,9 @@ The simulated robot's inputs and outputs on the host, owned by a running `NaoSim
 | [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Draft |
 | [audio-output.md](host/audio-output.md) | The robot's loudspeaker: TCP PCM protocol, newest stream wins, stop, the `AudioSink` seam (device, null, WAV, memory), playing state for the gate | Implemented |
 | [audio-input.md](host/audio-input.md) | The robot's microphones: WAV replay then host microphone, format and mono policy, the microphone gate on the host, messages on the host link | Draft |
-| [video-input.md](host/video-input.md) | The robot's head cameras: nao-viewer render then webcam, driven by `ALVideoDevice`'s subscribers, `putImage`, `SimulatorCam` pinned in the images | Draft |
+| [video-input.md](host/video-input.md) | The robot's head cameras: nao-viewer render then webcam, VGA `CameraTop` frames injected with `putImage` at a fixed `fps` whoever subscribes, NAOqi converting per subscriber; measured on both versions | Implemented |
 | [touch-input.md](host/touch-input.md) | The robot's touch sensors: clicks in the sim window and an API for tests, written to ALMemory | Draft |
-| [viewer.md](host/viewer.md) | The simulated world: nao-viewer's sim mode driven through its public API, which viewer runs, the `viewer` extra, the window closed by the user, headless with the render camera in the live tier and CI | Stable |
+| [viewer.md](host/viewer.md) | The simulated world: nao-viewer's sim mode driven through its public API, which viewer runs, the `viewer` extra, the window closed by the user, headless with the render camera in the live tier and CI | Implemented |
 
 ### Testing: `testing/`
 

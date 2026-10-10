@@ -1,9 +1,11 @@
 ---
 code:
   - src/nao_sim/audio_output.py
+  - src/nao_sim/video_input.py
   - docker/compose.yaml
 tests:
   - tests/test_audio_output.py
+  - tests/test_video_input.py
 ---
 
 # Host devices
@@ -29,7 +31,7 @@ This spec holds what every device shares: the contract below and the host link. 
 
 ### The device contract
 
-- **Owned by `NaoSim`.** A running `NaoSim` ([api.md](../runtime/api.md)) starts each device the config asks for (step 2 for the audio output, step 5 for the inputs of "Lifecycle"), in its own process, and stops them in reverse order. A device is never a user command: the only standalone entry point is a debugging one ([audio-output.md](audio-output.md), "Command").
+- **Owned by `NaoSim`.** A running `NaoSim` ([api.md](../runtime/api.md)) starts each device the config asks for (step 2 for the audio output, step 6 for the inputs of "Lifecycle"), on its own threads, and stops them in reverse order. A device is never a user command: the only standalone entry point is a debugging one ([audio-output.md](audio-output.md), "Command").
 - **Configured by its block** of [config.md](../runtime/config.md), named like the device: `audio_output`, `audio_input`, `video_input`. A device whose block says `none` is not started.
 - **Pluggable at its edge.** Where the data goes or comes from is a seam, chosen by the config or passed in code: the audio output's `AudioSink`, the audio input's source (WAV file or host microphone), the video input's source (render or webcam). Tests plug in-memory ends.
 - **Testable in CI first.** A runner has no loudspeaker, microphone or webcam, so each device is built with the end CI can use before the one that captures the user: memory and silent sinks for the audio output, the WAV source for the audio input, the render source for the video input ([ci.md](../testing/ci.md)).

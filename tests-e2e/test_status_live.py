@@ -12,7 +12,9 @@ def test_the_target_identifies_as_nao_sim(nao):
     assert naosim.getNaoqiVersion() == nao.version.naoqi_version
     assert memory.getData("NaoSim/Version") == built_with
     assert memory.getData("NaoSim/NaoqiVersion") == nao.version.naoqi_version
-    assert memory.getData("NaoSim/Camera/Source") == "none"
+    assert (
+        memory.getData("NaoSim/Camera/Source") == "render"
+    )  # the live tier's render camera
     assert memory.getData("NaoSim/Audio/Source") == "none"
     # Perception runs in the clients: nao-sim publishes no perception source.
     assert "NaoSim/Perception/Source" not in memory.getDataListName()

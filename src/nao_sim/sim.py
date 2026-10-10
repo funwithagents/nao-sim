@@ -1,7 +1,7 @@
 """`NaoSim`: the one object that runs a simulated NAO on the host (specs/runtime/api.md).
 
 Built from a `NaoSimConfig`, its `start()` checks the machine, starts the audio output, the
-containers and the simulated world, and returns once the robot is ready; `stop()` takes them
+containers, the simulated world and the video input, and returns once the robot is ready; `stop()` takes them
 all down. Every step that starts something registers how to undo it, so a failed start, a
 cancelled one and `stop()` share one teardown, run in reverse.
 """
@@ -25,6 +25,7 @@ from nao_sim.audio_output import (
 from nao_sim.config import NaoqiSettings, NaoqiVersion, NaoSimConfig
 from nao_sim.errors import DeviceNotBuiltError, NaoSimError, NotRunningError
 from nao_sim.stack import AUDIO_OUTPUT_PORT, NAOQI_PORT, URL, NaoSimStatus
+from nao_sim.video_input import RenderSource, VideoInput
 from nao_sim.viewer import SimWorld, needs_viewer, viewer_config
 
 log = logging.getLogger(__name__)
@@ -102,8 +103,11 @@ class NaoSim:
                 await asyncio.to_thread(self._start_audio_output)
                 await asyncio.to_thread(self._start_containers)
                 await asyncio.to_thread(stack.wait_ready, self._config)
+                world = None
                 if world_config is not None:
-                    await asyncio.to_thread(self._start_world, world_config)
+                    world = await asyncio.to_thread(self._start_world, world_config)
+                if world is not None and self._config.video_input.source == "render":
+                    await asyncio.to_thread(self._start_video_input, world)
             except BaseException:
                 await asyncio.to_thread(self._teardown, False)
                 raise
@@ -111,8 +115,8 @@ class NaoSim:
             log.info("nao-sim ready at %s", URL)
 
     async def stop(self) -> None:
-        """Stop the simulated world, the containers and the audio output; a no-op when not
-        running. Carries on through every step and raises the first failure."""
+        """Stop the video input, the simulated world, the containers and the audio output; a
+        no-op when not running. Carries on through every step and raises the first failure."""
         async with self._busy:
             if not self._running:
                 return
@@ -137,11 +141,11 @@ class NaoSim:
         world_config = (
             viewer_config(config.viewer, URL) if needs_viewer(config) else None
         )
-        for device, source in (
-            ("audio_input", config.audio_input.source),
-            ("video_input", config.video_input.source),
+        for device, source, built in (
+            ("audio_input", config.audio_input.source, ("none",)),
+            ("video_input", config.video_input.source, ("none", "render")),
         ):
-            if source != "none":
+            if source not in built:
                 raise DeviceNotBuiltError(
                     f"{device}.source {source!r}: the {device.replace('_', ' ')} is not "
                     "built yet; set it to 'none'"
@@ -172,10 +176,17 @@ class NaoSim:
         self._undo.append(("containers", lambda: stack.down(version)))
         stack.up(self._config)
 
-    def _start_world(self, world_config: Any) -> None:
+    def _start_world(self, world_config: Any) -> SimWorld:
         world = SimWorld(world_config)
         self._undo.append(("viewer", world.close))
         world.launch()
+        return world
+
+    def _start_video_input(self, world: SimWorld) -> None:
+        device = VideoInput(RenderSource(world), self._config.video_input.fps)
+        # Registered after the viewer's, so the teardown stops it first.
+        self._undo.append(("video input", device.stop))
+        device.start()
 
     def _teardown(self, raise_first: bool) -> None:
         """Undo every started step, newest first, through failures."""

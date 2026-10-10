@@ -10,9 +10,10 @@ import time
 import wave
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from nao_sim import docker_images, sim
+from nao_sim import docker_images, sim, stack
 from nao_sim.audio_output import MemorySink
 from nao_sim.config import (
     AudioInputSettings,
@@ -69,10 +70,37 @@ class Viewer:
                 if viewer.launch_fails:
                     raise RuntimeError("no display")
 
+            def camera_frame(self, camera, width, height):
+                return np.zeros((height, width, 3), np.uint8)
+
             def close(self):
                 viewer.events.append("close")
 
         return World()
+
+
+class Naoqi:
+    """The qi session the video input opens: records frames and ALMemory writes into the
+    viewer stand-in's event list, so their order against the viewer's lifecycle shows."""
+
+    def __init__(self, events: list[str]):
+        self.events = events
+        self.frames = 0
+
+    def service(self, name):
+        return self
+
+    def putImage(self, camera, width, height, data):
+        self.frames += 1
+        if self.frames == 1:
+            self.events.append(f"frame {camera} {width}x{height}")
+        return True
+
+    def insertData(self, key, value):
+        self.events.append(f"{key} = {value}")
+
+    def close(self):
+        pass
 
 
 @pytest.fixture
@@ -85,6 +113,8 @@ def env(docker, monkeypatch):
     viewer = Viewer()
     monkeypatch.setattr(sim, "viewer_config", viewer.viewer_config)
     monkeypatch.setattr(sim, "SimWorld", viewer.world)
+    naoqi = Naoqi(viewer.events)
+    monkeypatch.setattr(stack, "connect", lambda: naoqi)
     docker.checked = checked  # type: ignore[attr-defined]
     docker.viewer = viewer  # type: ignore[attr-defined]
     return docker
@@ -166,6 +196,37 @@ def test_the_window_runs_the_viewer_and_stop_closes_it(env):
     assert env.viewer.events == ["launch viewer-config", "close"]
 
 
+def test_the_render_camera_runs_after_the_viewer_and_stops_before_it(env):
+    config = NaoSimConfig(
+        video_input=VideoInputSettings(source="render"), viewer=HEADLESS
+    )
+    naosim = sim.NaoSim(config, sink=MemorySink())
+    asyncio.run(naosim.start())
+    deadline = time.monotonic() + 2
+    while "frame 0 640x480" not in env.viewer.events:
+        assert time.monotonic() < deadline, env.viewer.events
+        time.sleep(0.01)
+    asyncio.run(naosim.stop())
+
+    assert env.viewer.events == [
+        "launch viewer-config",  # headless, but the render camera needs the viewer
+        "NaoSim/Camera/Source = render",
+        "frame 0 640x480",
+        "NaoSim/Camera/Source = none",
+        "close",
+    ]
+
+
+def test_a_viewer_that_cannot_launch_never_starts_the_camera(env):
+    env.viewer.launch_fails = True
+    config = NaoSimConfig(
+        video_input=VideoInputSettings(source="render"), viewer=HEADLESS
+    )
+    with pytest.raises(RuntimeError, match="no display"):
+        asyncio.run(sim.NaoSim(config, sink=MemorySink()).start())
+    assert env.viewer.events == ["launch viewer-config", "close"]
+
+
 @pytest.mark.parametrize(
     ("config", "message"),
     [
@@ -178,9 +239,9 @@ def test_the_window_runs_the_viewer_and_stop_closes_it(env):
         ),
         (
             NaoSimConfig(
-                video_input=VideoInputSettings(source="render"), viewer=HEADLESS
+                video_input=VideoInputSettings(source="webcam"), viewer=HEADLESS
             ),
-            "video_input.source 'render'",
+            "video_input.source 'webcam'",
         ),
     ],
 )
