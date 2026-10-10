@@ -148,6 +148,10 @@ jobs:
           NAO_SIM_E2E_VERSION: ${{ matrix.version }}
           # The default sound devices are the loopback above: the audio device tests run.
           NAO_SIM_E2E_AUDIO: loopback
+          # PulseAudio's ALSA plugin, which PortAudio goes through, otherwise buffers about
+          # 1.7 s whatever latency PortAudio asks for (measured): the robot's voice would come
+          # back into the microphone after the gate's tail.
+          PULSE_LATENCY_MSEC: "30"
         # Warnings and errors print live. xvfb-run gives the sim window an X display.
         run: >-
           xvfb-run -a -s "-screen 0 1280x1024x24"
