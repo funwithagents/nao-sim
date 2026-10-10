@@ -140,6 +140,11 @@ jobs:
           pactl load-module module-null-sink sink_name=ci sink_properties=device.description=ci
           pactl set-default-sink ci
           pactl set-default-source ci.monitor
+          # A null sink renders at the latency its clients ask for, up to about 1.5 s when none
+          # asks for less (measured): a silent client at 10 ms for the whole job keeps it awake
+          # and low, so what is played is heard within a few ms, as from a real loudspeaker.
+          nohup pacat --playback --raw --format=s16le --rate=48000 --channels=1 \
+            --latency-msec=10 -d ci < /dev/zero > /dev/null 2>&1 &
           pactl info
           uv run python -c "import sounddevice as sd; print(sd.query_devices()); print('default:', sd.default.device)"
       - name: Live tier
@@ -148,10 +153,6 @@ jobs:
           NAO_SIM_E2E_VERSION: ${{ matrix.version }}
           # The default sound devices are the loopback above: the audio device tests run.
           NAO_SIM_E2E_AUDIO: loopback
-          # PulseAudio's ALSA plugin, which PortAudio goes through, otherwise buffers about
-          # 1.7 s whatever latency PortAudio asks for (measured): the robot's voice would come
-          # back into the microphone after the gate's tail.
-          PULSE_LATENCY_MSEC: "30"
         # Warnings and errors print live. xvfb-run gives the sim window an X display.
         run: >-
           xvfb-run -a -s "-screen 0 1280x1024x24"

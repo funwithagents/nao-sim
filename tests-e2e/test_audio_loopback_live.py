@@ -81,7 +81,7 @@ class Recorder:
 
 class Room:
     """Plays int16 mono into the default output device in the background, with a raw stream
-    (sounddevice's numpy `play` writes silence under NumPy 2.5, measured on CI)."""
+    as the `DevicePlayer` does."""
 
     def __init__(self, samples: np.ndarray, rate: int):
         import sounddevice as sd
