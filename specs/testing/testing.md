@@ -12,6 +12,8 @@ tests:
   - tests/test_entrypoint.py
   - tests-e2e/test_speech_live.py
   - tests-e2e/test_status_live.py
+  - tests-e2e/test_audio_input_live.py
+  - tests-e2e/test_audio_loopback_live.py
 ---
 
 # Testing
@@ -55,6 +57,8 @@ nao-sim is tested as what it is: containers that behave like a NAO in their API,
 - **Fail loudly on a conflict.** If 9559 or the audio output's 9562 is already taken (a nao-sim, or a stack started by hand), the tests fail with that message rather than test someone else's stack.
 - **Connect with a retry**: the libqi 3 wheel fails about one connect in three against NAOqi 2.1, instantly, with `disconnected` (`support.connect`).
 - **What was played.** The `NaoSim` runs with a `MemorySink` ([audio-output.md](../host/audio-output.md), "Audio sinks"): the tests assert on each playback's audio, its timing and whether it was cut. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
+- **What the robot hears.** The `NaoSim` runs the fake audio source ([audio-input.md](../host/audio-input.md), "The fake source"): a test subscribes to `ALAudioDevice` as a client does, plays sounds through `fake_audio` when it chooses, and checks what it receives against them.
+- **Real devices only on a declared loopback.** The tests that use the machine's sound devices (the microphone, the gate with the robot's speech played aloud, the `DevicePlayer`) skip unless `NAO_SIM_E2E_AUDIO=loopback` says the default output and input are wired to each other; a developer never has the tests play into their loudspeakers or record their microphone by surprise. CI sets it over a PulseAudio null sink ([ci.md](ci.md)), where a missing loopback fails, as `NAO_SIM_E2E_VERSION` turns a missing version into a failure. An unknown value fails the session at collection.
 
 ## Tooling
 

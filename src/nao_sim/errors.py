@@ -33,6 +33,10 @@ class DeviceNotBuiltError(NaoSimError):
     """The config asks for a host device source that is not built yet."""
 
 
+class DeviceUnavailableError(NaoSimError):
+    """A host device the config asks for cannot run here (no PortAudio, no input device)."""
+
+
 class BootError(NaoSimError):
     """The NAOqi container exited, turned unhealthy or was not healthy in time."""
 

@@ -96,6 +96,15 @@ load_modules() {
   done
 }
 
+# load_relay <path>: the native relay, a C++ module (specs/container/service-replacement.md, "Binary
+# arguments: the native relay"), loaded with launchLocal like a built-in; it must register a module.
+load_relay() {
+  local out
+  log "loading the native relay $1"
+  out=$(call ALLauncher.launchLocal "$1" 2>&1) || fail "loading the relay $1 failed: $out"
+  printf '%s\n' "$out" | grep -q '\[ *"' || fail "the relay $1 registered no module: $out"
+}
+
 # launch_local <entries...>: ALLauncher.launchLocal each autoload entry, in order. It answers with the
 # modules the library registered (`[ "ALBasicAwareness" ]`); an empty list means it registered none.
 launch_local() {
@@ -107,17 +116,19 @@ launch_local() {
   done
 }
 
-# check_answer <names...>: launchPythonModule does not report an import failure, so every replaced
-# name must answer again, otherwise the built-in is gone and nothing took its place.
+# check_answer <replaced|added> <names...>: launchPythonModule does not report an import failure, so
+# every replaced name must answer again (otherwise the built-in is gone and nothing took its place),
+# and every name our modules add must answer.
 check_answer() {
-  local answered i
+  local what=$1 answered i
+  shift
   for m in "$@"; do
     answered=
     for i in $(seq 1 10); do
       if qicli info "$m" --qi-url "$URL" >/dev/null 2>&1; then answered=1; break; fi
       sleep "$INTERVAL"
     done
-    [ -n "$answered" ] || fail "replaced service $m does not answer after loading the modules"
+    [ -n "$answered" ] || fail "$what service $m does not answer after loading the modules"
   done
 }
 

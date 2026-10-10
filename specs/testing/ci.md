@@ -5,6 +5,7 @@ code:
   - tests-e2e/conftest.py
 tests:
   - tests-e2e/test_modules_live.py
+  - tests-e2e/test_audio_loopback_live.py
 ---
 
 # Continuous integration
@@ -38,7 +39,7 @@ One file, `.github/workflows/ci.yml`. It triggers on `pull_request`, on `push` t
 - The three jobs run side by side and none waits on another: a run takes as long as its slowest job, a live entry.
 - **`--locked`**: the sync fails when `uv.lock` does not match `pyproject.toml`, so a dependency edit lands with its relock. The sync installs the `dev` group, so the `viewer` extra (nao-viewer, from its pinned Git commit) is there in every job.
 - **The format check covers the code directories only**, since `ruff format .` would reflow the Python blocks inside Markdown files. `docker/modules/` is Python 2.7, outside ruff ([project.md](../project.md)).
-- **No system package for audio.** `sounddevice` is imported at the first stream of the device sink only ([audio-output.md](../host/audio-output.md)); the fast tier fakes it and the live tier plays into a `MemorySink`, so no job needs PortAudio or a sound device.
+- **Audio only where it is tested.** `sounddevice` is imported at the first stream of the device sink and when the microphone opens ([audio-output.md](../host/audio-output.md), [audio-input.md](../host/audio-input.md)): the `check` and `fast-tier` jobs fake it and need no sound system. The live entries get a **virtual loopback**, a PulseAudio null sink as the default output and its monitor as the default input (a virtual microphone wired to a virtual loudspeaker), so the live tier's loopback tests run on every push: the `mic` source, the microphone gate with the robot's own speech coming back into the microphone, and the `DevicePlayer` sink ([testing.md](testing.md), "Live tier"). The `MemorySink` stays the live tier's sink for every other test.
 - **One version per live entry.** Both versions publish 9559 and one nao-sim runs per machine, so each version gets its own runner. The entry sets `NAO_SIM_E2E_VERSION` to its version: the `nao` fixture then runs that version only, and a missing suite, image or Docker **fails** the entry instead of skipping it. An unknown value fails the session at collection. Without the variable (a local run) the tier keeps its rule of skipping what the machine lacks ([testing.md](testing.md), "Skip, never fail, without the means"); in CI a skip would turn the job green with nothing tested.
 - **Each job carries a `timeout-minutes`** well under GitHub's default (10 for `check`, 15 for `fast-tier`, 45 for a live entry, whose cold build is the longest step), so a hung boot fails in minutes.
 
@@ -50,9 +51,11 @@ In order:
 2. **Sync**: `uv sync --locked`.
 3. **The cache key**, computed by nao-sim itself: `naoqi-<version>-<nao-sim version>-<recipes digest>-<hash of src/nao_sim/suite.py>`. The first two parts are what `check_images` compares to the image labels ([api.md](../runtime/api.md), "Images"), so the key changes exactly when a start would find the images outdated; the suite pins' hash covers a new suite or package, which the labels do not see.
 4. **Restore** (`actions/cache/restore`): one archive per version, `docker save` of the version's NAOqi image and the `tts` image, together with `docker/image-data/images.json`, the record of the verified image IDs. On a hit, `docker load` and the archive is deleted at once to free its space: the image IDs survive the save and load, so `check_images` accepts the images as verified.
-5. **On a miss**: `uv run nao-sim fetch-and-build-images <version>`, which fetches the pinned image data, builds the images and verifies they boot, as on a user's machine; then `docker save` and **save** (`actions/cache/save`) right away, before the tests, so a failing live tier does not rebuild on the next run. The image data are never cached, as in nao-viewer's CI: they are needed only on a miss, and a miss downloads them from Aldebaran's repositories.
-6. **The live tier**: `uv run pytest tests-e2e -rs` with `NAO_SIM_E2E_VERSION`, under `xvfb-run` with Mesa's GL (`xvfb`, `xauth`, `libgl1`, `libglx-mesa0`, `libegl1`, `libgl1-mesa-dri`), so the sim-window test runs on the 2.1 entry instead of skipping for want of a display. Warnings and errors are logged live (`-o log_cli=true --log-cli-level=WARNING`).
-7. **On failure**: the end of the NAOqi and `tts` containers' logs, if any are still there (`nao-sim logs` needs a running stack, so the step uses `docker logs` on the containers the test left behind, and prints nothing when the `NaoSim` stopped cleanly).
+5. **On a miss**: `uv run nao-sim fetch-and-build-images <version>`, which fetches the pinned image data (the suite, the robot image for the `animations` package, and the build files of the native relay: the version's C++ SDK, 334 MB for 2.1 and 1.1 GB for 2.8, plus libqi and boost for 2.8; [container.md](../container/container.md), "Build files"), builds the images and verifies they boot, as on a user's machine; then `docker save` and **save** (`actions/cache/save`) right away, before the tests, so a failing live tier does not rebuild on the next run. The image data are never cached, as in nao-viewer's CI: they are needed only on a miss, and a miss downloads them from Aldebaran's repositories.
+6. **System packages**: Mesa's GL and a virtual display (`xvfb`, `xauth`, `libgl1`, `libglx-mesa0`, `libegl1`, `libgl1-mesa-dri`), and audio (`pulseaudio`, `pulseaudio-utils` for `pactl`, `paplay` and `parec`, `libportaudio2`, which `sounddevice` takes from the system on Linux, and `libasound2-plugins`, which routes ALSA's default device, the one PortAudio opens, to PulseAudio).
+7. **The audio loopback**: `pulseaudio --start --exit-idle-time=-1`, a null sink `ci` (`pactl load-module module-null-sink sink_name=ci`), set as the default sink with `ci.monitor` as the default source, as reachy-mini-bridge's live job does; `pactl info` and `sounddevice`'s device list in the log. Plus **a silent client at 10 ms** (`pacat --latency-msec=10 < /dev/zero`, in the background for the whole job): a null sink renders at the latency its clients ask for, and with none asking for less it renders about 1.5 s late (measured on the runner and reproduced in an Ubuntu 24.04 container), which would put the robot's own voice back into the microphone after the gate's tail. With the client, what is played is heard within a few ms.
+8. **The live tier**: `uv run pytest tests-e2e -rs` with `NAO_SIM_E2E_VERSION` and `NAO_SIM_E2E_AUDIO=loopback`, under `xvfb-run`, so the sim-window test runs on the 2.1 entry instead of skipping for want of a display, and the loopback tests fail rather than skip if the loopback is missing. Warnings and errors are logged live (`-o log_cli=true --log-cli-level=WARNING`).
+9. **On failure**: the end of the NAOqi and `tts` containers' logs, if any are still there (`nao-sim logs` needs a running stack, so the step uses `docker logs` on the containers the test left behind, and prints nothing when the `NaoSim` stopped cleanly).
 
 - **Sizes.** Measured locally: the 2.1 image is 4.5 GB on disk (1.4 GB compressed), the 2.8 image 6.3 GB (2.7 GB), `tts` 0.8 GB (0.27 GB). With zstd, the two archives take about 5 GB of the repository's 10 GB cache budget; an edit under `docker/` adds a new pair, and GitHub evicts the least recently used.
 - **Python 2.7 check.** A live test compiles every module in the image's `/opt/naoqi/modules/` with the image's own interpreter (`/opt/naoqi/bin/python2 -m compileall`), so a module the version does not load is still checked; both entries run it, closing [testing.md](testing.md)'s open question 2.
@@ -92,6 +95,19 @@ On the first runs (PR #1, October 9, 2026):
 
 - **The cache.** The archives take 1.5 GB (2.1) and 2.9 GB (2.8), 4.5 GB of the 10 GB budget; an edit under `docker/` adds a new pair while the old one ages out. A hit loads the images and skips the build: the image IDs survive `docker save`/`docker load`, so `check_images` accepts them as verified.
 - **Skips.** Only the expected one, on the 2.8 entry; the window test runs and passes under Xvfb on 2.1.
+
+On the audio input's runs (PR #3, October 10, 2026), with the relay's build files and the audio loopback:
+
+| | Cold (build) | Cache hit |
+| --- | --- | --- |
+| `check` | 16 s | 17 s |
+| `fast-tier` | 70 s | 65 s |
+| `e2e-sim` 2.1 | 9 min 0 s | 8 min 56 s (tests 4 min 27 s) |
+| `e2e-sim` 2.8 | 13 min 13 s | 7 min 21 s |
+
+- **The cold build** now also downloads the version's C++ SDK (334 MB, 1.1 GB) and, for 2.8, libqi and boost, then compiles the relay; the cache key covers them through `suite.py`'s hash.
+- **The loopback** needed the silent low-latency client: without it, every device test failed on a 1.5 s to 1.7 s delay from playing to hearing.
+- **One 2.8 boot** was not healthy in time on a runner, with the image that had booted there five times before; the re-run passed. If it recurs, look at the 2.8 boot's timing on a loaded runner.
 
 ## Open questions
 

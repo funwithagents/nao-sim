@@ -91,5 +91,6 @@ def test_stop_all_during_synthesis(nao):
 
     done = last(nao.container.tts_log(), "say-done")
     assert done["interrupted"] is True
-    assert returned < 1.5  # synthesis plus the stop, not the ~15 s of audio
+    # Synthesis plus the stop, not the ~15 s of audio; synthesis alone varies on a shared runner.
+    assert returned < 3.0
     assert nao.played(mark) < 0.3

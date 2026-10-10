@@ -1,12 +1,14 @@
 # nao-sim: NAOqi 2.8.7.4 (NAO V6) runtime container.
 # Built locally only, by `nao-sim fetch-and-build-images 2.8`, from the image data folder's 2.8/ (the
-# Choregraphe suite and the robot's animations package), which compose passes as the `image-data`
-# build context.
+# Choregraphe suite, the robot's animations package and the files the relay is compiled against),
+# which compose passes as the `image-data` build context.
 # Never push this image: it contains Aldebaran's software.
-FROM --platform=linux/amd64 ubuntu:16.04
+#
+# Three stages (specs/container/container.md, "The relay's build"): `suite` extracts NAOqi, `relay`
+# compiles the native relay against the headers and the suite's libraries, and the final stage
+# adds our files and only the relay's .so, so neither the compiler nor the headers reach it.
 
-# The nao-sim version the NaoSim service reports (compose passes ${NAO_SIM_VERSION:-dev}).
-ARG NAO_SIM_VERSION=dev
+FROM --platform=linux/amd64 ubuntu:16.04 AS suite
 ARG SUITE=choregraphe-suite-2.8.7.4-linux64.tar.gz
 ARG SUITE_DIR=choregraphe-suite-2.8.7.4-linux64
 
@@ -23,8 +25,44 @@ RUN mkdir -p /opt && cd /opt \
  && mv ${SUITE_DIR} naoqi \
  && rm /tmp/suite.tar.gz
 
+
+# The native relay (specs/container/service-replacement.md, "Binary arguments: the native relay").
+# g++ 5.4 from this base, as the suite, with its old string ABI. The only public 2.8 SDK (2.8.5.10)
+# is older than the suite, so only its module API headers are used: libqi (our fork, at tag
+# qi-framework-v1.8.7) and boost 1.64 come first on the include path, at the suite's versions.
+FROM suite AS relay
+ARG SDK=naoqi-sdk-2.8.5.10-linux64.tar.gz
+ARG LIBQI=libqi-7f3e1394cb26126b26fa7ff54d2de1371a1c9f96.tar.gz
+ARG BOOST=boost_1_64_0.tar.bz2
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends g++ bzip2 \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=image-data ${SDK} /tmp/sdk.tar.gz
+COPY --from=image-data ${LIBQI} /tmp/libqi.tar.gz
+COPY --from=image-data ${BOOST} /tmp/boost.tar.bz2
+RUN mkdir -p /tmp/sdk /tmp/libqi /tmp/boost \
+ && tar -xzf /tmp/sdk.tar.gz -C /tmp/sdk --strip-components=1 --wildcards '*/include' \
+ && tar -xzf /tmp/libqi.tar.gz -C /tmp/libqi --strip-components=1 --wildcards '*/qi' '*/ka' \
+ && tar -xjf /tmp/boost.tar.bz2 -C /tmp/boost --strip-components=1 --wildcards '*/boost' \
+ && rm /tmp/sdk.tar.gz /tmp/libqi.tar.gz /tmp/boost.tar.bz2
+COPY relay/naosim_audiorelay.cpp /tmp/relay/
+RUN cd /tmp/relay \
+ && g++ -std=gnu++14 -O2 -fPIC -shared -D_GLIBCXX_USE_CXX11_ABI=0 -DBOOST_SIGNALS_NO_DEPRECATION_WARNING -w \
+      -I/tmp/libqi -I/tmp/boost -I/tmp/sdk/include naosim_audiorelay.cpp -o libnaosim_audiorelay.so \
+      -L/opt/naoqi/lib -lalcommon -lalvalue -lalerror -lqi -lboost_thread -lboost_system \
+ && LD_LIBRARY_PATH=/opt/naoqi/lib ldd -r libnaosim_audiorelay.so > ldd.txt 2>&1 \
+ && if grep -E "undefined symbol|not found" ldd.txt; then exit 1; fi
+
+
+FROM suite
+# The nao-sim version the NaoSim service reports (compose passes ${NAO_SIM_VERSION:-dev}).
+ARG NAO_SIM_VERSION=dev
+
 # Our override modules (Python 2.7), loaded into the naoqi-bin process by the entrypoint.
 COPY modules/ /opt/naoqi/modules/
+# The native relay, loaded by the entrypoint with ALLauncher.launchLocal.
+COPY --from=relay /tmp/relay/libnaosim_audiorelay.so /opt/naoqi/lib/nao-sim/libnaosim_audiorelay.so
 # This version's boot procedure, and what it shares with the other one.
 COPY entrypoint-2.8.sh /opt/naoqi/bin/nao-sim-entrypoint.sh
 COPY entrypoint-lib.sh /opt/naoqi/bin/entrypoint-lib.sh

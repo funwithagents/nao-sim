@@ -4,6 +4,7 @@ code:
 tests:
   - tests/test_audio_output.py
   - tests-e2e/test_speech_live.py
+  - tests-e2e/test_audio_loopback_live.py
 ---
 
 # Audio output
