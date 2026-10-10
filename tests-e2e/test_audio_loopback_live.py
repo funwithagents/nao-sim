@@ -112,6 +112,24 @@ class Room:
         self._stream.close()
 
 
+def _longest_quiet_run(
+    times: np.ndarray, values: np.ndarray, after: float, before: float, floor: int = 50
+) -> tuple[float, float]:
+    """(start, end) of the longest run of samples quieter than `floor` between the times."""
+    inside = (times > after) & (times < before)
+    t, quiet = times[inside], np.abs(values[inside]) < floor
+    best, run_start = (0.0, 0.0), None
+    for i, q in enumerate(quiet):
+        if q and run_start is None:
+            run_start = i
+        if run_start is not None and (not q or i == len(quiet) - 1):
+            last = i if q else i - 1
+            if t[last] - t[run_start] > best[1] - best[0]:
+                best = (float(t[run_start]), float(t[last]))
+            run_start = None
+    return best
+
+
 def _send(port: int, header: dict, body: bytes = b"") -> None:
     with socket.create_connection(("127.0.0.1", port)) as s:
         s.sendall(json.dumps(header).encode() + b"\n" + body)
@@ -209,11 +227,17 @@ def test_the_microphone_hears_the_room_but_not_the_robot(mic_robot):
         before = (times > said - 1.0) & (times < said - 0.1)
         assert peak_hz(values[before], 16000) == pytest.approx(440, abs=10)
         assert np.abs(values[before]).max() > 1000
-        speaking = (times > said + 0.4) & (times < done - 0.2)
-        assert done - said > 1.0 and np.any(speaking)
-        # Gated: neither the room nor the robot's own voice, which the loopback brings back.
-        assert np.abs(values[speaking]).max() < 50
-        after = (times > done + tail + 0.4) & (times < done + 1.4)
-        assert np.abs(values[after]).max() > 1000
+        # The gate starts when the robot's audio starts, after its synthesis (which varies), so
+        # the gated stretch is read from the data: the longest unbroken run of zeros after
+        # say() was called. Neither the room nor the robot's own voice, which the loopback
+        # brings back, gets in until it ends.
+        start, end = _longest_quiet_run(times, values, said - 0.05, done + tail + 1.0)
+        assert end - start > 0.8, f"gated for {end - start:.2f} s only"
+        assert end >= done - 0.1, "the gate let the end of the robot's speech through"
+        after = (times > end + 0.05) & (times < end + 0.6)
+        assert np.abs(values[after]).max() > 1000  # the room again
+        assert peak_hz(values[after], 16000) == pytest.approx(
+            440, abs=10
+        )  # not the voice
     finally:
         listener.close()
