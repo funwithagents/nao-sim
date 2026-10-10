@@ -22,7 +22,7 @@ tests:
 
 # API: the simulated NAO (`NaoSim`)
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -55,19 +55,20 @@ The API is **async**, as `NaoBridge`: `await sim.start()`, `await sim.stop()`, `
    - Docker answers;
    - the images are there: the version's NAOqi image and the `tts` image exist, carry the installed nao-sim version (image label `io.nao-sim.version`), were built from the recipes as they are now (`io.nao-sim.recipes`) and were verified by `fetch_and_build_images` (see "Images"). `start()` never downloads or builds;
    - the `viewer` extra is installed when the config needs it (`headless = false`, or `video_input.source = "render"`; the error names the extra), and the `NaoViewerConfig` built from the `viewer` block is valid (nao-viewer's own check of the scene, re-raised as a `ConfigError` with key `viewer.scene`);
-   - every configured source is built (see [config.md](config.md), "Sources not built yet") and its file exists (`audio_input.wav`);
-   - ports 9559, 9562 and, once the audio input is built, the host link's 9563 are free (another nao-sim, a hand-started stack or audio output).
-2. **Audio output**: start the audio output ([audio-output.md](../host/audio-output.md)) in-process, feeding the sink, and open the host link ([devices.md](../host/devices.md), "The host link") once a device uses it.
+   - every configured source is built (see [config.md](config.md), "Sources not built yet");
+   - the audio input's source can run ([audio-input.md](../host/audio-input.md), "Sources"): for `mic`, `sounddevice` imports and a default input device exists (`DeviceUnavailableError`);
+   - ports 9559, 9562 and, when the audio input has a source, the host link's 9563 are free (another nao-sim, a hand-started stack or audio output).
+2. **Audio output and host link**: start the audio output ([audio-output.md](../host/audio-output.md)) in-process, feeding the sink, and, when the audio input has a source, open the host link ([devices.md](../host/devices.md), "The host link") so the containers find it when they boot.
 3. **Containers**: `docker compose up -d` (no build) for the `tts` service and the version's NAOqi service, with the environment generated from the config (`NAO_SIM_TTS_ENGINE` = `speech.engine`, the version's profile, `2.1` or `2.8`). The compose project is always `nao-sim`.
 4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](../container/status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error. Verified images can still fail here (a volume, the host), so this wait happens on every start.
 5. **Simulated world**: when the config calls for it ([viewer.md](../host/viewer.md), "Which viewer runs"), build a `NaoViewer` in sim mode from the `viewer` block and `url`, and `launch()` it (in `asyncio.to_thread`; nao-viewer's API is synchronous). Its `LaunchError` fails the start like any other step.
-6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer. Each writes its `NaoSim/*/Source` key.
+6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer. Each writes its `NaoSim/*/Source` key. The audio input serves the host link from then on, and reads the audio output's playing state for the microphone gate.
 
 **The window closed by the user** stops the viewer only: the robot keeps running, as a NAO does when nobody watches it, so a nao-bridge app or a test that owns the `NaoSim` never loses its robot to a click. A `NaoSim` notices it from a thread waiting on the viewer (`NaoViewer.wait()`) and logs it once, at warning level, saying the robot is still running; it does not reopen the window. What the render camera does then is the video input's business ([video-input.md](../host/video-input.md)).
 
 If any step fails, everything already started is stopped, in reverse order, and the error propagates. Calling `start()` on a running `NaoSim` raises `NaoSimError`.
 
-**`await stop()`** stops the host devices, the simulated world, the containers (`docker compose down`, keeping the package store volumes) and the audio output, in that order. It carries on through every step even if one fails, then raises the first failure. It is a no-op when not running, and `start()` may follow it.
+**`await stop()`** stops the host devices, the simulated world, the containers (`docker compose down`, keeping the package store volumes), the host link and the audio output, in that order. It carries on through every step even if one fails, then raises the first failure. It is a no-op when not running, and `start()` may follow it.
 
 **`async with NaoSim(...) as sim:`** runs `start()` then `stop()` on every way out.
 
@@ -102,6 +103,7 @@ So `start()` only checks: an image missing or not verified raises `ImagesMissing
 | --- | --- | --- |
 | `url` | `str` | `tcp://127.0.0.1:9559`, the address any qi client connects to |
 | `await status()` | `NaoSimStatus` | Read from the `NaoSim` service over qi, with the connect retry libqi 3 needs against 2.1: `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source` |
+| `fake_audio` | `FakeAudioSource` | The fake audio source a test plays sounds through ([audio-input.md](../host/audio-input.md), "The fake source"); `NotRunningError` when not running, `NaoSimError` when `audio_input.source` is not `fake` |
 | `config` | `NaoSimConfig` | The config it was built from |
 | `running` | `bool` | Between a successful `start()` and `stop()` |
 
@@ -123,7 +125,7 @@ Both check Docker first (`DockerUnavailableError`).
 | --- | --- |
 | `NaoSimError(RuntimeError)` | The base of nao-sim's own errors; raised as such for lifecycle misuse (a double `start()`) |
 | `NotRunningError(NaoSimError)` | `url` or `status()` when not running |
-| `DockerUnavailableError`, `ImagesMissingError`, `ImagesOutdatedError`, `MissingExtraError`, `DeviceNotBuiltError`, `PortInUseError` (each a `NaoSimError`) | Step 1 of `start()`, each naming what to do (start Docker, run `nao-sim fetch-and-build-images`, `pip install nao-sim[viewer]`, which device is missing, which port is taken) |
+| `DockerUnavailableError`, `ImagesMissingError`, `ImagesOutdatedError`, `MissingExtraError`, `DeviceNotBuiltError`, `DeviceUnavailableError`, `PortInUseError` (each a `NaoSimError`) | Step 1 of `start()`, each naming what to do (start Docker, run `nao-sim fetch-and-build-images`, `pip install nao-sim[viewer]`, which device is missing, which host device or library is unavailable (no PortAudio, no default input device), which port is taken) |
 | `BootError(NaoSimError)` | The NAOqi container exited, turned `unhealthy` or was not `healthy` within `ready_timeout_s` (at start or at verification); carries the end of its log |
 | `FetchError(NaoSimError)`, `ImageBuildError(NaoSimError)` | `fetch_and_build_images`: a download or hash failure (naming the file), a failed `docker build` (with the end of its output) |
 
@@ -139,7 +141,7 @@ The `NaoSim` *class* (`nao_sim.NaoSim`, on the host) keeps the name of the `NaoS
 
 ### One nao-sim per machine
 
-Ports 9559 and 9562 are fixed, the compose project name is fixed and the containers have fixed names, so one `NaoSim` runs per machine. A second `start()` (in another process or the same one) fails at step 1 with `PortInUseError`. Several instances are a later option (ports in the config; see [config.md](config.md), open questions).
+Ports 9559, 9562 and 9563 are fixed, the compose project name is fixed and the containers have fixed names, so one `NaoSim` runs per machine. A second `start()` (in another process or the same one) fails at step 1 with `PortInUseError`. Several instances are a later option (ports in the config; see [config.md](config.md), open questions).
 
 ## Open questions
 

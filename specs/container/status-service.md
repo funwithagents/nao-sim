@@ -18,7 +18,7 @@ tests:
 
 # NaoSim status service and healthcheck
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -53,9 +53,10 @@ The module writes these at load. All values are plain strings except `NaoSim/Rea
 | `NaoSim/NaoqiVersion` | `2.1.4.13` or `2.8.7.4` | Nobody |
 | `NaoSim/Ready` | `0`; `1` after `setReady()`. Raised as an event, so a client can wait on it | The entrypoint, through `setReady()` |
 | `NaoSim/Camera/Source` | `none` | The video input (`render`, `webcam`), [video-input.md](../host/video-input.md) |
-| `NaoSim/Audio/Source` | `none` | The audio input (`wav`, `mic`), [audio-input.md](../host/audio-input.md) |
+| `NaoSim/Audio/Source` | `none` | The audio input (`fake`, `mic`), [audio-input.md](../host/audio-input.md) |
+| `NaoSim/Audio/Channels` | `none` | The audio input's mono policy (`duplicate`, `silence`), [audio-input.md](../host/audio-input.md) |
 
-- `none` means no host device is attached to that service, so it serves nothing (no frames, no audio). The device specs own the other values and may add keys under the same prefixes (the audio input's `NaoSim/Audio/Channels`); the host writes them as an ordinary qi client, as the overview's "Host services" prescribes.
+- `none` means no host device is attached to that service, so it serves nothing (no frames, no audio). The device specs own the other values and may add keys under the same prefixes; the host writes them as an ordinary qi client, as the overview's "Host services" prescribes.
 
 ### Readiness
 
