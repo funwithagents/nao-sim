@@ -26,7 +26,7 @@ tests:
 
 # NAOqi container
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 

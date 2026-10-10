@@ -8,11 +8,13 @@ tests:
   - tests/test_config.py
   - tests/test_audio_input.py
   - tests/test_sim.py
+  - tests-e2e/test_audio_input_live.py
+  - tests-e2e/test_audio_loopback_live.py
 ---
 
 # Audio input
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 
@@ -77,7 +79,7 @@ Captured with `sounddevice` (`RawInputStream`, int16, mono, 48 kHz, blocks of 10
 The host has the microphone and the exact audio the robot plays, on one clock, so it keeps the robot from hearing itself without involving NAOqi:
 
 - While `time.monotonic()` is before the audio output's `playing_until` ([audio-output.md](audio-output.md), "Playing state") plus a tail, the input replaces the captured samples with **zeros**, decided per captured 10 ms block. The chunks keep coming at their cadence, so subscribers see silence, not a gap.
-- The tail is `audio_input.gate_tail_s`, 0.3 s by default; it also covers the output device's latency. 0 still gates while playing.
+- The tail is `audio_input.gate_tail_s`, 0.3 s by default; it also covers the output device's latency, from the audio output's last write to the sound in the room. The `DevicePlayer` and the microphone open their streams at low latency (`latency="low"`) to keep that short. 0 still gates while playing.
 - The gate applies to both sources, `mic` and `fake`: the fake source stands in for the microphone, so the gate is tested on every live run and not only over a real loopback.
 - Nothing about the gate crosses the host link: the container side never learns the robot is speaking.
 
@@ -104,5 +106,6 @@ The audio input's messages on the host link ([devices.md](devices.md), "The host
 
 1. **Chunk size and cadence.** The `samples` a NAO delivers per `processRemote` are the reference: about 85 ms as clients report, 170 ms in the 2.1 docs. To measure on a robot; one constant per rate.
 2. **Microphone selection.** No option picks an input device other than the default; decided with the audio output's device selection ([audio-output.md](audio-output.md), open question 1).
-3. **Echo cancellation.** The gate is the default. Real cancellation is possible later for the same reason the gate is: the host has both signals on one clock.
-4. **Replaying a file from the config.** `nao-sim run` has no way to feed a recording (the fake source is driven from code); a CLI option or a `fake` setting that plays a file at the first subscription waits for a user who needs it.
+3. **Output latency beyond the tail.** A device that buffers more than the tail lets the robot hear the end of its own voice. Measured on CI: a PulseAudio null sink with no low-latency client renders about 1.5 s late, whatever PortAudio asks for, so CI keeps one ([ci.md](../testing/ci.md)); real loudspeakers measured so far are well under the tail. Reading the device's reported latency into `playing_until` waits for a host that needs it.
+4. **Echo cancellation.** The gate is the default. Real cancellation is possible later for the same reason the gate is: the host has both signals on one clock.
+5. **Replaying a file from the config.** `nao-sim run` has no way to feed a recording (the fake source is driven from code); a CLI option or a `fake` setting that plays a file at the first subscription waits for a user who needs it.

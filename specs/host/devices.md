@@ -10,11 +10,12 @@ tests:
   - tests/test_video_input.py
   - tests/test_host_link.py
   - tests/test_audio_input.py
+  - tests-e2e/test_audio_input_live.py
 ---
 
 # Host devices
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 

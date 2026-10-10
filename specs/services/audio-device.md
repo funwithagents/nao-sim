@@ -10,11 +10,12 @@ code:
 tests:
   - tests/test_audiodevice_core.py
   - tests/test_entrypoint.py
+  - tests-e2e/test_audio_input_live.py
 ---
 
 # ALAudioDevice replacement
 
-**Status:** Stable
+**Status:** Implemented
 
 ## Purpose
 

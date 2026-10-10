@@ -12,11 +12,13 @@ tests:
   - tests/test_entrypoint.py
   - tests-e2e/test_speech_live.py
   - tests-e2e/test_status_live.py
+  - tests-e2e/test_audio_input_live.py
+  - tests-e2e/test_audio_loopback_live.py
 ---
 
 # Testing
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
