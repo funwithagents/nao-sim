@@ -344,6 +344,9 @@ def test_device_player_plays_each_stream_and_cuts_on_interruption(fake_sounddevi
     finished, cut = fake_sounddevice
     assert finished.kwargs["samplerate"] == RATE and finished.kwargs["channels"] == 2
     assert finished.kwargs["device"] == 3 and finished.kwargs["dtype"] == "int16"
+    assert (
+        finished.kwargs["latency"] == "low"
+    )  # the robot's voice is heard right away (gate)
     assert finished.written == b"abcd"
     assert finished.calls == ["start", "stop", "close"]  # drained
     assert cut.calls == ["start", "abort", "close"]  # cut at once

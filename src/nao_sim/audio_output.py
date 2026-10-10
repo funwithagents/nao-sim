@@ -69,6 +69,10 @@ class DevicePlayer:
             dtype="int16",
             blocksize=0,
             device=self.device,
+            # The device's own buffer as short as it allows: the microphone gate assumes the
+            # robot's voice is heard right after it is played (PulseAudio buffers seconds at
+            # sounddevice's default "high" latency, measured on CI).
+            latency="low",
         )
         self._stream.start()
 

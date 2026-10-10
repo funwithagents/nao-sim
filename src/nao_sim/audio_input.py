@@ -310,6 +310,7 @@ class MicSource:
             channels=1,
             dtype="int16",
             blocksize=BLOCK,
+            latency="low",
             callback=captured,
         )
         self._stream.start()

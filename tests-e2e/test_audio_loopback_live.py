@@ -45,7 +45,11 @@ class Recorder:
         self.rate = rate
         self.blocks: list[tuple[float, bytes]] = []
         self._stream = sd.RawInputStream(
-            samplerate=rate, channels=1, dtype="int16", callback=self._captured
+            samplerate=rate,
+            channels=1,
+            dtype="int16",
+            latency="low",
+            callback=self._captured,
         )
 
     def _captured(self, indata, frames, time_info, status) -> None:
@@ -58,6 +62,13 @@ class Recorder:
     def __exit__(self, *exc):
         self._stream.stop()
         self._stream.close()
+
+    def first_loud(self, threshold: float) -> float | None:
+        """When the first block louder than `threshold` was captured (time.monotonic())."""
+        for t, block in self.blocks:
+            if block and np.abs(np.frombuffer(block, "<i2")).max() > threshold:
+                return t
+        return None
 
     def loud_seconds(self, threshold: float) -> float:
         """How long the recording is louder than `threshold`, in 10 ms windows."""
@@ -76,7 +87,9 @@ class Room:
         import sounddevice as sd
 
         self._data = samples.astype("<i2").tobytes()
-        self._stream = sd.RawOutputStream(samplerate=rate, channels=1, dtype="int16")
+        self._stream = sd.RawOutputStream(
+            samplerate=rate, channels=1, dtype="int16", latency="low"
+        )
         self._stopped = threading.Event()
         self._thread = threading.Thread(target=self._play, daemon=True)
 
@@ -117,9 +130,10 @@ def device_output():
     server.server_close()
 
 
-def test_the_device_player_plays_a_stream_whole(device_output):
+def test_the_device_player_plays_a_stream_whole_and_soon(device_output):
     with Recorder() as rec:
         time.sleep(0.3)
+        sent = time.monotonic()
         _send(
             device_output,
             {"cmd": "play", "rate": RATE, "channels": 1, "format": "s16le"},
@@ -127,6 +141,10 @@ def test_the_device_player_plays_a_stream_whole(device_output):
         )
         time.sleep(0.5)
     assert rec.loud_seconds(2000) == pytest.approx(1.0, abs=0.15)
+    # Heard soon after it is played: the microphone gate's tail must cover this.
+    first = rec.first_loud(2000)
+    assert first is not None
+    assert first - sent < 0.3, f"heard {first - sent:.2f} s after it was sent"
 
 
 def test_a_stop_cuts_the_device_player(device_output):
