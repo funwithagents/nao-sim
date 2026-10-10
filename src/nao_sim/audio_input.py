@@ -289,13 +289,21 @@ class MicSource:
         self._blocks: deque[bytes] = deque(maxlen=MIC_BACKLOG)
         self._pending = b""
         self._lock = threading.Lock()
+        self.captured = 0  # blocks captured since created, for diagnostics
+        self.peak = 0  # the loudest sample captured
 
     def open(self) -> None:
         import sounddevice as sd
 
         def captured(indata, frames, time_info, status) -> None:
+            data = bytes(indata)
             with self._lock:
-                self._blocks.append(bytes(indata))
+                self._blocks.append(data)
+                self.captured += 1
+                if data:
+                    self.peak = max(
+                        self.peak, int(np.abs(np.frombuffer(data, "<i2")).max())
+                    )
 
         self._stream = sd.RawInputStream(
             samplerate=BASE_RATE,

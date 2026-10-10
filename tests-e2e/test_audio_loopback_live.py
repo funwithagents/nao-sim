@@ -106,11 +106,12 @@ def test_a_stop_cuts_the_device_player(device_output):
             target=_send, args=(device_output, header, tone(1000, 3.0, RATE).tobytes())
         )
         playing.start()
-        time.sleep(0.4)
+        time.sleep(1.2)  # opening a device stream takes a few hundred ms on PulseAudio
         _send(device_output, {"cmd": "stop"})
         playing.join(5)
         time.sleep(0.5)
-    assert 0.2 < rec.loud_seconds(2000) < 0.4 + 0.25
+    # Cut: some of the tone was heard, far from its 3 s.
+    assert 0.3 < rec.loud_seconds(2000) < 1.2 + 0.25
 
 
 @pytest.fixture
@@ -142,9 +143,16 @@ def test_the_microphone_hears_the_room_but_not_the_robot(mic_robot):
     sim, session = mic_robot
     assert session.service("ALMemory").getData("NaoSim/Audio/Source") == "mic"
     listener = Listener(session).subscribe(16000, 3, 0)
+    mic = sim._audio_input.source  # type: ignore[union-attr]
     try:
-        sd.play(tone(440, 8.0, 48000), 48000)  # the room: a steady tone
-        time.sleep(1.5)
+        with (
+            Recorder() as room
+        ):  # what reaches the loopback, independently of the robot
+            sd.play(tone(440, 8.0, 48000), 48000)  # the room: a steady tone
+            time.sleep(1.5)
+        assert room.loud_seconds(2000) > 0.5, "the tone does not reach the loopback"
+        assert mic.captured > 50, f"the microphone captured {mic.captured} blocks"
+        assert mic.peak > 2000, f"the microphone captured silence (peak {mic.peak})"
         said = time.monotonic()
         session.service("ALTextToSpeech").say("I hear the room, not my own voice.")
         done = time.monotonic()
