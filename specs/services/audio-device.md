@@ -36,7 +36,7 @@ The module routes audio; it does no signal processing. The host produces every f
 | Method | Behavior |
 | --- | --- |
 | `setClientPreferences(name, sampleRate, channels, deinterleaved)` | Stores the format for `name`, taken into account at its next `subscribe` (as NAOqi's documentation says). Without a call, a subscriber gets the default: 48 kHz, all channels, interleaved |
-| `subscribe(name)` | Starts delivering to the service `name` (a module or a service a client registered). `name` must exist: a name no service holds raises. Subscribing a name already subscribed is a no-op |
+| `subscribe(name)` | Starts delivering to the service `name` (a module or a service a client registered). `name` must exist: a name no service holds raises (on 2.8 after waiting up to 3 s for it, see "As measured"). Subscribing a name already subscribed is a no-op |
 | `unsubscribe(name)` | Stops delivering to it; an unknown name is a no-op |
 | `enableEnergyComputation()`, `disableEnergyComputation()` | Energy is computed only while enabled, with or without subscribers |
 | `getFrontMicEnergy()`, `getRearMicEnergy()`, `getLeftMicEnergy()`, `getRightMicEnergy()` | The last energy the host computed for that microphone, in [0, 32768]; `0.0` while disabled |
@@ -60,7 +60,7 @@ The formats are those of NAOqi's documentation (the 2.1 suite's offline docs, `a
 - **Each subscriber has its own delivery thread** with a queue of 4 buffers: the link thread never waits on a subscriber, and a slow subscriber costs only itself. When the queue is full the oldest buffer is dropped, logged once per run of drops.
 - **Through the native relay.** The delivery thread calls `_NaoSimAudioRelay.deliver(name, nbOfChannels, nbOfSamplesByChannel, timeStamp, buffer)` with the PCM as a Python string; the relay calls the subscriber's `processRemote(nbOfChannels, nbOfSamplesByChannel, timeStamp, buffer)` with the buffer as a binary, so a libqi 3 client receives a `bytearray` as from a NAO. 2.1 reaches the relay with `naoqi.ALProxy`, 2.8 through the module's own `qi.Session` (both measured, see "As measured").
 - **Timestamps.** Each buffer is stamped on arrival in the container, `[seconds, microseconds]` of the container's clock, since `processRemote`'s `timeStamp` is the robot's time, comparable to NAOqi's other timestamps.
-- **A subscriber that goes away.** Three consecutive failed deliveries to a name (a client disconnected without unsubscribing) unsubscribe it, logged at warning level, and the relay is told to forget its proxy.
+- **A subscriber that goes away.** Three consecutive failed deliveries to a name spanning at least 2 s (a client disconnected without unsubscribing) unsubscribe it, logged, and the relay is told to forget its proxy. The 2 s keep a new subscriber that the relay cannot reach yet (2.8, "As measured") from being dropped.
 - **No host source.** With no host link, or while the host has no source (`NaoSim/Audio/Source` is `none`), subscriptions are accepted and nothing is delivered.
 
 ### Chunks
@@ -74,6 +74,7 @@ Oct 10, 2026, both versions, a libqi 3 host client registering a service with `p
 - **Callbacks reach the host on both versions**: 2.1 through the broker, 2.8 through the gateway from the module's own session. A call costs 0.4 to 1.3 ms per chunk.
 - **Python 2.7 cannot send a binary** on either version: `str` and `bytearray` travel as a qi string (the host gets a `str`, mangled when not UTF-8, so `bytes(inputBuffer)` fails), and `ALProxy` turns a `bytearray` into `None`. A C++ `ALValue` binary arrives as a `bytearray`. Hence the relay.
 - **Through the relay**, both versions: the host receives a `bytearray` with the exact bytes and the timestamp sent, from `ALProxy` (2.1) and a qi session (2.8). A 48 kHz four-channel chunk (8192 samples) costs 0.74 ms on 2.1 and 1.28 ms on 2.8.
+- **2.8: a client's service reaches the container a moment late.** A client registers its service and subscribes at once; through the gateway, the module's session may not find the name yet (`session.service` fails for a moment), and `session.services()` never lists it. So on 2.8, `subscribe` asks for the service directly, retrying for up to 3 s (measured with the live tier: intermittent failures without the retry, none with it). 2.1, through the broker, finds it at once.
 
 ## Open questions
 

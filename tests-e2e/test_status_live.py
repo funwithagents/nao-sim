@@ -15,7 +15,10 @@ def test_the_target_identifies_as_nao_sim(nao):
     assert (
         memory.getData("NaoSim/Camera/Source") == "render"
     )  # the live tier's render camera
-    assert memory.getData("NaoSim/Audio/Source") == "none"
+    assert (
+        memory.getData("NaoSim/Audio/Source") == "fake"
+    )  # the live tier's fake source
+    assert memory.getData("NaoSim/Audio/Channels") == "duplicate"
     # Perception runs in the clients: nao-sim publishes no perception source.
     assert "NaoSim/Perception/Source" not in memory.getDataListName()
 

@@ -15,11 +15,13 @@ import os
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
+import numpy as np
 import pytest
 import qi
 
@@ -31,7 +33,11 @@ COMPOSE = REPO / "docker" / "compose.yaml"
 IMAGE_DATA = REPO / "docker" / "image-data"
 URL = "tcp://127.0.0.1:9559"
 AUDIO_OUTPUT_PORT = 9562
+HOST_LINK_PORT = 9563
 REQUIRED = os.environ.get("NAO_SIM_E2E_VERSION") or None  # CI: this version must run
+# "loopback": the default audio output and input are wired to each other (CI's PulseAudio null
+# sink), so the tests that use real sound devices run; without it they skip.
+AUDIO = os.environ.get("NAO_SIM_E2E_AUDIO") or None
 
 
 @dataclass(frozen=True)
@@ -81,6 +87,122 @@ def e2e_versions() -> list[str]:
             f"NAO_SIM_E2E_VERSION={REQUIRED!r}: choose from {', '.join(sorted(VERSIONS))}"
         )
     return [REQUIRED]
+
+
+def check_audio_setting() -> None:
+    if AUDIO not in (None, "loopback"):
+        raise pytest.UsageError(
+            f"NAO_SIM_E2E_AUDIO={AUDIO!r}: the only value is 'loopback'"
+        )
+
+
+def require_loopback() -> None:
+    """Skip unless the default audio devices are declared a loopback; when they are, a missing
+    sound system fails instead (CI)."""
+    if AUDIO != "loopback":
+        pytest.skip(
+            "uses the default sound devices: set NAO_SIM_E2E_AUDIO=loopback when they are "
+            "wired to each other (a virtual loopback), never your loudspeakers and microphone"
+        )
+    try:
+        import sounddevice as sd
+
+        sd.query_devices(kind="input")
+        sd.query_devices(kind="output")
+    except Exception as e:  # noqa: BLE001 (PortAudio's errors are not typed)
+        pytest.fail(f"NAO_SIM_E2E_AUDIO=loopback but no default sound devices: {e}")
+
+
+def tone(freq: float, seconds: float, rate: int, amplitude: float = 8000) -> np.ndarray:
+    """A sine as int16 samples."""
+    t = np.arange(int(seconds * rate)) / rate
+    return (amplitude * np.sin(2 * np.pi * freq * t)).astype(np.int16)
+
+
+def peak_hz(samples: np.ndarray, rate: int) -> float:
+    """The strongest frequency in `samples`."""
+    x = np.asarray(samples, dtype=np.float64)
+    spectrum = np.abs(np.fft.rfft(x * np.hanning(len(x))))
+    return float(np.fft.rfftfreq(len(x), 1 / rate)[np.argmax(spectrum)])
+
+
+@dataclass
+class Chunk:
+    """One `processRemote` call, as a client gets it."""
+
+    channels: int
+    samples: int
+    stamp: list
+    buffer: Any  # what libqi handed over: a bytearray, as from a NAO
+    arrived: float  # time.monotonic()
+
+    def pcm(self) -> np.ndarray:
+        """(samples, channels) int16, interleaved order."""
+        return np.frombuffer(bytes(self.buffer), "<i2").reshape(
+            self.samples, self.channels
+        )
+
+
+class Listener:
+    """A client's audio service: registered on a session, subscribed to ALAudioDevice like
+    nao-bridge's microphone, recording every buffer with its arrival time."""
+
+    count = 0
+
+    def __init__(self, session: qi.Session):
+        Listener.count += 1
+        self.name = f"NaoSimE2EListener{Listener.count}"
+        self.session = session
+        self.chunks: list[Chunk] = []
+        self._lock = threading.Lock()
+        self._sid = session.registerService(self.name, self)
+        self.device = session.service("ALAudioDevice")
+
+    def processRemote(self, nbOfChannels, nbOfSamplesByChannel, timeStamp, inputBuffer):
+        chunk = Chunk(
+            nbOfChannels, nbOfSamplesByChannel, timeStamp, inputBuffer, time.monotonic()
+        )
+        with self._lock:
+            self.chunks.append(chunk)
+
+    def subscribe(
+        self, rate: int | None = None, channels: int = 0, deinterleaved: int = 0
+    ):
+        if rate is not None:
+            self.device.setClientPreferences(self.name, rate, channels, deinterleaved)
+        self.device.subscribe(self.name)
+        return self
+
+    def received(self, since: float = 0.0) -> list[Chunk]:
+        with self._lock:
+            return [c for c in self.chunks if c.arrived >= since]
+
+    def wait(self, n: int, timeout: float = 5.0) -> list[Chunk]:
+        end = time.monotonic() + timeout
+        while len(self.received()) < n and time.monotonic() < end:
+            time.sleep(0.02)
+        return self.received()
+
+    def timeline(self, rate: int, since: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
+        """(sample times, first channel's samples): each chunk's samples end at its arrival."""
+        times, values = [], []
+        for c in self.received(since):
+            pcm = c.pcm()[:, 0]
+            times.append(c.arrived - (len(pcm) - np.arange(len(pcm))) / rate)
+            values.append(pcm)
+        if not times:
+            return np.zeros(0), np.zeros(0)
+        return np.concatenate(times), np.concatenate(values)
+
+    def close(self) -> None:
+        try:
+            self.device.unsubscribe(self.name)
+        except RuntimeError:
+            pass
+        try:
+            self.session.unregisterService(self._sid)
+        except RuntimeError:
+            pass
 
 
 def unavailable(reason: str) -> NoReturn:
@@ -148,7 +270,11 @@ def ensure_images(version: Version) -> None:
 
 
 def require_free_ports() -> None:
-    for port, what in ((9559, "NAOqi"), (AUDIO_OUTPUT_PORT, "audio output")):
+    for port, what in (
+        (9559, "NAOqi"),
+        (AUDIO_OUTPUT_PORT, "audio output"),
+        (HOST_LINK_PORT, "host link"),
+    ):
         if _port_taken(port):
             pytest.fail(
                 f"port {port} ({what}) is taken: stop the running nao-sim (or the stack "

@@ -5,6 +5,7 @@ nao_sim_audiodevice_core; buffers reach a subscriber through the native relay (_
 which this module calls through its own session."""
 import os
 import sys
+import time
 
 import qi
 
@@ -23,8 +24,19 @@ def _forget(name):
     _session.service(core.RELAY).forget(name)
 
 
-def _exists(name):
-    return any(s["name"] == name for s in _session.services())
+def _exists(name, wait_s=3.0):
+    # Asked directly, and again for a while: a service a host client registers through the
+    # gateway reaches this session a moment later (a client subscribes right after registering),
+    # and services() does not list it at all.
+    deadline = time.time() + wait_s
+    while True:
+        try:
+            _session.service(name)
+            return True
+        except RuntimeError:
+            if time.time() >= deadline:
+                return False
+            time.sleep(0.1)
 
 
 @qi.multiThreaded()

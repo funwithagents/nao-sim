@@ -34,7 +34,8 @@ CHANNELS = {0: "all", 1: "left", 2: "right", 3: "front", 4: "rear"}
 MICS = ("left", "right", "front", "rear")
 DEFAULT_FORMAT = (48000, "all", False)  # without setClientPreferences
 QUEUE_SIZE = 4  # buffers waiting for one subscriber; the oldest is dropped beyond
-FAILURES = 3  # consecutive failed deliveries that unsubscribe a subscriber
+FAILURES = 3  # consecutive failed deliveries that unsubscribe a subscriber...
+FAILING_S = 2.0  # ...once they span this long (a new subscriber may not be reachable at once)
 RETRY_S = 1.0  # between attempts to reach the host
 
 _LENGTHS = struct.Struct(">II")
@@ -90,7 +91,8 @@ def read_message(rfile):
 
 class Subscriber(object):
     """One subscriber's delivery thread: buffers are delivered in order, the oldest dropped when
-    the subscriber falls QUEUE_SIZE behind, and `failed(name)` called after FAILURES failures."""
+    the subscriber falls QUEUE_SIZE behind, and `failed(name)` called after FAILURES consecutive
+    failures over at least FAILING_S."""
 
     def __init__(self, name, fmt, deliver, failed, log):
         self.name = name
@@ -129,7 +131,7 @@ class Subscriber(object):
             pass
 
     def _run(self):
-        failures = 0
+        failures, first_failure = 0, 0.0
         while not self._stopped:
             item = self._queue.get()
             if item is None or self._stopped:
@@ -139,7 +141,9 @@ class Subscriber(object):
                 failures = 0
             except Exception as e:  # the subscriber is gone, or its processRemote raised
                 failures += 1
-                if failures >= FAILURES:
+                if failures == 1:
+                    first_failure = time.time()
+                if failures >= FAILURES and time.time() - first_failure >= FAILING_S:
                     self._log("%s: %d deliveries failed (%s): unsubscribed" % (self.name, failures, e))
                     self._failed(self.name)
                     return
