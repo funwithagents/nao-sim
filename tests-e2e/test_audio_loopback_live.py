@@ -68,6 +68,37 @@ class Recorder:
         return float(np.sum(levels > threshold)) / 100
 
 
+class Room:
+    """Plays int16 mono into the default output device in the background, with a raw stream
+    (sounddevice's numpy `play` writes silence under NumPy 2.5, measured on CI)."""
+
+    def __init__(self, samples: np.ndarray, rate: int):
+        import sounddevice as sd
+
+        self._data = samples.astype("<i2").tobytes()
+        self._stream = sd.RawOutputStream(samplerate=rate, channels=1, dtype="int16")
+        self._stopped = threading.Event()
+        self._thread = threading.Thread(target=self._play, daemon=True)
+
+    def _play(self) -> None:
+        step = 2 * 1024
+        for i in range(0, len(self._data), step):
+            if self._stopped.is_set():
+                return
+            self._stream.write(self._data[i : i + step])
+
+    def __enter__(self):
+        self._stream.start()
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stopped.set()
+        self._thread.join(5)
+        self._stream.abort()
+        self._stream.close()
+
+
 def _send(port: int, header: dict, body: bytes = b"") -> None:
     with socket.create_connection(("127.0.0.1", port)) as s:
         s.sendall(json.dumps(header).encode() + b"\n" + body)
@@ -138,26 +169,23 @@ def mic_robot(nao):
 
 
 def test_the_microphone_hears_the_room_but_not_the_robot(mic_robot):
-    import sounddevice as sd
-
     sim, session = mic_robot
     assert session.service("ALMemory").getData("NaoSim/Audio/Source") == "mic"
     listener = Listener(session).subscribe(16000, 3, 0)
     mic = sim._audio_input.source  # type: ignore[union-attr]
     try:
-        with (
-            Recorder() as room
-        ):  # what reaches the loopback, independently of the robot
-            sd.play(tone(440, 8.0, 48000), 48000)  # the room: a steady tone
+        with Room(tone(440, 8.0, 48000), 48000):  # the room: a steady tone
+            with Recorder() as heard:  # what reaches the loopback, robot aside
+                time.sleep(1.5)
+            assert heard.loud_seconds(2000) > 0.5, (
+                "the tone does not reach the loopback"
+            )
+            assert mic.captured > 50, f"the microphone captured {mic.captured} blocks"
+            assert mic.peak > 2000, f"the microphone captured silence (peak {mic.peak})"
+            said = time.monotonic()
+            session.service("ALTextToSpeech").say("I hear the room, not my own voice.")
+            done = time.monotonic()
             time.sleep(1.5)
-        assert room.loud_seconds(2000) > 0.5, "the tone does not reach the loopback"
-        assert mic.captured > 50, f"the microphone captured {mic.captured} blocks"
-        assert mic.peak > 2000, f"the microphone captured silence (peak {mic.peak})"
-        said = time.monotonic()
-        session.service("ALTextToSpeech").say("I hear the room, not my own voice.")
-        done = time.monotonic()
-        time.sleep(1.5)
-        sd.stop()
         tail = sim.config.audio_input.gate_tail_s
         times, values = listener.timeline(16000, since=said - 1.2)
         before = (times > said - 1.0) & (times < said - 0.1)
@@ -167,7 +195,7 @@ def test_the_microphone_hears_the_room_but_not_the_robot(mic_robot):
         assert done - said > 1.0 and np.any(speaking)
         # Gated: neither the room nor the robot's own voice, which the loopback brings back.
         assert np.abs(values[speaking]).max() < 50
-        after = times > done + tail + 0.4
+        after = (times > done + tail + 0.4) & (times < done + 1.4)
         assert np.abs(values[after]).max() > 1000
     finally:
         listener.close()
