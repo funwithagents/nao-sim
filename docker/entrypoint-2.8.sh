@@ -10,7 +10,9 @@
 . "$(dirname "$0")/entrypoint-lib.sh"
 
 REPLACED="ALTextToSpeech"                                   # built-ins our modules take over
-MODULES="nao_sim_status_qiservice nao_sim_tts_qiservice"    # ours, in load order
+RELAY="$NAOQI_HOME/lib/nao-sim/libnaosim_audiorelay.so"     # the native relay, loaded before our modules
+MODULES="nao_sim_status_qiservice nao_sim_tts_qiservice nao_sim_audiodevice_qiservice" # ours, in load order
+ADDED="ALAudioDevice _NaoSimAudioRelay"                     # names no built-in holds, which we register
 DEPENDENTS="expressivity.autonomousabilitiesmodules"        # package services holding a proxy to it (ALAnimatedSpeech)
 LAST_SERVICE="ALPanoramaCompass"                            # registered last at boot
 
@@ -23,10 +25,12 @@ for svc in $DEPENDENTS; do
   call ALServiceManager.stopService "$svc"
 done
 exit_builtins $REPLACED
+load_relay "$RELAY"
 load_modules $MODULES
 for svc in $DEPENDENTS; do
   log "starting service $svc"
   call ALServiceManager.startService "$svc"
 done
-check_answer $REPLACED
+check_answer replaced $REPLACED
+check_answer added $ADDED
 mark_ready

@@ -1,8 +1,8 @@
 """`NaoSim`: the one object that runs a simulated NAO on the host (specs/runtime/api.md).
 
-Built from a `NaoSimConfig`, its `start()` checks the machine, starts the audio output, the
-containers, the simulated world and the video input, and returns once the robot is ready; `stop()` takes them
-all down. Every step that starts something registers how to undo it, so a failed start, a
+Built from a `NaoSimConfig`, its `start()` checks the machine, starts the audio output and the host
+link, the containers, the simulated world, the video input and the audio input, and returns once
+the robot is ready; `stop()` takes them all down. Every step that starts something registers how to undo it, so a failed start, a
 cancelled one and `stop()` share one teardown, run in reverse.
 """
 
@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Self
 
 from nao_sim import docker_images, stack
+from nao_sim.audio_input import AudioInput, FakeAudioSource, MicSource, check_mic
 from nao_sim.audio_output import (
     AudioOutput,
     AudioSink,
@@ -24,7 +25,14 @@ from nao_sim.audio_output import (
 )
 from nao_sim.config import NaoqiSettings, NaoqiVersion, NaoSimConfig
 from nao_sim.errors import DeviceNotBuiltError, NaoSimError, NotRunningError
-from nao_sim.stack import AUDIO_OUTPUT_PORT, NAOQI_PORT, URL, NaoSimStatus
+from nao_sim.host_link import HostLink
+from nao_sim.stack import (
+    AUDIO_OUTPUT_PORT,
+    HOST_LINK_PORT,
+    NAOQI_PORT,
+    URL,
+    NaoSimStatus,
+)
 from nao_sim.video_input import RenderSource, VideoInput
 from nao_sim.viewer import SimWorld, needs_viewer, viewer_config
 
@@ -56,6 +64,9 @@ class NaoSim:
             config = NaoSimConfig(naoqi=NaoqiSettings(version=config))
         self._config = config
         self._sink = sink if sink is not None else _sink_for(config)
+        self._audio_output: AudioOutput | None = None
+        self._link: HostLink | None = None
+        self._audio_input: AudioInput | None = None
         self._undo: list[tuple[str, Callable[[], None]]] = []
         self._running = False
         self._busy = asyncio.Lock()
@@ -86,6 +97,18 @@ class NaoSim:
             raise NotRunningError("this NaoSim is not running: await start() first")
         return URL
 
+    @property
+    def fake_audio(self) -> FakeAudioSource:
+        """The fake audio source, which a test plays sounds through (specs/host/audio-input.md)."""
+        self.url  # noqa: B018  (raises NotRunningError)
+        source = self._audio_input.source if self._audio_input is not None else None
+        if not isinstance(source, FakeAudioSource):
+            raise NaoSimError(
+                f"audio_input.source is {self._config.audio_input.source!r}, not 'fake': "
+                "no fake audio source to play into"
+            )
+        return source
+
     async def status(self) -> NaoSimStatus:
         """What the `NaoSim` service reports, read over qi."""
         self.url  # noqa: B018  (raises NotRunningError)
@@ -108,6 +131,8 @@ class NaoSim:
                     world = await asyncio.to_thread(self._start_world, world_config)
                 if world is not None and self._config.video_input.source == "render":
                     await asyncio.to_thread(self._start_video_input, world)
+                if self._config.audio_input.source != "none":
+                    await asyncio.to_thread(self._start_audio_input)
             except BaseException:
                 await asyncio.to_thread(self._teardown, False)
                 raise
@@ -115,8 +140,9 @@ class NaoSim:
             log.info("nao-sim ready at %s", URL)
 
     async def stop(self) -> None:
-        """Stop the video input, the simulated world, the containers and the audio output; a
-        no-op when not running. Carries on through every step and raises the first failure."""
+        """Stop the audio and video inputs, the simulated world, the containers, the host link and
+        the audio output; a no-op when not running. Carries on through every step and raises the
+        first failure."""
         async with self._busy:
             if not self._running:
                 return
@@ -142,7 +168,7 @@ class NaoSim:
             viewer_config(config.viewer, URL) if needs_viewer(config) else None
         )
         for device, source, built in (
-            ("audio_input", config.audio_input.source, ("none",)),
+            ("audio_input", config.audio_input.source, ("none", "mic", "fake")),
             ("video_input", config.video_input.source, ("none", "render")),
         ):
             if source not in built:
@@ -150,12 +176,17 @@ class NaoSim:
                     f"{device}.source {source!r}: the {device.replace('_', ' ')} is not "
                     "built yet; set it to 'none'"
                 )
+        if config.audio_input.source == "mic":
+            check_mic()
         docker_images.require_free(NAOQI_PORT)
         docker_images.require_free(AUDIO_OUTPUT_PORT)
+        if config.audio_input.source != "none":
+            docker_images.require_free(HOST_LINK_PORT)
         return world_config
 
     def _start_audio_output(self) -> None:
-        server = Server(("0.0.0.0", AUDIO_OUTPUT_PORT), AudioOutput(self._sink))
+        self._audio_output = AudioOutput(self._sink)
+        server = Server(("0.0.0.0", AUDIO_OUTPUT_PORT), self._audio_output)
         thread = threading.Thread(
             target=server.serve_forever, name="nao-sim-audio-output", daemon=True
         )
@@ -169,6 +200,15 @@ class NaoSim:
                 self._sink.close()
 
         self._undo.append(("audio output", stop_audio_output))
+        if self._config.audio_input.source != "none":
+            # Open before the containers boot, so ALAudioDevice finds it; closed after them.
+            self._link = HostLink(HOST_LINK_PORT)
+            self._undo.append(("host link", self._close_link))
+
+    def _close_link(self) -> None:
+        link, self._link = self._link, None
+        if link is not None:
+            link.close()
 
     def _start_containers(self) -> None:
         version = self._config.naoqi.version
@@ -187,6 +227,28 @@ class NaoSim:
         # Registered after the viewer's, so the teardown stops it first.
         self._undo.append(("video input", device.stop))
         device.start()
+
+    def _start_audio_input(self) -> None:
+        settings = self._config.audio_input
+        assert self._link is not None and self._audio_output is not None
+        source = (
+            FakeAudioSource(settings.mono)
+            if settings.source == "fake"
+            else MicSource(settings.mono)
+        )
+        device = AudioInput(
+            source, self._audio_output, settings.gate_tail_s, settings.mono
+        )
+        self._audio_input = device
+        # Registered last, so the teardown stops it first.
+        self._undo.append(("audio input", self._stop_audio_input))
+        self._link.register(AudioInput.service, device)
+        device.start()
+
+    def _stop_audio_input(self) -> None:
+        device, self._audio_input = self._audio_input, None
+        if device is not None:
+            device.stop()
 
     def _teardown(self, raise_first: bool) -> None:
         """Undo every started step, newest first, through failures."""

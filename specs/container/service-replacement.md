@@ -7,6 +7,7 @@ code:
   - docker/modules/nao_sim_tts_qiservice.py
   - docker/Dockerfile.naoqi-2.1
   - docker/Dockerfile.naoqi-2.8
+  - docker/relay/naosim_audiorelay.cpp
 tests:
   - tests-e2e/test_speech_live.py
   - tests/test_entrypoint.py

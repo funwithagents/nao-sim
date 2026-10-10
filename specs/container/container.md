@@ -11,6 +11,7 @@ code:
   - docker/Dockerfile.naoqi-2.8.dockerignore
   - src/nao_sim/suite.py
   - src/nao_sim/docker_images.py
+  - docker/relay/naosim_audiorelay.cpp
 tests:
   - tests/test_suite.py
   - tests/test_docker_images.py

@@ -52,11 +52,7 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
             "naoqi": {"version": "2.8", "ready_timeout_s": 60},
             "speech": {"engine": "espeak"},
             "audio_output": {"mode": "record", "record": str(tmp_path / "out.wav")},
-            "audio_input": {
-                "source": "wav",
-                "wav": str(tmp_path / "in.wav"),
-                "mono": "silence",
-            },
+            "audio_input": {"source": "fake", "mono": "silence"},
             "video_input": {"source": "webcam", "fps": 30, "device": 1},
             "viewer": {"headless": True, "scene": "table", "variant": "placeholder"},
         }
@@ -109,10 +105,21 @@ def test_unknown_keys_are_errors_naming_them():
 
 def test_cross_field_requirements():
     assert error_for({"audio_output": {"mode": "record"}}).key == "audio_output.record"
-    assert error_for({"audio_input": {"source": "wav"}}).key == "audio_input.wav"
     # A field that does not apply is validated but not required: switching is one word.
-    config = NaoSimConfig.from_dict({"audio_input": {"source": "mic", "wav": "x.wav"}})
-    assert config.audio_input.wav == Path("x.wav")
+    config = NaoSimConfig.from_dict(
+        {"audio_output": {"mode": "play", "record": "x.wav"}}
+    )
+    assert config.audio_output.record == Path("x.wav")
+
+
+def test_the_wav_source_is_gone():
+    # Never built, replaced by the fake source: a file that still uses it fails at load.
+    assert error_for({"audio_input": {"source": "wav"}}).key == "audio_input.source"
+    unknown = error_for({"audio_input": {"wav": "x.wav"}})
+    assert unknown.key == "audio_input" and "wav" in str(unknown)
+    assert NaoSimConfig.from_dict({"audio_input": {"source": "fake"}}).audio_input == (
+        AudioInputSettings(source="fake")
+    )
 
 
 def test_every_default_is_declared_once_on_the_dataclass():
@@ -146,7 +153,6 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
         json.dumps(
             {
                 "audio_output": {"mode": "record", "record": "out/played.wav"},
-                "audio_input": {"wav": "/abs/in.wav"},
                 "viewer": {"scene": "scenes/room.xml"},
             }
         )
@@ -154,7 +160,6 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
 
     config = NaoSimConfig.from_json_file(path)
     assert config.audio_output.record == folder / "out" / "played.wav"
-    assert config.audio_input.wav == Path("/abs/in.wav")
     assert config.viewer.scene == str(folder / "scenes" / "room.xml")
     # A bundled scene name is not a path.
     path.write_text(json.dumps({"viewer": {"scene": "table"}}))
@@ -167,7 +172,7 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
 
 def test_the_example_files_load():
     names = sorted(p.name for p in EXAMPLES.glob("*.json"))
-    assert names == ["2.8.json", "ci.json", "default.json", "headless.json"]
+    assert names == ["2.8.json", "ci.json", "default.json", "headless.json", "mic.json"]
     default = NaoSimConfig.from_json_file(EXAMPLES / "default.json")
     assert default == NaoSimConfig()
     assert NaoSimConfig.from_json_file(EXAMPLES / "2.8.json") == NaoSimConfig(
@@ -178,3 +183,6 @@ def test_the_example_files_load():
     ci = NaoSimConfig.from_json_file(EXAMPLES / "ci.json")
     assert ci.viewer == ViewerSettings(headless=True, variant="placeholder")
     assert ci.video_input.source == "render" and ci.audio_output.mode == "silent"
+    assert ci.audio_input.source == "fake"
+    mic = NaoSimConfig.from_json_file(EXAMPLES / "mic.json")
+    assert mic == NaoSimConfig(audio_input=AudioInputSettings(source="mic"))

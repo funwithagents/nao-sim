@@ -160,7 +160,7 @@ JSON, as nao-bridge: a `sim` block is pasted between a nao-sim file and a nao-br
 - `default.json`: 2.1, window, speech only;
 - `2.8.json`: the same on 2.8;
 - `headless.json`: 2.1, no window, silent audio output (servers);
-- `ci.json`: 2.1, headless viewer with the placeholder variant, `video_input.source = "render"`, silent audio output: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
+- `ci.json`: 2.1, headless viewer with the placeholder variant, `video_input.source = "render"`, silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
 - `mic.json`: 2.1, window, speech on the loudspeaker, `audio_input.source = "mic"`: the robot hears the room and not itself (the microphone gate).
 
 ## Open questions

@@ -17,7 +17,7 @@ from typing import Any, Literal, Self, get_args
 NaoqiVersion = Literal["2.1", "2.8"]
 SpeechEngine = Literal["piper", "espeak"]
 AudioOutputMode = Literal["play", "silent", "record"]
-AudioInputSource = Literal["none", "mic", "wav"]
+AudioInputSource = Literal["none", "mic", "fake"]
 MonoPolicy = Literal["duplicate", "silence"]
 VideoInputSource = Literal["none", "render", "webcam"]
 ViewerVariant = Literal["auto", "placeholder", "aldebaran"]
@@ -26,7 +26,7 @@ MAX_FPS = 30  # a NAO camera's highest frame rate
 
 
 class ConfigError(ValueError):
-    """An invalid config; `key` is the offending key path (`audio_input.wav`)."""
+    """An invalid config; `key` is the offending key path (`audio_output.record`)."""
 
     def __init__(self, message: str, key: str | None = None):
         super().__init__(message)
@@ -233,8 +233,8 @@ class AudioOutputSettings(_Loaders):
 class AudioInputSettings(_Loaders):
     """The audio input, feeding the ALAudioDevice replacement (specs/host/audio-input.md)."""
 
+    # "fake": silence, plus what code plays through NaoSim.fake_audio
     source: AudioInputSource = "none"
-    wav: Path | None = None  # required by "wav"
     mono: MonoPolicy = "duplicate"
     gate_tail_s: float = 0.3
 
@@ -246,8 +246,6 @@ class AudioInputSettings(_Loaders):
                 f"must be a non-negative number, got {self.gate_tail_s!r}",
                 key="gate_tail_s",
             )
-        if self.source == "wav" and self.wav is None:
-            raise ConfigError("is required by source 'wav'", key="wav")
 
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
@@ -257,14 +255,10 @@ class AudioInputSettings(_Loaders):
             path,
             {
                 "source": _as_str,
-                "wav": _as_path,
                 "mono": _as_str,
                 "gate_tail_s": _as_number,
             },
         )
-
-    def _relative_to(self, directory: Path) -> Self:
-        return replace(self, wav=_relative(self.wav, directory))
 
 
 @dataclass(frozen=True)
@@ -354,6 +348,5 @@ class NaoSimConfig(_Loaders):
         return replace(
             self,
             audio_output=self.audio_output._relative_to(directory),
-            audio_input=self.audio_input._relative_to(directory),
             viewer=self.viewer._relative_to(directory),
         )

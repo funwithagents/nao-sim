@@ -2,8 +2,12 @@
 code:
   - src/nao_sim/config.py
   - src/nao_sim/sim.py
+  - src/nao_sim/audio_input.py
+  - src/nao_sim/host_link.py
 tests:
   - tests/test_config.py
+  - tests/test_audio_input.py
+  - tests/test_sim.py
 ---
 
 # Audio input

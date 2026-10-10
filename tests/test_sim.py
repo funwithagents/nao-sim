@@ -8,12 +8,12 @@ import json
 import socket
 import time
 import wave
-from pathlib import Path
 
 import numpy as np
 import pytest
 
 from nao_sim import docker_images, sim, stack
+from nao_sim.audio_input import FakeAudioSource
 from nao_sim.audio_output import MemorySink
 from nao_sim.config import (
     AudioInputSettings,
@@ -27,12 +27,14 @@ from nao_sim.config import (
 from nao_sim.errors import (
     BootError,
     DeviceNotBuiltError,
+    DeviceUnavailableError,
     ImagesMissingError,
     MissingExtraError,
     NaoSimError,
     NotRunningError,
     PortInUseError,
 )
+from nao_sim.host_link import encode, read_message
 
 HEADLESS = ViewerSettings(headless=True)
 
@@ -110,6 +112,7 @@ def env(docker, monkeypatch):
     monkeypatch.setattr(docker_images, "check_images", checked.append)
     monkeypatch.setattr(sim, "NAOQI_PORT", free_port())
     monkeypatch.setattr(sim, "AUDIO_OUTPUT_PORT", free_port())
+    monkeypatch.setattr(sim, "HOST_LINK_PORT", free_port())
     viewer = Viewer()
     monkeypatch.setattr(sim, "viewer_config", viewer.viewer_config)
     monkeypatch.setattr(sim, "SimWorld", viewer.world)
@@ -232,13 +235,6 @@ def test_a_viewer_that_cannot_launch_never_starts_the_camera(env):
     [
         (
             NaoSimConfig(
-                audio_input=AudioInputSettings(source="wav", wav=Path("in.wav")),
-                viewer=HEADLESS,
-            ),
-            "audio_input.source 'wav'",
-        ),
-        (
-            NaoSimConfig(
                 video_input=VideoInputSettings(source="webcam"), viewer=HEADLESS
             ),
             "video_input.source 'webcam'",
@@ -272,14 +268,94 @@ def test_a_missing_viewer_extra_fails_before_anything_starts(env, monkeypatch):
     assert compose_calls(env) == []
 
 
-@pytest.mark.parametrize("which", ["NAOQI_PORT", "AUDIO_OUTPUT_PORT"])
+@pytest.mark.parametrize("which", ["NAOQI_PORT", "AUDIO_OUTPUT_PORT", "HOST_LINK_PORT"])
 def test_a_taken_port_fails_before_anything_starts(env, which):
+    config = NaoSimConfig(
+        viewer=HEADLESS, audio_input=AudioInputSettings(source="fake")
+    )
     with socket.socket() as s:
         s.bind(("127.0.0.1", getattr(sim, which)))
         s.listen()
         with pytest.raises(PortInUseError, match=str(getattr(sim, which))):
-            asyncio.run(sim.NaoSim(NaoSimConfig(viewer=HEADLESS)).start())
+            asyncio.run(sim.NaoSim(config).start())
     assert compose_calls(env) == []
+
+
+def test_the_host_link_port_is_free_to_use_without_an_audio_input(env):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", sim.HOST_LINK_PORT))
+        s.listen()
+        naosim = sim.NaoSim(NaoSimConfig(viewer=HEADLESS), sink=MemorySink())
+        asyncio.run(naosim.start())
+        asyncio.run(naosim.stop())
+
+
+def test_the_fake_audio_input_serves_the_link_from_boot_to_stop(env, monkeypatch):
+    up = stack.up
+    link_open_at_up: list[bool] = []
+
+    def recording_up(config):
+        link_open_at_up.append(listening(sim.HOST_LINK_PORT))
+        return up(config)
+
+    monkeypatch.setattr(stack, "up", recording_up)
+    config = NaoSimConfig(
+        viewer=HEADLESS,
+        video_input=VideoInputSettings(source="render"),
+        audio_input=AudioInputSettings(source="fake", mono="silence"),
+    )
+    naosim = sim.NaoSim(config, sink=MemorySink())
+    with pytest.raises(NotRunningError):
+        naosim.fake_audio  # noqa: B018
+    asyncio.run(naosim.start())
+    try:
+        assert link_open_at_up == [True]  # open before the containers boot
+        assert isinstance(naosim.fake_audio, FakeAudioSource)
+        # ALAudioDevice's side of the link gets audio once it says what it needs.
+        with socket.create_connection(("127.0.0.1", sim.HOST_LINK_PORT)) as s:
+            s.sendall(encode({"type": "hello", "service": "ALAudioDevice"}))
+            fmt = {"rate": 16000, "channel": "front", "deinterleaved": False}
+            s.sendall(encode({"type": "need", "formats": [fmt], "energy": False}))
+            header, payload = read_message(s.makefile("rb")) or ({}, b"")
+            assert header["format"] == fmt and len(payload) == 2 * 1365
+    finally:
+        asyncio.run(naosim.stop())
+    events = env.viewer.events
+    keys = [e for e in events if e.startswith("NaoSim/")]
+    assert keys == [
+        "NaoSim/Camera/Source = render",
+        "NaoSim/Audio/Source = fake",
+        "NaoSim/Audio/Channels = silence",
+        "NaoSim/Audio/Source = none",  # the audio input stops first
+        "NaoSim/Audio/Channels = none",
+        "NaoSim/Camera/Source = none",
+    ]
+    assert events[-1] == "close"
+    assert not listening(sim.HOST_LINK_PORT)
+
+
+def test_fake_audio_needs_the_fake_source(env):
+    naosim = sim.NaoSim(NaoSimConfig(viewer=HEADLESS), sink=MemorySink())
+    asyncio.run(naosim.start())
+    try:
+        with pytest.raises(NaoSimError, match="not 'fake'"):
+            naosim.fake_audio  # noqa: B018
+    finally:
+        asyncio.run(naosim.stop())
+
+
+def test_a_microphone_that_cannot_open_fails_before_anything_starts(env, monkeypatch):
+    def no_mic():
+        raise DeviceUnavailableError(
+            "audio_input.source 'mic': no default input device"
+        )
+
+    monkeypatch.setattr(sim, "check_mic", no_mic)
+    config = NaoSimConfig(viewer=HEADLESS, audio_input=AudioInputSettings(source="mic"))
+    with pytest.raises(DeviceUnavailableError, match="no default input device"):
+        asyncio.run(sim.NaoSim(config).start())
+    assert compose_calls(env) == []
+    assert not listening(sim.AUDIO_OUTPUT_PORT)
 
 
 @pytest.mark.parametrize("boot", ["exited", "unhealthy"])

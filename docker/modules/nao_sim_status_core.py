@@ -41,6 +41,7 @@ class Status(object):
         insert(PREFIX + "NaoqiVersion", self.naoqi_version)
         for device in DEVICES:
             insert(PREFIX + device + "/Source", NONE)
+        insert(PREFIX + "Audio/Channels", NONE)  # the audio input's mono policy
         raise_event(PREFIX + "Ready", 0)
 
     def set_ready(self):

@@ -1,9 +1,15 @@
 ---
 code:
+  - docker/modules/nao_sim_audiodevice_core.py
+  - docker/modules/nao_sim_audiodevice_almodule.py
+  - docker/modules/nao_sim_audiodevice_qiservice.py
+  - docker/relay/naosim_audiorelay.cpp
   - docker/entrypoint-2.1.sh
   - docker/entrypoint-2.8.sh
   - docker/compose.yaml
 tests:
+  - tests/test_audiodevice_core.py
+  - tests/test_entrypoint.py
 ---
 
 # ALAudioDevice replacement

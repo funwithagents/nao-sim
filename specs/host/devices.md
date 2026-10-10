@@ -3,9 +3,13 @@ code:
   - src/nao_sim/audio_output.py
   - src/nao_sim/video_input.py
   - docker/compose.yaml
+  - src/nao_sim/host_link.py
+  - src/nao_sim/audio_input.py
 tests:
   - tests/test_audio_output.py
   - tests/test_video_input.py
+  - tests/test_host_link.py
+  - tests/test_audio_input.py
 ---
 
 # Host devices
