@@ -418,6 +418,7 @@ def test_the_microphone_opens_with_the_first_need_and_closes_with_the_last(
         1,
         "int16",
     )
+    assert kwargs["latency"] == "low"  # the gate expects little capture delay
     chunks = [c for _, _, c in conn.pcm(FRONT)]
     assert chunks and np.abs(chunks[-1]).max() > 2500  # what it captured
     output.playing_until = time.monotonic() + 10  # the robot speaks: the mic is gated
