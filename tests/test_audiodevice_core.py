@@ -264,7 +264,8 @@ def test_a_slow_subscriber_does_not_delay_another(device):
     ]
 
 
-def test_a_subscriber_that_keeps_failing_is_dropped(device):
+def test_a_subscriber_that_keeps_failing_is_dropped(device, monkeypatch):
+    monkeypatch.setattr(core, "FAILING_S", 0.05)
     dev, host, relay = device
     relay.fail.add("Gone")
     dev.set_preferences("Gone", 16000, 3, 0)
@@ -272,15 +273,31 @@ def test_a_subscriber_that_keeps_failing_is_dropped(device):
     dev.subscribe("Gone")
     dev.subscribe("Front")
     host.wait_need(lambda n: len(n["formats"]) == 1)
-    for i in range(core.FAILURES + 2):
+    for i in range(core.FAILURES + 6):
         host.pcm(FRONT, 1, 1, bytes([i, 0]))
-        time.sleep(0.01)
-    relay.wait("Front", core.FAILURES + 2)
+        time.sleep(0.02)
+    relay.wait("Front", core.FAILURES + 6)
     deadline = time.time() + 2
     while "Gone" in dev.subscribers() and time.time() < deadline:
         time.sleep(0.01)
     assert dev.subscribers() == {"Front": FRONT}
     assert relay.forgotten == ["Gone"]
+
+
+def test_a_few_early_failures_do_not_drop_a_subscriber(device):
+    dev, host, relay = device  # FAILING_S as shipped: a new subscriber may lag a moment
+    relay.fail.add("Front")
+    dev.set_preferences("Front", 16000, 3, 0)
+    dev.subscribe("Front")
+    host.wait_need(lambda n: len(n["formats"]) == 1)
+    for i in range(core.FAILURES + 2):
+        host.pcm(FRONT, 1, 1, bytes([i, 0]))
+        time.sleep(0.02)
+    time.sleep(0.1)
+    relay.fail.discard("Front")  # reachable now
+    host.pcm(FRONT, 1, 1, b"\x09\x00")
+    assert relay.wait("Front", 1)[0][3] == b"\x09\x00"
+    assert dev.subscribers() == {"Front": FRONT}
 
 
 def test_the_need_is_sent_again_after_the_host_comes_back(monkeypatch):
