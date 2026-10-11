@@ -9,7 +9,7 @@ tests:
 
 # Audio output
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
