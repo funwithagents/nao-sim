@@ -30,7 +30,7 @@ Where things live. This is a coarse, module-level map — for the full file inve
 
 | Module | Role | Spec |
 |---|---|---|
-| `src/nao_sim/audio_input.py` | The audio input device: the `ALAudioDevice` service's end of the host link, producing every format it needs from the fake source (silence plus sounds code plays, `NaoSim.fake_audio`) or the host microphone, the microphone gate, energy, `NaoSim/Audio/*`; run in-process by `NaoSim` | [audio-input.md](specs/host/audio-input.md), [devices.md](specs/host/devices.md) |
+| `src/nao_sim/audio_input.py` | The audio input device: the `ALAudioDevice` service's end of the host link, producing every format it needs from the fake source (silence plus sounds code plays, `NaoSim.fake_audio`) or the host microphone (the robot hearing its own voice in both), energy, `NaoSim/Audio/*`; run in-process by `NaoSim` | [audio-input.md](specs/host/audio-input.md), [devices.md](specs/host/devices.md) |
 | `src/nao_sim/audio_output.py` | The audio output device: TCP PCM player the containers stream into, its audio sinks (device, null, WAV, memory) and playing state; run in-process by `NaoSim`, no command of its own | [audio-output.md](specs/host/audio-output.md), [devices.md](specs/host/devices.md) |
 | `src/nao_sim/__init__.py` | Front door: re-exports `NaoSim`, the config classes, the audio sinks, `read_status`, `cleanup`, the image functions and the errors | [api.md](specs/runtime/api.md) |
 | `src/nao_sim/cli.py` | The `nao-sim` command, a thin shell over the library: `fetch-and-build-images`, `run`, `status`, `cleanup`, `logs` | [cli.md](specs/runtime/cli.md) |

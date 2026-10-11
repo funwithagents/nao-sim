@@ -22,7 +22,7 @@ tests:
 
 # API: the simulated NAO (`NaoSim`)
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -62,7 +62,7 @@ The API is **async**, as `NaoBridge`: `await sim.start()`, `await sim.stop()`, `
 3. **Containers**: `docker compose up -d` (no build) for the `tts` service and the version's NAOqi service, with the environment generated from the config (`NAO_SIM_TTS_ENGINE` = `speech.engine`, the version's profile, `2.1` or `2.8`). The compose project is always `nao-sim`.
 4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](../container/status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error. Verified images can still fail here (a volume, the host), so this wait happens on every start.
 5. **Simulated world**: when the config calls for it ([viewer.md](../host/viewer.md), "Which viewer runs"), build a `NaoViewer` in sim mode from the `viewer` block and `url`, and `launch()` it (in `asyncio.to_thread`; nao-viewer's API is synchronous). Its `LaunchError` fails the start like any other step.
-6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer. Each writes its `NaoSim/*/Source` key. The audio input serves the host link from then on, and reads the audio output's playing state for the microphone gate.
+6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer. Each writes its `NaoSim/*/Source` key. The audio input serves the host link from then on; a fake source also listens to the audio output, so the robot hears its own voice ([audio-input.md](../host/audio-input.md), "The robot hears itself").
 
 **The window closed by the user** stops the viewer only: the robot keeps running, as a NAO does when nobody watches it, so a nao-bridge app or a test that owns the `NaoSim` never loses its robot to a click. A `NaoSim` notices it from a thread waiting on the viewer (`NaoViewer.wait()`) and logs it once, at warning level, saying the robot is still running; it does not reopen the window. What the render camera does then is the video input's business ([video-input.md](../host/video-input.md)).
 

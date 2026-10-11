@@ -69,9 +69,9 @@ class DevicePlayer:
             dtype="int16",
             blocksize=0,
             device=self.device,
-            # The device's own buffer as short as it allows: the microphone gate assumes the
-            # robot's voice is heard right after it is played (PulseAudio buffers seconds at
-            # sounddevice's default "high" latency, measured on CI).
+            # The device's own buffer as short as it allows, so the robot's voice leaves the
+            # loudspeaker about when it is due (PulseAudio buffered seconds at sounddevice's
+            # default "high" latency, measured on CI).
             latency="low",
         )
         self._stream.start()
@@ -208,8 +208,14 @@ def _sleep_until(deadline: float) -> None:
         time.sleep(left)
 
 
+# listener(chunk, rate, channels, at): a chunk fed to the sink, due to play at `at`
+# (time.monotonic()); an empty chunk says the stream was cut at `at`.
+Listener = Callable[[bytes, int, int, float], None]
+
+
 class AudioOutput:
-    """Plays one stream at a time into its sink, the newest wins."""
+    """Plays one stream at a time into its sink, the newest wins. Its listeners hear what it
+    plays (the fake audio source: the robot hears its own voice)."""
 
     def __init__(
         self,
@@ -222,9 +228,10 @@ class AudioOutput:
         self._sink_lock = threading.Lock()  # one stream in the sink at a time
         self._gen = 0
         self._stopped_gen = 0  # a stop cuts this generation and the older ones
-        # When the audio fed so far finishes playing (time.monotonic()); read by the
-        # microphone gate from other threads, a float assignment being atomic.
+        # When the audio fed so far finishes playing (time.monotonic()); may be read from
+        # other threads, a float assignment being atomic.
         self.playing_until = 0.0
+        self.listeners: list[Listener] = []
 
     def _cut(self, gen: int) -> bool:
         return gen != self._gen or gen <= self._stopped_gen
@@ -263,6 +270,7 @@ class AudioOutput:
                     fed += len(data)
                     start = max(self.playing_until, time.monotonic())
                     self.playing_until = start + len(data) / bytes_per_s
+                    self._tell(data, rate, channels, start)
                     # One chunk ahead, so a device never runs dry.
                     _sleep_until(self.playing_until - CHUNK_S)
                 if completed:
@@ -270,10 +278,18 @@ class AudioOutput:
             finally:
                 if not completed:
                     self.playing_until = time.monotonic()
+                    self._tell(b"", rate, channels, self.playing_until)
                 self.sink.end(interrupted=not completed)
                 self._on_event(
                     {"event": "end", "played_s": round(fed / bytes_per_s, 3)}
                 )
+
+    def _tell(self, chunk: bytes, rate: int, channels: int, at: float) -> None:
+        for listener in list(self.listeners):
+            try:
+                listener(chunk, rate, channels, at)
+            except Exception as e:  # noqa: BLE001 (a listener must not end the stream)
+                log.warning("audio output: a listener failed: %s", e)
 
     def stop(self) -> None:
         with self._lock:

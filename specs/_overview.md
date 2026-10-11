@@ -56,7 +56,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | `NaoSim` status service, healthcheck | Built and tested ([status-service.md](container/status-service.md)) |
 | `NaoSimConfig`, `NaoSim` object, CLI | Built and tested: `nao-sim run`/`status`/`cleanup`/`logs`, the live tier runs through `NaoSim` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md)) |
 | Host link | Built and tested, with the audio input ([devices.md](host/devices.md)) |
-| Audio input, `ALAudioDevice` replacement, microphone gate | Built and tested on both versions: `ALAudioDevice` with its native relay, the fake source tests play into, the host microphone, the gate; on CI over a virtual audio loopback ([audio-input.md](host/audio-input.md), [audio-device.md](services/audio-device.md)) |
+| Audio input, `ALAudioDevice` replacement | Built and tested on both versions: `ALAudioDevice` with its native relay, the fake source tests play into, the host microphone, the robot hearing its own voice; on CI over a virtual audio loopback ([audio-input.md](host/audio-input.md), [audio-device.md](services/audio-device.md)) |
 | Video input | Built and tested with the render source on both versions: VGA `CameraTop` frames at `video_input.fps`, NAOqi converting per subscriber; the webcam and the bottom camera are next ([video-input.md](host/video-input.md)) |
 | Touch input | Draft ([touch-input.md](host/touch-input.md)) |
 | `ALAudioPlayer` shim and replacement | Draft; shim approach measured ([audio-player.md](services/audio-player.md)) |
@@ -110,7 +110,7 @@ Specified in [devices.md](host/devices.md): the simulated robot's inputs and out
 | Device | Spec | Through |
 | --- | --- | --- |
 | Audio output (loudspeaker, WAV, memory) | [audio-output.md](host/audio-output.md) | Its own TCP protocol on 9562, fed by the `tts` engine and later `ALAudioPlayer` |
-| Audio input (fake source driven from code, host microphone), with the microphone gate | [audio-input.md](host/audio-input.md) | The host link, into the `ALAudioDevice` replacement |
+| Audio input (fake source driven from code, host microphone); the robot hears itself | [audio-input.md](host/audio-input.md) | The host link, into the `ALAudioDevice` replacement |
 | Video input (nao-viewer render, webcam) | [video-input.md](host/video-input.md) | qi: `ALVideoDevice.putImage` |
 | Touch input (clicks in the sim window, the API in tests) | [touch-input.md](host/touch-input.md) | qi: ALMemory |
 
@@ -130,7 +130,7 @@ The viewer process only reads NAOqi; everything NAOqi-specific stays in nao-sim.
 
 ## Speech
 
-`ALTextToSpeech.say()` is served by a replacement loaded inside NAOqi. It sends each sentence to the `tts` container, which synthesizes it and streams the PCM to the host audio output, and it raises the NAOqi events itself, on its own clock, from the timings the engine returns. Specified in [speech.md](services/speech.md), [tts-engine.md](container/tts-engine.md) and [audio-output.md](host/audio-output.md). The microphone gate, which keeps the robot from hearing itself, belongs to the audio input ([audio-input.md](host/audio-input.md), "Microphone gate"). Kept here: the fallback.
+`ALTextToSpeech.say()` is served by a replacement loaded inside NAOqi. It sends each sentence to the `tts` container, which synthesizes it and streams the PCM to the host audio output, and it raises the NAOqi events itself, on its own clock, from the timings the engine returns. Specified in [speech.md](services/speech.md), [tts-engine.md](container/tts-engine.md) and [audio-output.md](host/audio-output.md). The robot hears its own voice through its microphones, as a NAO does ([audio-input.md](host/audio-input.md), "The robot hears itself"). Kept here: the fallback.
 
 ### Fallback: listening to TTS events
 
@@ -149,7 +149,7 @@ Clients get camera images and microphone audio through the standard NAOqi servic
 | | NAOqi side | Host side |
 | --- | --- | --- |
 | Video | `ALVideoDevice` as shipped (`VideoDevice.xml` already selects the simulator), fed with the public `putImage`: no module | [video-input.md](host/video-input.md): nao-viewer render first, webcam after; VGA `CameraTop` frames at a fixed rate, NAOqi converting per subscriber |
-| Audio in | A replacement `ALAudioDevice`, [audio-device.md](services/audio-device.md) | [audio-input.md](host/audio-input.md): the fake source first, host microphone after; the microphone gate |
+| Audio in | A replacement `ALAudioDevice`, [audio-device.md](services/audio-device.md) | [audio-input.md](host/audio-input.md): the fake source first, host microphone after; the robot hears itself |
 | Sound files | The `sndfile-play` shim, then a replacement `ALAudioPlayer`, [audio-player.md](services/audio-player.md) | [audio-output.md](host/audio-output.md) |
 
 ## Perception and speech recognition: on the clients
@@ -216,11 +216,11 @@ Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tie
 The toolkit document numbers the milestones across the three packages; nao-sim's share is below, with the toolkit's number.
 
 1. **Validation spike** (done, Oct 8, 2026; toolkit 1): a module loaded into NAOqi serves a host client; a host-registered service is called back from the container; the built-in `ALTextToSpeech` is replaced, with `ALAnimatedSpeech` using the replacement. On 2.1 and 2.8.
-2. **Speech path** (done except the gate and subtitles; toolkit 7): `ALTextToSpeech` replacement, `tts` container, audio output, under test on both versions (plan [202610081257](../plans/202610081257_baseline-tests-speech-path.md)).
+2. **Speech path** (done except subtitles; toolkit 7): `ALTextToSpeech` replacement, `tts` container, audio output, under test on both versions (plan [202610081257](../plans/202610081257_baseline-tests-speech-path.md)).
    - Still to exit: a Choregraphe behaviour with animated speech and the `animations` package runs with gestures on their words; sound files play through the `ALAudioPlayer` shim; reference sentences within the agreed duration tolerance.
 3. **nao-sim run and CI** (done, Oct 9, 2026; toolkit 2 and 4): status service, healthcheck and `fetch-and-build-images`; `NaoSimConfig` and the `NaoSim` object with the audio sinks and the sim window, `nao-sim run`/`cleanup`/`status`/`logs` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md), [audio-output.md](host/audio-output.md), [viewer.md](host/viewer.md)), CI on both versions ([ci.md](testing/ci.md)), the distribution as a uv git dependency ([project.md](project.md)) (all done).
    - Exit (met): `nao-sim run` works on Linux and macOS; CI green on both versions.
-4. **Media** (toolkit 6), in this order: the render camera ([video-input.md](host/video-input.md), the viewer's headless renders), so CI tests the camera loop from the start (done, Oct 9, 2026); the host link, `ALAudioDevice` and the audio input with the fake source, the host microphone and the microphone gate, tested on CI over a virtual audio loopback (done, Oct 10, 2026; [devices.md](host/devices.md), [audio-device.md](services/audio-device.md), [audio-input.md](host/audio-input.md)); the `ALAudioPlayer` shim ([audio-player.md](services/audio-player.md)); then the webcam and touch ([touch-input.md](host/touch-input.md)).
+4. **Media** (toolkit 6), in this order: the render camera ([video-input.md](host/video-input.md), the viewer's headless renders), so CI tests the camera loop from the start (done, Oct 9, 2026); the host link, `ALAudioDevice` and the audio input with the fake source and the host microphone, tested on CI over a virtual audio loopback (done, Oct 10, 2026; [devices.md](host/devices.md), [audio-device.md](services/audio-device.md), [audio-input.md](host/audio-input.md)); the `ALAudioPlayer` shim ([audio-player.md](services/audio-player.md)); then the webcam and touch ([touch-input.md](host/touch-input.md)).
    - Exit: a vision script and an audio script written against the standard NAOqi services run unchanged on nao-sim.
 5. **NAOqi 2.8 validation** (toolkit 8): the capability probe and its committed reports for 2.1 and 2.8.
 

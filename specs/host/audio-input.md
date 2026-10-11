@@ -14,13 +14,13 @@ tests:
 
 # Audio input
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
 The robot's microphones as a host device ([devices.md](devices.md)). It feeds the `ALAudioDevice` replacement ([audio-device.md](../services/audio-device.md)) with PCM over the host link, so a client that subscribes to `ALAudioDevice` gets microphone audio through `processRemote` as on a NAO. Speech recognition and sound processing run in the clients on that stream, never in nao-sim ([_overview.md](../_overview.md), "Perception and speech recognition").
 
-It also holds the **microphone gate**: the robot does not hear its own voice.
+**The robot hears itself**, as a NAO does: its microphones pick up its own loudspeaker. With the host microphone that is the room's acoustics; with the fake source, the robot's voice is mixed into the fake room ("The robot hears itself"). Clients deal with it as on a NAO, where NAOqi's own speech recognition stops listening while the robot speaks.
 
 ## Decided
 
@@ -53,7 +53,7 @@ sim.fake_audio.stop()                              # every sound playing now
 - **Sounds overlap and mix**, as in a room: samples are summed and clipped to int16.
 - **Wall-clock time.** A sound plays from the moment `play` is called, whether or not anybody subscribes: a subscriber that arrives mid-sound hears the rest, and one played while nobody listens goes unheard. `ended_at` is when its last sample is due.
 - **Split files.** A test plays one part, has the robot act, then plays the next: the timing is the test's.
-- **It stands in for the microphone**, so the microphone gate applies to it ("Microphone gate"): a sound played while the robot speaks reaches subscribers as zeros, as it would on a NAO whose gate is the host's.
+- **The robot's own voice is in the room**, mixed with the sounds played ("The robot hears itself").
 - `play` is thread-safe and may be called from any thread or before a subscription; `stop()` ends every sound playing (their `ended_at` becomes now).
 
 #### The host microphone
@@ -74,14 +74,14 @@ Captured with `sounddevice` (`RawInputStream`, int16, mono, 48 kHz, blocks of 10
 - **Real time.** Each stream is paced on its own sample clock: chunk `k` is sent when its last sample is due, `t0 + (k + 1) × samples / rate` after the stream starts, never in bursts; a late slot is sent at once and the schedule kept, not reset.
 - **Energy.** When the need asks for it, the host computes each microphone's energy, the RMS of the 48 kHz four-channel signal over the last 4096 samples, in [0, 32768], and sends it on that cadence.
 
-### Microphone gate
+### The robot hears itself
 
-The host has the microphone and the exact audio the robot plays, on one clock, so it keeps the robot from hearing itself without involving NAOqi:
+A NAO's microphones hear its loudspeaker, so nao-sim's do too; nothing is muted while the robot speaks.
 
-- While `time.monotonic()` is before the audio output's `playing_until` ([audio-output.md](audio-output.md), "Playing state") plus a tail, the input replaces the captured samples with **zeros**, decided per captured 10 ms block. The chunks keep coming at their cadence, so subscribers see silence, not a gap.
-- The tail is `audio_input.gate_tail_s`, 0.3 s by default; it also covers the output device's latency, from the audio output's last write to the sound in the room. The `DevicePlayer` and the microphone open their streams at low latency (`latency="low"`) to keep that short. 0 still gates while playing.
-- The gate applies to both sources, `mic` and `fake`: the fake source stands in for the microphone, so the gate is tested on every live run and not only over a real loopback.
-- Nothing about the gate crosses the host link: the container side never learns the robot is speaking.
+- **The host microphone** hears the host's loudspeaker through the room, as it is. The `DevicePlayer` and the microphone open their streams at low latency (`latency="low"`), so the robot's voice comes back about when a NAO's would.
+- **The fake source** hears the audio output: every chunk the audio output plays ([audio-output.md](audio-output.md), "Listeners") is added to the fake room from the moment it is due to play, resampled to 48 kHz, on all four microphones, at **half its level** (provisional, open question 3). A stopped or cut stream stops being heard with it, up to the chunk already handed over (100 ms at most).
+- So a client tested against nao-sim has to cope with hearing the robot, exactly as on a NAO (for example by not listening between `ALTextToSpeech`'s `TextStarted` and `TextDone`). nao-sim keeps nothing from the client that a NAO would give it.
+- A **microphone gate** (zeros while the robot plays, plus a tail) was designed and built, then removed on October 11, 2026, because it made nao-sim differ from a NAO: open question 4.
 
 ### On the host link
 
@@ -99,13 +99,14 @@ The audio input's messages on the host link ([devices.md](devices.md), "The host
 
 ### In the live tier and CI
 
-- **Every live run uses the fake source.** The live tier's config has `audio_input = {source: "fake"}`, so `ALAudioDevice` and the gate are exercised on every run of both versions: a test subscribes as a client does, plays tones through `sim.fake_audio` and checks what it receives against them.
-- **The loopback tests** use a real device: the `mic` source, the gate with the robot's speech played by a `DevicePlayer` and coming back into the microphone, and the `DevicePlayer` itself. They run only when the default output and input devices form a loopback, which `NAO_SIM_E2E_AUDIO=loopback` declares; without it they skip, since playing into a user's loudspeakers and recording their microphone is not acceptable by default. CI's live entries provide the loopback (a PulseAudio null sink as the default sink, its monitor as the default source) and set the variable, so there they cannot skip ([ci.md](../testing/ci.md)).
+- **Every live run uses the fake source.** The live tier's config has `audio_input = {source: "fake"}`, so `ALAudioDevice` is exercised on every run of both versions: a test subscribes as a client does, plays tones through `sim.fake_audio` and checks what it receives against them, and checks it hears the robot speak.
+- **The loopback tests** use a real device: the `mic` source, the robot's speech played by a `DevicePlayer` and coming back into the microphone, and the `DevicePlayer` itself. They run only when the default output and input devices form a loopback, which `NAO_SIM_E2E_AUDIO=loopback` declares; without it they skip, since playing into a user's loudspeakers and recording their microphone is not acceptable by default. CI's live entries provide the loopback (a PulseAudio null sink as the default sink, its monitor as the default source) and set the variable, so there they cannot skip ([ci.md](../testing/ci.md)).
 
 ## Open questions
 
 1. **Chunk size and cadence.** The `samples` a NAO delivers per `processRemote` are the reference: about 85 ms as clients report, 170 ms in the 2.1 docs. To measure on a robot; one constant per rate.
 2. **Microphone selection.** No option picks an input device other than the default; decided with the audio output's device selection ([audio-output.md](audio-output.md), open question 1).
-3. **Output latency beyond the tail.** A device that buffers more than the tail lets the robot hear the end of its own voice. Measured on CI: a PulseAudio null sink with no low-latency client renders about 1.5 s late, whatever PortAudio asks for, so CI keeps one ([ci.md](../testing/ci.md)); real loudspeakers measured so far are well under the tail. Reading the device's reported latency into `playing_until` waits for a host that needs it.
-4. **Echo cancellation.** The gate is the default. Real cancellation is possible later for the same reason the gate is: the host has both signals on one clock.
-5. **Replaying a file from the config.** `nao-sim run` has no way to feed a recording (the fake source is driven from code); a CLI option or a `fake` setting that plays a file at the first subscription waits for a user who needs it.
+3. **The level of the robot's voice in the fake room.** Half the played level is a placeholder: how loud a NAO hears its own loudspeaker on each microphone (and with what delay) is to measure on a robot, and may become a per-microphone gain.
+4. **Not hearing itself.** Whether nao-sim should ever keep the robot from hearing itself: a gate (zeros while the audio output plays, plus a tail, built and removed as unfaithful) or echo cancellation, which the host could do because it has the played and the captured audio on one clock. Only if a NAO does it too (NAO V6's audio front end is to check), or as a client-side tool rather than in nao-sim.
+5. **Output device latency.** The robot's voice comes back as late as the output device plays it. Measured on CI: a PulseAudio null sink with no low-latency client renders about 1.5 s late, whatever PortAudio asks for, so CI keeps one ([ci.md](../testing/ci.md)).
+6. **Replaying a file from the config.** `nao-sim run` has no way to feed a recording (the fake source is driven from code); a CLI option or a `fake` setting that plays a file at the first subscription waits for a user who needs it.

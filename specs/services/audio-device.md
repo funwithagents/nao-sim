@@ -42,7 +42,7 @@ The module routes audio; it does no signal processing. The host produces every f
 | `enableEnergyComputation()`, `disableEnergyComputation()` | Energy is computed only while enabled, with or without subscribers |
 | `getFrontMicEnergy()`, `getRearMicEnergy()`, `getLeftMicEnergy()`, `getRightMicEnergy()` | The last energy the host computed for that microphone, in [0, 32768]; `0.0` while disabled |
 | `openAudioInputs()`, `closeAudioInputs()` | No-ops: capture follows the subscribers |
-| `isInputMuted()` | Always `false`: the microphone gate is invisible to NAOqi ([audio-input.md](../host/audio-input.md), "Microphone gate") |
+| `isInputMuted()` | Always `false`: nothing mutes the microphones, the robot hears itself as a NAO does ([audio-input.md](../host/audio-input.md), "The robot hears itself") |
 | `getOutputVolume()`, `setOutputVolume(volume)` | The value (0 to 100, initially 50) is kept and returned (open question 2) |
 
 ### Preferences, as NAOqi's device

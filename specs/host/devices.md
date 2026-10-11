@@ -47,7 +47,7 @@ This spec holds what every device shares: the contract below and the host link. 
 
 ### The host link
 
-The containers and the host devices exchange what qi cannot carry over one TCP port. As designed, that is the audio input alone: the video and touch inputs are qi clients, the audio output keeps its own protocol ([audio-output.md](audio-output.md)), and the microphone gate runs on the host ([audio-input.md](audio-input.md), "Microphone gate").
+The containers and the host devices exchange what qi cannot carry over one TCP port. As designed, that is the audio input alone: the video and touch inputs are qi clients and the audio output keeps its own protocol ([audio-output.md](audio-output.md)).
 
 - **The containers connect out** to the host at `host.docker.internal:9563` (`host-gateway` on Linux, as the `tts` container reaches the audio output on 9562), so only 9559 is published and the host never needs a container's address.
 - **Module** `src/nao_sim/host_link.py`: the framing, the server and the dispatch of each connection to the device that serves its `hello`'s service. The compose services tell the container side where to connect (`NAO_SIM_HOST_LINK=host.docker.internal:9563`).

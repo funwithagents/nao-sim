@@ -236,10 +236,10 @@ class NaoSim:
             if settings.source == "fake"
             else MicSource(settings.mono)
         )
-        device = AudioInput(
-            source, self._audio_output, settings.gate_tail_s, settings.mono
-        )
+        device = AudioInput(source, settings.mono)
         self._audio_input = device
+        if isinstance(source, FakeAudioSource):  # the fake room hears the robot speak
+            self._audio_output.listeners.append(source.hear)
         # Registered last, so the teardown stops it first.
         self._undo.append(("audio input", self._stop_audio_input))
         self._link.register(AudioInput.service, device)

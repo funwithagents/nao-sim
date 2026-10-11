@@ -1,9 +1,10 @@
-"""The audio input: the fake source, the formats it produces, pacing, the gate, the microphone.
+"""The audio input: the fake source, the formats it produces, pacing, the robot hearing itself,
+the microphone.
 
 The device runs as on a running `NaoSim`, served a `need` by a fake host link connection that
-records what it sends, with a fake qi session for its ALMemory keys and a fake audio output whose
-`playing_until` a test sets."""
+records what it sends, with a fake qi session for its ALMemory keys."""
 
+import io
 import sys
 import threading
 import time
@@ -26,6 +27,7 @@ from nao_sim.audio_input import (
     load_sound,
     upsample,
 )
+from nao_sim.audio_output import AudioOutput, MemorySink
 from nao_sim.errors import DeviceUnavailableError
 
 FRONT = {"rate": 16000, "channel": "front", "deinterleaved": False}
@@ -225,26 +227,18 @@ class Session:
         self.closed = True
 
 
-class Output:
-    playing_until = 0.0
-
-
 @pytest.fixture
 def device():
     made = []
 
-    def make(source=None, tail=0.3):
-        session, conn, output = Session(), Conn(), Output()
+    def make(source=None):
+        session, conn = Session(), Conn()
         dev = AudioInput(
-            source or FakeAudioSource(),
-            output,
-            tail,
-            "duplicate",
-            connect=lambda: session,
+            source or FakeAudioSource(), "duplicate", connect=lambda: session
         )
         dev.connected(conn)
         made.append(dev)
-        return dev, conn, output, session
+        return dev, conn, session
 
     yield make
     for dev in made:
@@ -256,7 +250,7 @@ def need(*formats, energy=False):
 
 
 def test_silence_comes_in_chunks_at_the_nao_cadence(device):
-    dev, conn, _, session = device()
+    dev, conn, session = device()
     dev.start()
     dev.message(conn, need(FRONT), b"")
     time.sleep(1.0)
@@ -272,7 +266,7 @@ def test_silence_comes_in_chunks_at_the_nao_cadence(device):
 
 
 def test_a_played_tone_reaches_each_format_with_its_pitch(device):
-    dev, conn, _, _ = device()
+    dev, conn, _ = device()
     dev.start()
     dev.message(conn, need(FRONT, ALL), b"")
     take = dev.source.play(tone(440, 0.6, 16000), 16000)  # type: ignore[attr-defined]
@@ -289,7 +283,7 @@ def test_a_played_tone_reaches_each_format_with_its_pitch(device):
 
 
 def test_a_need_before_start_is_served_after_it_and_stop_resets_the_keys(device):
-    dev, conn, _, session = device()
+    dev, conn, session = device()
     dev.message(conn, need(FRONT), b"")
     time.sleep(0.2)
     assert conn.pcm(FRONT) == []  # NaoSim step 6 has not started the device yet
@@ -308,7 +302,7 @@ def test_a_need_before_start_is_served_after_it_and_stop_resets_the_keys(device)
 
 
 def test_an_empty_need_stops_production_and_a_new_one_resumes(device):
-    dev, conn, _, _ = device()
+    dev, conn, _ = device()
     dev.start()
     dev.message(conn, need(ALL_SPLIT), b"")
     time.sleep(0.3)
@@ -325,7 +319,7 @@ def test_an_empty_need_stops_production_and_a_new_one_resumes(device):
 
 
 def test_energy_follows_the_sound(device):
-    dev, conn, _, _ = device()
+    dev, conn, _ = device()
     dev.start()
     dev.message(conn, need(energy=True), b"")
     dev.source.play(tone(1000, 0.5, 48000, 10000), 48000)  # type: ignore[attr-defined]
@@ -337,28 +331,58 @@ def test_energy_follows_the_sound(device):
     assert conn.pcm(FRONT) == []  # energy alone sends no audio
 
 
-def test_the_gate_turns_what_plays_while_the_robot_speaks_into_zeros(device):
-    dev, conn, output, _ = device(tail=0.2)
+def test_the_fake_room_hears_what_the_robot_plays():
+    source = FakeAudioSource()
+    at = time.monotonic() + 1.0
+    voice = tone(1000, 0.2, 22050)  # the speech engine's rate
+    source.hear(voice[:2205].tobytes(), 22050, 1, at)  # two 100 ms chunks, back to back
+    source.hear(voice[2205:].tobytes(), 22050, 1, at + 0.1)
+    assert not source.read(at - 0.01, 480).any()  # not before it is due
+    heard = source.read(at, 9600)  # 0.2 s at 48 kHz
+    assert np.array_equal(heard[:, 0], heard[:, 3])  # on every microphone
+    assert peak_hz(heard[:, 0], BASE_RATE) == pytest.approx(1000, abs=10)
+    assert np.abs(heard[100:-100]).max() == pytest.approx(
+        audio_input.ROBOT_VOICE_GAIN * 8000, rel=0.05
+    )
+    seam = heard[4790:4810, 0]  # where the two chunks meet: no gap
+    assert np.abs(seam).max() > 1000
+    assert not source.read(at + 0.2, 480).any()
+
+
+def test_a_cut_stops_the_robots_voice_in_the_room():
+    source = FakeAudioSource()
+    at = time.monotonic() + 1.0
+    source.hear(tone(1000, 0.1, 22050).tobytes(), 22050, 1, at)
+    source.hear(tone(1000, 0.1, 22050).tobytes(), 22050, 1, at + 0.1)
+    source.hear(b"", 22050, 1, at + 0.05)  # stopped half way through the first chunk
+    assert np.abs(source.read(at, 2400)).max() > 1000  # 0 to 50 ms: heard
+    assert not source.read(at + 0.05, 9600).any()  # nothing after the cut
+
+
+def test_the_robot_is_heard_through_the_audio_output(device):
+    """What the audio output plays reaches a subscriber, as on a NAO: nothing mutes it."""
+    dev, conn, _ = device()
+    output = AudioOutput(MemorySink())
+    output.listeners.append(dev.source.hear)  # type: ignore[attr-defined]
     dev.start()
     dev.message(conn, need(FRONT), b"")
-    dev.source.play(np.full(16000 * 2, 5000, dtype=np.int16), 16000)  # type: ignore[attr-defined]
+    time.sleep(0.3)
+    header = {"cmd": "play", "rate": 22050, "channels": 1, "format": "s16le"}
+    speech = tone(500, 0.6, 22050).tobytes()
+    started = time.monotonic()
+    output.play_stream(io.BytesIO(speech), header)
     time.sleep(0.4)
-    speech_start = time.monotonic()
-    output.playing_until = speech_start + 0.5  # the robot speaks for 0.5 s
-    time.sleep(1.2)
     received = [(t, c[:, 0]) for t, _, c in conn.pcm(FRONT)]
-    # Each chunk's samples are due at (arrival - its duration .. arrival); classify by sample time.
-    loud_times, quiet_times = [], []
-    for t, chunk in received:
-        times = t - (len(chunk) - np.arange(len(chunk))) / 16000
-        loud_times += list(times[np.abs(chunk) > 2500])
-        quiet_times += list(times[np.abs(chunk) < 100])
-    gated_end = speech_start + 0.5 + 0.2
-    loud = np.array(loud_times)
-    assert not np.any((loud > speech_start + 0.03) & (loud < gated_end - 0.03))
-    assert np.any(loud < speech_start) and np.any(loud > gated_end)
-    quiet = np.array(quiet_times)
-    assert np.any((quiet > speech_start + 0.05) & (quiet < gated_end - 0.05))
+    loud = [t - (len(c) - np.arange(len(c))) / 16000 for t, c in received]
+    times = np.concatenate(loud)
+    values = np.concatenate([c for _, c in received])
+    during = (times > started + 0.1) & (times < started + 0.5)
+    assert peak_hz(values[during], 16000) == pytest.approx(500, abs=12)
+    assert np.abs(values[during]).max() == pytest.approx(
+        audio_input.ROBOT_VOICE_GAIN * 8000, rel=0.1
+    )
+    assert np.abs(values[times < started - 0.05]).max() == 0  # silence before
+    assert np.abs(values[times > started + 0.75]).max() == 0  # and after
 
 
 # --- The microphone --------------------------------------------------------------------------
@@ -406,7 +430,7 @@ def test_the_microphone_opens_with_the_first_need_and_closes_with_the_last(
     device, fake_sounddevice
 ):
     streams, _ = fake_sounddevice
-    dev, conn, output, session = device(source=MicSource(), tail=0.0)
+    dev, conn, session = device(source=MicSource())
     dev.start()
     assert streams == []  # nothing needed yet: the microphone stays off
     dev.message(conn, need(FRONT), b"")
@@ -418,12 +442,9 @@ def test_the_microphone_opens_with_the_first_need_and_closes_with_the_last(
         1,
         "int16",
     )
-    assert kwargs["latency"] == "low"  # the gate expects little capture delay
+    assert kwargs["latency"] == "low"  # little capture delay, as a NAO's
     chunks = [c for _, _, c in conn.pcm(FRONT)]
     assert chunks and np.abs(chunks[-1]).max() > 2500  # what it captured
-    output.playing_until = time.monotonic() + 10  # the robot speaks: the mic is gated
-    time.sleep(0.4)
-    assert not conn.pcm(FRONT)[-1][2].any()
     dev.message(conn, need(), b"")
     assert streams[0].calls == ["start", "stop", "close"]
     assert ("NaoSim/Audio/Source", "mic") in session.memory.writes

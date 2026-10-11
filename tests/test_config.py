@@ -72,7 +72,6 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
         ({"naoqi": {"ready_timeout_s": True}}, "naoqi.ready_timeout_s"),
         ({"speech": {"engine": "festival"}}, "speech.engine"),
         ({"audio_output": {"mode": "loud"}}, "audio_output.mode"),
-        ({"audio_input": {"gate_tail_s": -0.1}}, "audio_input.gate_tail_s"),
         ({"audio_input": {"mono": "left"}}, "audio_input.mono"),
         ({"video_input": {"device": -1}}, "video_input.device"),
         ({"video_input": {"device": 1.5}}, "video_input.device"),
@@ -117,6 +116,9 @@ def test_the_wav_source_is_gone():
     assert error_for({"audio_input": {"source": "wav"}}).key == "audio_input.source"
     unknown = error_for({"audio_input": {"wav": "x.wav"}})
     assert unknown.key == "audio_input" and "wav" in str(unknown)
+    # The gate's tail went with the gate: the robot hears itself, as a NAO does.
+    gate = error_for({"audio_input": {"gate_tail_s": 0.3}})
+    assert gate.key == "audio_input" and "gate_tail_s" in str(gate)
     assert NaoSimConfig.from_dict({"audio_input": {"source": "fake"}}).audio_input == (
         AudioInputSettings(source="fake")
     )

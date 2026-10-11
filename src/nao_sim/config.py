@@ -236,16 +236,10 @@ class AudioInputSettings(_Loaders):
     # "fake": silence, plus what code plays through NaoSim.fake_audio
     source: AudioInputSource = "none"
     mono: MonoPolicy = "duplicate"
-    gate_tail_s: float = 0.3
 
     def __post_init__(self) -> None:
         _check_choice(self.source, AudioInputSource, "source")
         _check_choice(self.mono, MonoPolicy, "mono")
-        if not (math.isfinite(self.gate_tail_s) and self.gate_tail_s >= 0):
-            raise ConfigError(
-                f"must be a non-negative number, got {self.gate_tail_s!r}",
-                key="gate_tail_s",
-            )
 
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
@@ -256,7 +250,6 @@ class AudioInputSettings(_Loaders):
             {
                 "source": _as_str,
                 "mono": _as_str,
-                "gate_tail_s": _as_number,
             },
         )
 

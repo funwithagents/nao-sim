@@ -115,26 +115,23 @@ def test_two_formats_at_once(nao, listen):
     assert {c.samples for c in high.received()} == {CHUNK_48K}
 
 
-def test_the_robot_does_not_hear_itself(nao, listen):
-    """The microphone gate on every run: a sound played across the robot's speech reaches the
-    client as zeros from the speech's start until its end plus the gate's tail."""
+def test_the_robot_hears_itself(nao, listen):
+    """As a NAO's microphones hear its loudspeaker: what the robot says reaches a client while
+    it plays, in the quiet fake room, and nothing mutes it."""
     listener = listen(*FRONT_16K)
-    time.sleep(0.3)
-    take = nao.audio.play(tone(440, 8.0, 16000), 16000)
-    time.sleep(1.0)
+    time.sleep(0.5)
     said = time.monotonic()
-    nao.service("ALTextToSpeech").say("I do not hear my own voice.")
+    nao.service("ALTextToSpeech").say("I can hear my own voice.")
     speech = nao.sink.wait_for(lambda p: p.started_at >= said, 10)
-    time.sleep(1.0)
-    nao.audio.stop()
-    tail = nao.sim.config.audio_input.gate_tail_s
-    times, values = listener.timeline(16000, since=take.started_at)
-    loud = times[np.abs(values) > 2000]
-    gate_from, gate_to = speech.started_at, speech.ended_at + tail
-    assert gate_to - gate_from > 0.8  # a real sentence
-    assert not np.any((loud > gate_from + 0.1) & (loud < gate_to - 0.15))
-    assert np.any((loud > gate_from - 0.5) & (loud < gate_from))  # heard before
-    assert np.any((loud > gate_to + 0.15) & (loud < gate_to + 0.8))  # and after
+    time.sleep(0.5)
+    times, values = listener.timeline(16000, since=said - 0.5)
+    loud = times[np.abs(values) > 300]
+    assert speech.duration_s > 0.8  # a real sentence
+    # Heard from when it plays until it ends (a few ms of link and relay latency aside).
+    assert loud.min() == pytest.approx(speech.started_at, abs=0.25)
+    assert loud.max() == pytest.approx(speech.ended_at, abs=0.25)
+    assert np.abs(values[times < said - 0.05]).max() == 0  # the quiet room before
+    assert np.abs(values[times > speech.ended_at + 0.2]).max() == 0  # and after
 
 
 def test_energy_follows_the_room(nao):

@@ -3,8 +3,8 @@ input. CI provides one (a PulseAudio null sink and its monitor) and sets NAO_SIM
 anywhere else these tests skip, since they would play into the loudspeakers and record the room.
 
 They cover what the fake source and the memory sink cannot: the `DevicePlayer` sink on a device,
-the `mic` source, and the microphone gate with the robot's own voice coming back into the
-microphone."""
+the `mic` source, and the robot's own voice coming back into its microphone through a
+device."""
 
 import json
 import socket
@@ -112,24 +112,6 @@ class Room:
         self._stream.close()
 
 
-def _longest_quiet_run(
-    times: np.ndarray, values: np.ndarray, after: float, before: float, floor: int = 50
-) -> tuple[float, float]:
-    """(start, end) of the longest run of samples quieter than `floor` between the times."""
-    inside = (times > after) & (times < before)
-    t, quiet = times[inside], np.abs(values[inside]) < floor
-    best, run_start = (0.0, 0.0), None
-    for i, q in enumerate(quiet):
-        if q and run_start is None:
-            run_start = i
-        if run_start is not None and (not q or i == len(quiet) - 1):
-            last = i if q else i - 1
-            if t[last] - t[run_start] > best[1] - best[0]:
-                best = (float(t[run_start]), float(t[last]))
-            run_start = None
-    return best
-
-
 def _send(port: int, header: dict, body: bytes = b"") -> None:
     with socket.create_connection(("127.0.0.1", port)) as s:
         s.sendall(json.dumps(header).encode() + b"\n" + body)
@@ -159,7 +141,7 @@ def test_the_device_player_plays_a_stream_whole_and_soon(device_output):
         )
         time.sleep(0.5)
     assert rec.loud_seconds(2000) == pytest.approx(1.0, abs=0.15)
-    # Heard soon after it is played: the microphone gate's tail must cover this.
+    # Heard soon after it is played, as from a NAO's loudspeaker.
     first = rec.first_loud(2000)
     assert first is not None
     assert first - sent < 0.3, f"heard {first - sent:.2f} s after it was sent"
@@ -204,13 +186,13 @@ def mic_robot(nao):
         nao.start()
 
 
-def test_the_microphone_hears_the_room_but_not_the_robot(mic_robot):
+def test_the_microphone_hears_the_room_and_the_robot(mic_robot):
     sim, session = mic_robot
     assert session.service("ALMemory").getData("NaoSim/Audio/Source") == "mic"
     listener = Listener(session).subscribe(16000, 3, 0)
     mic = sim._audio_input.source  # type: ignore[union-attr]
     try:
-        with Room(tone(440, 8.0, 48000), 48000):  # the room: a steady tone
+        with Room(tone(440, 2.0, 48000), 48000):  # the room: a tone
             with Recorder() as heard:  # what reaches the loopback, robot aside
                 time.sleep(1.5)
             assert heard.loud_seconds(2000) > 0.5, (
@@ -218,26 +200,23 @@ def test_the_microphone_hears_the_room_but_not_the_robot(mic_robot):
             )
             assert mic.captured > 50, f"the microphone captured {mic.captured} blocks"
             assert mic.peak > 2000, f"the microphone captured silence (peak {mic.peak})"
-            said = time.monotonic()
-            session.service("ALTextToSpeech").say("I hear the room, not my own voice.")
-            done = time.monotonic()
-            time.sleep(1.5)
-        tail = sim.config.audio_input.gate_tail_s
-        times, values = listener.timeline(16000, since=said - 1.2)
-        before = (times > said - 1.0) & (times < said - 0.1)
-        assert peak_hz(values[before], 16000) == pytest.approx(440, abs=10)
-        assert np.abs(values[before]).max() > 1000
-        # The gate starts when the robot's audio starts, after its synthesis (which varies), so
-        # the gated stretch is read from the data: the longest unbroken run of zeros after
-        # say() was called. Neither the room nor the robot's own voice, which the loopback
-        # brings back, gets in until it ends.
-        start, end = _longest_quiet_run(times, values, said - 0.05, done + tail + 1.0)
-        assert end - start > 0.8, f"gated for {end - start:.2f} s only"
-        assert end >= done - 0.1, "the gate let the end of the robot's speech through"
-        after = (times > end + 0.05) & (times < end + 0.6)
-        assert np.abs(values[after]).max() > 1000  # the room again
-        assert peak_hz(values[after], 16000) == pytest.approx(
-            440, abs=10
-        )  # not the voice
+            room_until = time.monotonic()
+        time.sleep(0.8)  # the room falls quiet
+        said = time.monotonic()
+        session.service("ALTextToSpeech").say("I hear the room and my own voice.")
+        done = time.monotonic()
+        time.sleep(1.0)
+        times, values = listener.timeline(16000, since=said - 2.5)
+        room = (times > room_until - 1.2) & (times < room_until - 0.2)
+        assert peak_hz(values[room], 16000) == pytest.approx(440, abs=10)
+        quiet = (times > room_until + 0.4) & (times < said - 0.05)
+        assert np.abs(values[quiet]).max() < 300  # before the robot speaks
+        # The robot's voice, played on the loudspeaker, comes back into its microphone while
+        # it speaks (after its synthesis, which varies), as on a NAO.
+        loud = times[np.abs(values) > 1000]
+        voice = loud[(loud > said) & (loud < done + 0.3)]
+        assert voice.size, "the robot did not hear its own voice"
+        assert voice.max() - voice.min() > 0.6  # a sentence, not a click
+        assert voice.max() == pytest.approx(done, abs=0.4)
     finally:
         listener.close()

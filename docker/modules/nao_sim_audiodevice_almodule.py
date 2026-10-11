@@ -89,7 +89,7 @@ class ALAudioDevice(ALModule):
         """No-op: capture follows the subscribers."""
 
     def isInputMuted(self):
-        """Always False: the microphone gate is invisible to NAOqi."""
+        """Always False: nothing mutes the microphones, the robot hears itself as a NAO does."""
         return False
 
     def getOutputVolume(self):

@@ -9,7 +9,7 @@ tests:
 
 # Audio output
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -75,11 +75,19 @@ class AudioSink(Protocol):
 
 ### Playing state
 
-Whether audio is playing belongs to the audio output, not the sink, so the audio input's microphone gate ([audio-input.md](audio-input.md), "Microphone gate") reads it whatever the sink:
+Whether audio is playing belongs to the audio output, not the sink:
 
 - `playing_until: float`, in `time.monotonic()` seconds: when the audio fed so far finishes playing (the last chunk's pacing deadline). In the past when idle.
-- It is updated at every chunk and set to now on a stop or an interruption, so a cut stream ends the gate's playing period at once (the gate's tail still applies).
+- It is updated at every chunk and set to now on a stop or an interruption.
 - Read from another thread without a lock: a float assignment is atomic in CPython.
+
+### Listeners
+
+What the robot plays can be heard by something else than the sink: the audio input's fake source, so the robot hears its own voice ([audio-input.md](audio-input.md), "The robot hears itself").
+
+- `AudioOutput.listeners`: callables `listener(chunk, rate, channels, at)`, called with each chunk as it is fed to the sink, `at` being when the chunk is due to play (`time.monotonic()`, the start of its pacing slot). A `NaoSim` whose audio input is `fake` registers the fake source.
+- Called on the stream's thread, after the sink's `feed`; a listener that raises is logged and does not end the stream.
+- The device sink opens its stream at low latency (`latency="low"`), so the sound leaves the loudspeaker about when `at` says.
 
 ## Open questions
 

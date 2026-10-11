@@ -5,8 +5,8 @@ A device served on the host link (`host_link.py`): the container side says which
 subscribers need, and this side produces each of them in real time from its source, cut in chunks,
 so the Python 2.7 side only routes buffers. The source is either the host's microphone or the fake
 source, a quiet room in which code plays sounds (`FakeAudioSource`, the input side's counterpart of
-the audio output's `MemorySink`). Both pass through the microphone gate: while the audio output
-plays the robot's voice, and for a tail after, the robot hears zeros.
+the audio output's `MemorySink`). The robot hears itself, as a NAO does: the microphone hears the
+host's loudspeaker, and the fake room hears what the audio output plays (`FakeAudioSource.hear`).
 
 Everything is made from one base signal, 48 kHz with four channels in NAO order (left, right,
 front, rear), advanced in 10 ms blocks on the wall clock.
@@ -34,12 +34,15 @@ CHANNELS_KEY = "NaoSim/Audio/Channels"
 
 BASE_RATE = 48000
 MICS = ("left", "right", "front", "rear")  # NAO order, the base signal's columns
-BLOCK = 480  # 10 ms at 48 kHz: the gate's granularity and the producer's step
+BLOCK = 480  # 10 ms at 48 kHz: the producer's step
 BLOCK_S = BLOCK / BASE_RATE
 # Samples per channel in each chunk, per rate: about 85 ms, the values clients report from NAO
 # robots (the 2.1 docs say 170 ms). Provisional: specs/host/audio-input.md, open question 1.
 CHUNK = {48000: 4096, 16000: 1365}
 ENERGY_BLOCK = 4096  # base samples per energy value
+# The robot's own voice in the fake room, relative to what it plays: a placeholder until a NAO's
+# coupling is measured (specs/host/audio-input.md, open question 3).
+ROBOT_VOICE_GAIN = 0.5
 MAX_LATE_S = 0.5  # a producer further behind than this skips ahead instead of bursting
 MIC_BACKLOG = 20  # captured blocks kept at most (200 ms) before the oldest are dropped
 JOIN_TIMEOUT_S = 1.0
@@ -209,6 +212,7 @@ class FakeAudioSource:
     def __init__(self, mono: str = "duplicate"):
         self._mono = mono
         self._takes: list[Take] = []
+        self._voice: list[Take] = []  # what the robot plays, as the room hears it
         self._lock = threading.Lock()
 
     def play(self, sound: str | Path | np.ndarray, rate: int | None = None) -> Take:
@@ -230,8 +234,33 @@ class FakeAudioSource:
         now = time.monotonic()
         with self._lock:
             takes, self._takes = self._takes, []
+            self._voice = []
         for take in takes:
             take._stop(now)
+
+    def hear(self, chunk: bytes, rate: int, channels: int, at: float) -> None:
+        """What the robot plays, due at `at`: added to the room, on every microphone, at
+        ROBOT_VOICE_GAIN. An empty chunk: the robot's audio was cut at `at`. Registered as a
+        listener of the audio output (specs/host/audio-output.md, "Listeners")."""
+        if not chunk:
+            with self._lock:
+                kept = []
+                for take in self._voice:
+                    if take.started_at < at:
+                        keep = round((at - take.started_at) * BASE_RATE)
+                        take.samples = take.samples[:keep]
+                        take.ended_at = min(take.ended_at, at)
+                        kept.append(take)
+                self._voice = kept
+            return
+        pcm = np.frombuffer(chunk, dtype="<i2").astype(np.float64)
+        mono = pcm.reshape(-1, channels).mean(axis=1)
+        n_out = round(len(mono) * BASE_RATE / rate)
+        times = np.arange(n_out) * rate / BASE_RATE
+        resampled = np.interp(times, np.arange(len(mono)), mono)
+        voice = Take(_spread(resampled * ROBOT_VOICE_GAIN, "duplicate"), at)
+        with self._lock:
+            self._voice = [t for t in self._voice if t.ended_at > at - 1.0] + [voice]
 
     def open(self) -> None:
         pass
@@ -248,7 +277,7 @@ class FakeAudioSource:
                 for t in self._takes
                 if t.ended_at > start - 1.0 and not t._cut.is_set()
             ]
-            takes = list(self._takes)
+            takes = self._takes + self._voice
         for take in takes:
             if take.ended_at <= start or take.started_at >= end:
                 continue
@@ -340,12 +369,6 @@ class MicSource:
 # --- The device ------------------------------------------------------------------------------
 
 
-class PlayingState(Protocol):
-    """What the gate reads: the audio output's `playing_until` (time.monotonic())."""
-
-    playing_until: float
-
-
 class _Stream:
     """One needed format: the samples waiting to make its next chunk."""
 
@@ -391,21 +414,17 @@ def parse_need(header: dict) -> tuple[set[Format], bool]:
 
 class AudioInput:
     """The host link's handler for `ALAudioDevice`: produces the formats it needs from `source`,
-    from `start()` to `stop()`, gated by `audio_output`'s playing state."""
+    from `start()` to `stop()`."""
 
     service = SERVICE  # the container-side service it serves on the host link
 
     def __init__(
         self,
         source: AudioSource,
-        audio_output: PlayingState,
-        gate_tail_s: float,
         mono: str,
         connect: Callable[[], Any] | None = None,
     ):
         self.source = source
-        self._output = audio_output
-        self._tail = gate_tail_s
         self._mono = mono
         self._connect = connect or (lambda: stack.connect())
         self._lock = threading.RLock()
@@ -492,9 +511,6 @@ class AudioInput:
                 producer.join(timeout=JOIN_TIMEOUT_S)
             self.source.close()
 
-    def _gated(self, block_start: float) -> bool:
-        return block_start < self._output.playing_until + self._tail
-
     def _produce(self, halt: threading.Event) -> None:
         streams: dict[Format, _Stream] = {}
         decimator: Decimator | None = None
@@ -521,8 +537,6 @@ class AudioInput:
             if conn is None:
                 continue
             block = self.source.read(block_start, BLOCK)
-            if self._gated(block_start):
-                block = np.zeros_like(block)
             for fmt in formats - streams.keys():
                 streams[fmt] = _Stream(fmt)
             for fmt in streams.keys() - formats:
