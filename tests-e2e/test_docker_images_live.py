@@ -1,10 +1,10 @@
 """The images `fetch_and_build_images` leaves behind, on each NAOqi version: labelled with this
-nao-sim's version, verified, and accepted by the check a start runs."""
+naoqi-sim's version, verified, and accepted by the check a start runs."""
 
 import json
 import subprocess
 
-from nao_sim import docker_images
+from naoqi_sim import docker_images
 
 
 def _label(tag: str) -> str | None:
@@ -16,11 +16,11 @@ def _label(tag: str) -> str | None:
     )
 
 
-def test_the_images_are_built_by_this_nao_sim_and_verified(nao):
-    version = docker_images.nao_sim_version()
+def test_the_images_are_built_by_this_naoqi_sim_and_verified(nao):
+    version = docker_images.naoqi_sim_version()
     assert _label(nao.version.image) == version
     assert _label(docker_images.TTS_IMAGE) == version
-    assert nao.container.image_env()["NAO_SIM_VERSION"] == version
+    assert nao.container.image_env()["NAOQI_SIM_VERSION"] == version
     docker_images.check_images(
         nao.version.name
     )  # raises if missing, outdated or unverified

@@ -1,14 +1,14 @@
-"""Robot packages on a running nao-sim stack, on each NAOqi version: the `animations` package built
+"""Robot packages on a running naoqi-sim stack, on each NAOqi version: the `animations` package built
 into the image, and the package store volume that keeps what a user installs over qi."""
 
 import stat
 import zipfile
 
 GESTURE = "animations/Stand/Gestures/Hey_1"
-UUID = "nao-sim-e2e"
+UUID = "naoqi-sim-e2e"
 MANIFEST = f"""<?xml version='1.0' encoding='UTF-8'?>
 <package version="1.0.0" uuid="{UUID}">
-  <names><name lang="en_US">nao-sim e2e</name></names>
+  <names><name lang="en_US">naoqi-sim e2e</name></names>
 </package>
 """
 

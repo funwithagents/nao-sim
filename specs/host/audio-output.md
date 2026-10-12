@@ -1,6 +1,6 @@
 ---
 code:
-  - src/nao_sim/audio_output.py
+  - src/naoqi_sim/audio_output.py
 tests:
   - tests/test_audio_output.py
   - tests-e2e/test_speech_live.py
@@ -23,13 +23,13 @@ It is named after its role, not after a loudspeaker: where the audio ends up is 
 
 ### Naming
 
-- Module `src/nao_sim/audio_output.py`, class `AudioOutput`, config block `audio_output` ([config.md](../runtime/config.md)).
-- It was first built as the "speaker" (class `Speaker`, command `nao-sim-speaker`), and before that the "sound card".
-- The `tts` container's `NAO_SIM_SOUNDCARD` setting keeps its name: it is internal to the container recipes.
+- Module `src/naoqi_sim/audio_output.py`, class `AudioOutput`, config block `audio_output` ([config.md](../runtime/config.md)).
+- It was first built as the "speaker" (class `Speaker`, command `naoqi-sim-speaker`), and before that the "sound card".
+- The `tts` container's `NAOQI_SIM_SOUNDCARD` setting keeps its name: it is internal to the container recipes.
 
-### Run by `NaoSim`
+### Run by `NaoqiSim`
 
-The audio output has no command of its own: a running `NaoSim` ([api.md](../runtime/api.md)) starts it in-process, listening on `0.0.0.0:9562`, before the containers, and stops it after them. The containers reach it at `host.docker.internal:9562`. Its events (`start`, `interrupted`, `end`, `stop-request`, per stream) go to the debug log.
+The audio output has no command of its own: a running `NaoqiSim` ([api.md](../runtime/api.md)) starts it in-process, listening on `0.0.0.0:9562`, before the containers, and stops it after them. The containers reach it at `host.docker.internal:9562`. Its events (`start`, `interrupted`, `end`, `stop-request`, per stream) go to the debug log.
 
 ### Protocol (TCP)
 
@@ -78,11 +78,11 @@ class AudioSink(Protocol):
   | --- | --- | --- |
   | `DevicePlayer(device=None)` | Plays the mix on the output device (`sounddevice`, imported lazily at the first `begin`, so a host without PortAudio can use the other sinks), one device stream per run of the mix | `audio_output.mode = "play"`, the default |
   | `NullSink()` | Discards | `"silent"` |
-  | `WavSink(path)` | Writes the mix as 48 kHz stereo 16-bit WAV, the runs one after the other; `close()` finishes the file (`NaoSim.stop()` calls it) | `"record"` |
-  | `MemorySink()` | Keeps each stream as a `Playback(stream, rate, channels, pcm, started_at, ended_at, interrupted)` and each run of the mix as a `Playback` with `stream="mix"`; `playbacks` (the streams), `mixes`, `wait_for(predicate, timeout)` over the streams | Tests, passed as `NaoSim(config, sink=MemorySink())` |
+  | `WavSink(path)` | Writes the mix as 48 kHz stereo 16-bit WAV, the runs one after the other; `close()` finishes the file (`NaoqiSim.stop()` calls it) | `"record"` |
+  | `MemorySink()` | Keeps each stream as a `Playback(stream, rate, channels, pcm, started_at, ended_at, interrupted)` and each run of the mix as a `Playback` with `stream="mix"`; `playbacks` (the streams), `mixes`, `wait_for(predicate, timeout)` over the streams | Tests, passed as `NaoqiSim(config, sink=MemorySink())` |
 
-- `AudioOutput(sink)` takes one sink. A `NaoSim` builds it from its `sink=` argument or the config's `audio_output` block ([api.md](../runtime/api.md), "Construction").
-- The live tier runs its `NaoSim` with a `MemorySink` and asserts on the playbacks.
+- `AudioOutput(sink)` takes one sink. A `NaoqiSim` builds it from its `sink=` argument or the config's `audio_output` block ([api.md](../runtime/api.md), "Construction").
+- The live tier runs its `NaoqiSim` with a `MemorySink` and asserts on the playbacks.
 
 ### Playing state
 
@@ -96,7 +96,7 @@ Whether audio is playing belongs to the audio output, not the sink:
 
 What the robot plays can be heard by something else than the sink: the audio input's fake source, so the robot hears its own voice and its sounds ([audio-input.md](audio-input.md), "The robot hears itself").
 
-- `AudioOutput.listeners`: callables `listener(chunk, rate, channels, at)`, called with each tick of the mix as it is fed to the sink (always 48000 Hz, 2 channels), `at` being when the tick is due to play (`time.monotonic()`, the start of its pacing slot); an empty chunk says a stop of every stream cut the mix at `at`. A `NaoSim` whose audio input is `fake` registers the fake source.
+- `AudioOutput.listeners`: callables `listener(chunk, rate, channels, at)`, called with each tick of the mix as it is fed to the sink (always 48000 Hz, 2 channels), `at` being when the tick is due to play (`time.monotonic()`, the start of its pacing slot); an empty chunk says a stop of every stream cut the mix at `at`. A `NaoqiSim` whose audio input is `fake` registers the fake source.
 - Called on the mixer's thread, after the sink's `feed`; a listener that raises is logged and does not stop the mix.
 - The device sink opens its stream at low latency (`latency="low"`), so the sound leaves the loudspeaker about when `at` says.
 

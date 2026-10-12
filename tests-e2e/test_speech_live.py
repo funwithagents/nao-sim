@@ -1,4 +1,4 @@
-"""Speech through a running nao-sim stack, on each NAOqi version: the ALTextToSpeech
+"""Speech through a running naoqi-sim stack, on each NAOqi version: the ALTextToSpeech
 replacement, the tts container and the host audio output together, driven over qi like any client."""
 
 import re

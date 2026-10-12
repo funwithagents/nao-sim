@@ -5,13 +5,13 @@
 #
 # Any failure exits non-zero after terminating naoqi-bin, so a failed boot shows as an exited
 # container, never as a half-robot. Tunables (images never change them; the host-side tests do):
-# NAO_SIM_READY_TRIES, NAO_SIM_SETTLE_POLLS, NAO_SIM_POLL_INTERVAL, NAOQI_HOME.
+# NAOQI_SIM_READY_TRIES, NAOQI_SIM_SETTLE_POLLS, NAOQI_SIM_POLL_INTERVAL, NAOQI_HOME.
 set -u
 NAOQI_HOME=${NAOQI_HOME:-/opt/naoqi}
 cd "$NAOQI_HOME"
-INTERVAL=${NAO_SIM_POLL_INTERVAL:-1}
-TRIES=${NAO_SIM_READY_TRIES:-120}
-SETTLE=${NAO_SIM_SETTLE_POLLS:-3}
+INTERVAL=${NAOQI_SIM_POLL_INTERVAL:-1}
+TRIES=${NAOQI_SIM_READY_TRIES:-120}
+SETTLE=${NAOQI_SIM_SETTLE_POLLS:-3}
 NAOQI_PID=
 URL=
 
@@ -135,7 +135,7 @@ check_answer() {
 
 # mark_ready: the whole sequence succeeded. Then wait on naoqi-bin (signals are forwarded to it).
 mark_ready() {
-  call NaoSim.setReady >/dev/null 2>&1 || fail "NaoSim.setReady failed: the status module is not loaded"
-  log "nao-sim ready"
+  call NaoqiSim.setReady >/dev/null 2>&1 || fail "NaoqiSim.setReady failed: the status module is not loaded"
+  log "naoqi-sim ready"
   wait "$NAOQI_PID"
 }

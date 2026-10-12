@@ -1,18 +1,18 @@
-# The project is always `nao-sim` (containers, network, the package store volumes).
-name: nao-sim
+# The project is always `naoqi-sim` (containers, network, the package store volumes).
+name: naoqi-sim
 
 services:
   tts:
     build:
       context: ./tts-engine
       labels:
-        io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
-        io.nao-sim.recipes: ${NAO_SIM_RECIPES:-}
-    image: nao-sim/tts:dev
-    container_name: nao-sim-tts
+        io.naoqi-sim.version: ${NAOQI_SIM_VERSION:-dev}
+        io.naoqi-sim.recipes: ${NAOQI_SIM_RECIPES:-}
+    image: naoqi-sim/tts:dev
+    container_name: naoqi-sim-tts
     environment:
-      NAO_SIM_SOUNDCARD: host.docker.internal:9562
-      NAO_SIM_TTS_ENGINE: ${NAO_SIM_TTS_ENGINE:-piper}
+      NAOQI_SIM_SOUNDCARD: host.docker.internal:9562
+      NAOQI_SIM_TTS_ENGINE: ${NAOQI_SIM_TTS_ENGINE:-piper}
     extra_hosts:
       - "host.docker.internal:host-gateway"
   naoqi21:
@@ -20,24 +20,24 @@ services:
     build:
       context: ./naoqi
       dockerfile: Dockerfile.naoqi-2.1
-      # The suite and animations.pkg (COPY --from=image-data): the image data folder nao-sim passes as
-      # NAO_SIM_IMAGE_DATA, or a checkout's ./image-data when compose runs by hand.
+      # The suite and animations.pkg (COPY --from=image-data): the image data folder naoqi-sim passes as
+      # NAOQI_SIM_IMAGE_DATA, or a checkout's ./image-data when compose runs by hand.
       additional_contexts:
-        image-data: ${NAO_SIM_IMAGE_DATA:-./image-data}/2.1
+        image-data: ${NAOQI_SIM_IMAGE_DATA:-./image-data}/2.1
       args:
-        NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
+        NAOQI_SIM_VERSION: ${NAOQI_SIM_VERSION:-dev}
       labels:
-        io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
-        io.nao-sim.recipes: ${NAO_SIM_RECIPES:-}
-    image: nao-sim/naoqi:2.1.4.13
+        io.naoqi-sim.version: ${NAOQI_SIM_VERSION:-dev}
+        io.naoqi-sim.recipes: ${NAOQI_SIM_RECIPES:-}
+    image: naoqi-sim/naoqi:2.1.4.13
     platform: linux/amd64
-    container_name: nao-sim-naoqi21
+    container_name: naoqi-sim-naoqi21
     environment:
-      NAO_SIM_TTS_URL: http://tts:8080
+      NAOQI_SIM_TTS_URL: http://tts:8080
       # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
-      NAO_SIM_HOST_LINK: host.docker.internal:9563
+      NAOQI_SIM_HOST_LINK: host.docker.internal:9563
       # The host audio output, which ALAudioPlayer streams its sounds into (specs/services/audio-player.md).
-      NAO_SIM_SOUNDCARD: host.docker.internal:9562
+      NAOQI_SIM_SOUNDCARD: host.docker.internal:9562
     depends_on: [tts]
     ports:
       - "127.0.0.1:9559:9559"
@@ -50,24 +50,24 @@ services:
     build:
       context: ./naoqi
       dockerfile: Dockerfile.naoqi-2.8
-      # The suite and animations.pkg (COPY --from=image-data): the image data folder nao-sim passes as
-      # NAO_SIM_IMAGE_DATA, or a checkout's ./image-data when compose runs by hand.
+      # The suite and animations.pkg (COPY --from=image-data): the image data folder naoqi-sim passes as
+      # NAOQI_SIM_IMAGE_DATA, or a checkout's ./image-data when compose runs by hand.
       additional_contexts:
-        image-data: ${NAO_SIM_IMAGE_DATA:-./image-data}/2.8
+        image-data: ${NAOQI_SIM_IMAGE_DATA:-./image-data}/2.8
       args:
-        NAO_SIM_VERSION: ${NAO_SIM_VERSION:-dev}
+        NAOQI_SIM_VERSION: ${NAOQI_SIM_VERSION:-dev}
       labels:
-        io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
-        io.nao-sim.recipes: ${NAO_SIM_RECIPES:-}
-    image: nao-sim/naoqi:2.8.7.4
+        io.naoqi-sim.version: ${NAOQI_SIM_VERSION:-dev}
+        io.naoqi-sim.recipes: ${NAOQI_SIM_RECIPES:-}
+    image: naoqi-sim/naoqi:2.8.7.4
     platform: linux/amd64
-    container_name: nao-sim-naoqi28
+    container_name: naoqi-sim-naoqi28
     environment:
-      NAO_SIM_TTS_URL: http://tts:8080
+      NAOQI_SIM_TTS_URL: http://tts:8080
       # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
-      NAO_SIM_HOST_LINK: host.docker.internal:9563
+      NAOQI_SIM_HOST_LINK: host.docker.internal:9563
       # The host audio output, which ALAudioPlayer streams its sounds into (specs/services/audio-player.md).
-      NAO_SIM_SOUNDCARD: host.docker.internal:9562
+      NAOQI_SIM_SOUNDCARD: host.docker.internal:9562
     depends_on: [tts]
     ports:
       - "127.0.0.1:9559:9559"

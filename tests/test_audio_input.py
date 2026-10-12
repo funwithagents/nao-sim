@@ -1,7 +1,7 @@
 """The audio input: the fake source, the formats it produces, pacing, the robot hearing itself,
 the microphone.
 
-The device runs as on a running `NaoSim`, served a `need` by a fake host link connection that
+The device runs as on a running `NaoqiSim`, served a `need` by a fake host link connection that
 records what it sends, with a fake qi session for its ALMemory keys."""
 
 import io
@@ -14,8 +14,8 @@ import wave
 import numpy as np
 import pytest
 
-from nao_sim import audio_input
-from nao_sim.audio_input import (
+from naoqi_sim import audio_input
+from naoqi_sim.audio_input import (
     BASE_RATE,
     CHUNK,
     AudioInput,
@@ -27,8 +27,8 @@ from nao_sim.audio_input import (
     load_sound,
     upsample,
 )
-from nao_sim.audio_output import AudioOutput, MemorySink
-from nao_sim.errors import DeviceUnavailableError
+from naoqi_sim.audio_output import AudioOutput, MemorySink
+from naoqi_sim.errors import DeviceUnavailableError
 
 FRONT = {"rate": 16000, "channel": "front", "deinterleaved": False}
 ALL = {"rate": 48000, "channel": "all", "deinterleaved": False}
@@ -260,8 +260,8 @@ def test_silence_comes_in_chunks_at_the_nao_cadence(device):
     gaps = np.diff([t for t, _, _ in chunks])
     assert np.all(gaps > 0.05)  # paced, never a burst
     assert session.memory.writes == [
-        ("NaoSim/Audio/Source", "fake"),
-        ("NaoSim/Audio/Channels", "duplicate"),
+        ("NaoqiSim/Audio/Source", "fake"),
+        ("NaoqiSim/Audio/Channels", "duplicate"),
     ]
 
 
@@ -286,7 +286,7 @@ def test_a_need_before_start_is_served_after_it_and_stop_resets_the_keys(device)
     dev, conn, session = device()
     dev.message(conn, need(FRONT), b"")
     time.sleep(0.2)
-    assert conn.pcm(FRONT) == []  # NaoSim step 6 has not started the device yet
+    assert conn.pcm(FRONT) == []  # NaoqiSim step 6 has not started the device yet
     dev.start()
     time.sleep(0.3)
     assert conn.pcm(FRONT)
@@ -295,8 +295,8 @@ def test_a_need_before_start_is_served_after_it_and_stop_resets_the_keys(device)
     time.sleep(0.2)
     assert len(conn.sent) == sent
     assert session.memory.writes[-2:] == [
-        ("NaoSim/Audio/Source", "none"),
-        ("NaoSim/Audio/Channels", "none"),
+        ("NaoqiSim/Audio/Source", "none"),
+        ("NaoqiSim/Audio/Channels", "none"),
     ]
     assert session.closed
 
@@ -447,7 +447,7 @@ def test_the_microphone_opens_with_the_first_need_and_closes_with_the_last(
     assert chunks and np.abs(chunks[-1]).max() > 2500  # what it captured
     dev.message(conn, need(), b"")
     assert streams[0].calls == ["start", "stop", "close"]
-    assert ("NaoSim/Audio/Source", "mic") in session.memory.writes
+    assert ("NaoqiSim/Audio/Source", "mic") in session.memory.writes
 
 
 def test_check_mic_needs_an_input_device(fake_sounddevice):

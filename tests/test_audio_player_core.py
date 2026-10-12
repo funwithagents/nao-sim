@@ -9,12 +9,12 @@ import time
 import wave
 from pathlib import Path
 
-import nao_sim_audio_player_core as core
+import naoqi_sim_audio_player_core as core
 import numpy as np
 import pytest
 
-from nao_sim.audio_output import RATE as MIX_RATE
-from nao_sim.audio_output import AudioOutput, MemorySink, Server
+from naoqi_sim.audio_output import RATE as MIX_RATE
+from naoqi_sim.audio_output import AudioOutput, MemorySink, Server
 
 
 @pytest.fixture

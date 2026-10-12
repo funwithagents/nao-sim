@@ -1,6 +1,6 @@
 [project]
-name = "nao-sim"
-version = "0.0.1"
+name = "naoqi-sim"
+version = "0.1.0"
 description = "A NAO in a box: NAOqi in Docker with host-side devices (audio, video, touch) and a viewer."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"  # capped by the libqi wheels (cp312, cp313)
@@ -14,10 +14,10 @@ dependencies = [
 
 [project.optional-dependencies]
 # The sim window and the render camera (specs/host/viewer.md).
-viewer = ["nao-viewer"]
+viewer = ["naoqi-viewer"]
 
 [project.scripts]
-nao-sim = "nao_sim.cli:main"
+naoqi-sim = "naoqi_sim.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -26,19 +26,19 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 # The package, and the container recipes as its package data (specs/project.md, "Distribution"):
 # all of docker/ but the image data, which are Aldebaran's and never leave the machine.
-only-include = ["src/nao_sim", "docker"]
+only-include = ["src/naoqi_sim", "docker"]
 exclude = ["docker/image-data", "__pycache__", "*.pyc"]
 # hatch cannot make an editable install from a remapped path: a checkout puts src/ on the path
 # and uses docker/ where it is.
 dev-mode-dirs = ["src"]
 
 [tool.hatch.build.targets.wheel.sources]
-"src/nao_sim" = "nao_sim"
-"docker" = "nao_sim/docker"
+"src/naoqi_sim" = "naoqi_sim"
+"docker" = "naoqi_sim/docker"
 
 [dependency-groups]
 dev = [
-    "nao-sim[viewer]",  # the viewer code type-checks against nao-viewer's real API
+    "naoqi-sim[viewer]",  # the viewer code type-checks against naoqi-viewer's real API
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "ruff>=0.16.10",
@@ -53,8 +53,8 @@ environments = [
 ]
 
 [tool.uv.sources]
-# nao-viewer is not on PyPI yet (specs/project.md, open question 1): its repository, pinned.
-nao-viewer = { git = "https://github.com/funwithagents/nao-viewer", rev = "db0b59cc2e2875a15e01d206c87f1b181bc4ae01" }
+# naoqi-viewer is not on PyPI yet (specs/project.md, open question 1): its repository, pinned.
+naoqi-viewer = { git = "https://github.com/funwithagents/naoqi-viewer", rev = "917a78243aa10a45b1c85ff2e625164bcdabb9ed" }
 qi = [
     { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp312-cp312-macosx_15_0_arm64.whl", marker = "sys_platform == 'darwin' and python_version == '3.12'" },
     { url = "https://github.com/funwithagents/libqi-python/releases/download/v3.1.6/qi-3.1.6-cp313-cp313-macosx_15_0_arm64.whl", marker = "sys_platform == 'darwin' and python_version == '3.13'" },

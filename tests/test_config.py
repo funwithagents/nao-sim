@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from nao_sim.config import (
+from naoqi_sim.config import (
     AudioInputSettings,
     AudioOutputSettings,
     ConfigError,
     NaoqiSettings,
-    NaoSimConfig,
+    NaoqiSimConfig,
     VideoInputSettings,
     ViewerSettings,
 )
@@ -19,14 +19,14 @@ EXAMPLES = Path(__file__).resolve().parent.parent / "examples" / "configs"
 
 def error_for(data) -> ConfigError:
     with pytest.raises(ConfigError) as info:
-        NaoSimConfig.from_dict(data)
+        NaoqiSimConfig.from_dict(data)
     return info.value
 
 
 def test_an_empty_config_is_the_defaults():
-    config = NaoSimConfig.from_dict({})
+    config = NaoqiSimConfig.from_dict({})
 
-    assert config == NaoSimConfig()
+    assert config == NaoqiSimConfig()
     assert config.naoqi.version == "2.1" and config.naoqi.ready_timeout_s == 240.0
     assert config.speech.engine == "piper"
     assert config.audio_output.mode == "play"
@@ -38,7 +38,7 @@ def test_an_empty_config_is_the_defaults():
 
 
 def test_missing_fields_keep_their_defaults_in_a_partial_block():
-    config = NaoSimConfig.from_dict(
+    config = NaoqiSimConfig.from_dict(
         {"naoqi": {"version": "2.8"}, "viewer": {"headless": True}}
     )
 
@@ -47,7 +47,7 @@ def test_missing_fields_keep_their_defaults_in_a_partial_block():
 
 
 def test_to_dict_reads_back_to_an_equal_config(tmp_path):
-    config = NaoSimConfig.from_dict(
+    config = NaoqiSimConfig.from_dict(
         {
             "naoqi": {"version": "2.8", "ready_timeout_s": 60},
             "speech": {"engine": "espeak"},
@@ -60,7 +60,7 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
 
     data = config.to_dict()
     assert json.loads(json.dumps(data)) == data
-    assert NaoSimConfig.from_dict(data) == config
+    assert NaoqiSimConfig.from_dict(data) == config
 
 
 @pytest.mark.parametrize(
@@ -91,7 +91,9 @@ def test_a_bad_value_names_its_key_path(data, key):
 
 @pytest.mark.parametrize("fps", [1, 30])
 def test_the_frame_rate_takes_a_nao_cameras_range(fps):
-    assert NaoSimConfig.from_dict({"video_input": {"fps": fps}}).video_input.fps == fps
+    assert (
+        NaoqiSimConfig.from_dict({"video_input": {"fps": fps}}).video_input.fps == fps
+    )
 
 
 def test_unknown_keys_are_errors_naming_them():
@@ -105,7 +107,7 @@ def test_unknown_keys_are_errors_naming_them():
 def test_cross_field_requirements():
     assert error_for({"audio_output": {"mode": "record"}}).key == "audio_output.record"
     # A field that does not apply is validated but not required: switching is one word.
-    config = NaoSimConfig.from_dict(
+    config = NaoqiSimConfig.from_dict(
         {"audio_output": {"mode": "play", "record": "x.wav"}}
     )
     assert config.audio_output.record == Path("x.wav")
@@ -119,9 +121,9 @@ def test_the_wav_source_is_gone():
     # The gate's tail went with the gate: the robot hears itself, as a NAO does.
     gate = error_for({"audio_input": {"gate_tail_s": 0.3}})
     assert gate.key == "audio_input" and "gate_tail_s" in str(gate)
-    assert NaoSimConfig.from_dict({"audio_input": {"source": "fake"}}).audio_input == (
-        AudioInputSettings(source="fake")
-    )
+    assert NaoqiSimConfig.from_dict(
+        {"audio_input": {"source": "fake"}}
+    ).audio_input == (AudioInputSettings(source="fake"))
 
 
 def test_every_default_is_declared_once_on_the_dataclass():
@@ -138,13 +140,13 @@ def test_every_default_is_declared_once_on_the_dataclass():
 
 def test_json_errors(tmp_path):
     with pytest.raises(ConfigError, match="invalid JSON"):
-        NaoSimConfig.from_json("{")
+        NaoqiSimConfig.from_json("{")
     bad = tmp_path / "bad.json"
     bad.write_text("{")
     with pytest.raises(ConfigError, match=str(bad)):
-        NaoSimConfig.from_json_file(bad)
+        NaoqiSimConfig.from_json_file(bad)
     with pytest.raises(ConfigError, match="cannot read"):
-        NaoSimConfig.from_json_file(tmp_path / "missing.json")
+        NaoqiSimConfig.from_json_file(tmp_path / "missing.json")
 
 
 def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
@@ -160,14 +162,14 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
         )
     )
 
-    config = NaoSimConfig.from_json_file(path)
+    config = NaoqiSimConfig.from_json_file(path)
     assert config.audio_output.record == folder / "out" / "played.wav"
     assert config.viewer.scene == str(folder / "scenes" / "room.xml")
     # A bundled scene name is not a path.
     path.write_text(json.dumps({"viewer": {"scene": "table"}}))
-    assert NaoSimConfig.from_json_file(path).viewer.scene == "table"
+    assert NaoqiSimConfig.from_json_file(path).viewer.scene == "table"
     # From a dict, paths stay as written (relative to the working directory).
-    assert NaoSimConfig.from_dict(
+    assert NaoqiSimConfig.from_dict(
         {"audio_output": {"mode": "record", "record": "a.wav"}}
     ).audio_output.record == Path("a.wav")
 
@@ -175,16 +177,16 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
 def test_the_example_files_load():
     names = sorted(p.name for p in EXAMPLES.glob("*.json"))
     assert names == ["2.8.json", "ci.json", "default.json", "headless.json", "mic.json"]
-    default = NaoSimConfig.from_json_file(EXAMPLES / "default.json")
-    assert default == NaoSimConfig()
-    assert NaoSimConfig.from_json_file(EXAMPLES / "2.8.json") == NaoSimConfig(
+    default = NaoqiSimConfig.from_json_file(EXAMPLES / "default.json")
+    assert default == NaoqiSimConfig()
+    assert NaoqiSimConfig.from_json_file(EXAMPLES / "2.8.json") == NaoqiSimConfig(
         naoqi=NaoqiSettings(version="2.8")
     )
-    headless = NaoSimConfig.from_json_file(EXAMPLES / "headless.json")
+    headless = NaoqiSimConfig.from_json_file(EXAMPLES / "headless.json")
     assert headless.viewer.headless and headless.audio_output.mode == "silent"
-    ci = NaoSimConfig.from_json_file(EXAMPLES / "ci.json")
+    ci = NaoqiSimConfig.from_json_file(EXAMPLES / "ci.json")
     assert ci.viewer == ViewerSettings(headless=True, variant="placeholder")
     assert ci.video_input.source == "render" and ci.audio_output.mode == "silent"
     assert ci.audio_input.source == "fake"
-    mic = NaoSimConfig.from_json_file(EXAMPLES / "mic.json")
-    assert mic == NaoSimConfig(audio_input=AudioInputSettings(source="mic"))
+    mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")
+    assert mic == NaoqiSimConfig(audio_input=AudioInputSettings(source="mic"))

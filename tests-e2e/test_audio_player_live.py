@@ -1,4 +1,4 @@
-"""ALAudioPlayer through a running nao-sim stack, on each NAOqi version: the C++ front, its Python
+"""ALAudioPlayer through a running naoqi-sim stack, on each NAOqi version: the C++ front, its Python
 core and the host audio output's mixer together (specs/services/audio-player.md), driven over qi
 and, for the boxes' pattern, from inside NAOqi as Choregraphe runs a box."""
 
@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from support import box
 
-from nao_sim.audio_output import RATE as MIX_RATE
+from naoqi_sim.audio_output import RATE as MIX_RATE
 
 LONG = (
     "This is a long sentence the robot says while a sound plays, and it goes on and on so "
@@ -18,16 +18,16 @@ LONG = (
 # Written inside the container by the test: NAOqi reads them where it runs.
 FILES = """
 import math, os, struct, wave
-os.path.isdir("/tmp/nao-sim-test") or os.makedirs("/tmp/nao-sim-test")
+os.path.isdir("/tmp/naoqi-sim-test") or os.makedirs("/tmp/naoqi-sim-test")
 def write(name, seconds, level, rate=16000):
-    w = wave.open("/tmp/nao-sim-test/" + name, "wb")
+    w = wave.open("/tmp/naoqi-sim-test/" + name, "wb")
     w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
     w.writeframes(struct.pack("<h", level) * int(seconds * rate))
     w.close()
 def run():
     write("one-second.wav", 1.0, 3000)
     write("three-seconds.wav", 3.0, 3000)
-    open("/tmp/nao-sim-test/song.mp3", "wb").write(b"ID3" + b"\\0" * 1024)
+    open("/tmp/naoqi-sim-test/song.mp3", "wb").write(b"ID3" + b"\\0" * 1024)
     found = None
     for root in ("/home/nao/.local/share/PackageManager/apps", "/opt/naoqi/share/naoqi/apps",
                  "/opt/aldebaran/share/naoqi/apps"):
@@ -45,9 +45,9 @@ def run():
 def files(nao):
     out = nao.run_in_naoqi(FILES)
     return {
-        "wav": "/tmp/nao-sim-test/one-second.wav",
-        "long": "/tmp/nao-sim-test/three-seconds.wav",
-        "mp3": "/tmp/nao-sim-test/song.mp3",
+        "wav": "/tmp/naoqi-sim-test/one-second.wav",
+        "long": "/tmp/naoqi-sim-test/three-seconds.wav",
+        "mp3": "/tmp/naoqi-sim-test/song.mp3",
         "ogg": out["ogg"],
     }
 
@@ -65,7 +65,7 @@ def mix_after(nao, after: float) -> np.ndarray:
 
 
 def test_the_front_serves_al_audio_player(nao):
-    assert "nao-sim C++ front" in nao.service("ALAudioPlayer").whoami()
+    assert "naoqi-sim C++ front" in nao.service("ALAudioPlayer").whoami()
 
 
 def test_a_wav_plays_for_its_length_as_its_own_stream(nao, files):

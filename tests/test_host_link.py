@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from nao_sim.host_link import Connection, HostLink, LinkError, encode, read_message
+from naoqi_sim.host_link import Connection, HostLink, LinkError, encode, read_message
 
 
 class Recorder:

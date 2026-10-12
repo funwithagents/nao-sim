@@ -1,5 +1,5 @@
 """The robot's microphones on each NAOqi version, as an audio client hears them: it registers a
-service with `processRemote` and subscribes to `ALAudioDevice`, as nao-bridge does, while the test
+service with `processRemote` and subscribes to `ALAudioDevice`, as naoqi-bridge does, while the test
 plays sounds through the fake audio source (the live tier runs it). The buffers come through the
 host link, the Python 2.7 replacement and the native relay."""
 
@@ -32,10 +32,10 @@ def listen(nao):
 
 def test_the_robot_says_its_microphones_are_the_fake_source(nao):
     memory = nao.service("ALMemory")
-    assert memory.getData("NaoSim/Audio/Source") == "fake"
-    assert memory.getData("NaoSim/Audio/Channels") == "duplicate"
+    assert memory.getData("NaoqiSim/Audio/Source") == "fake"
+    assert memory.getData("NaoqiSim/Audio/Channels") == "duplicate"
     names = {s["name"] for s in nao.session.services()}
-    assert {"ALAudioDevice", "_NaoSimAudioRelay"} <= names
+    assert {"ALAudioDevice", "_NaoqiSimAudioRelay"} <= names
 
 
 def test_a_client_gets_bytearray_chunks_of_silence_at_the_nao_cadence(listen):

@@ -1,7 +1,7 @@
 import threading
 import time
 
-import nao_sim_speech_core as core
+import naoqi_sim_speech_core as core
 import pytest
 
 END = [

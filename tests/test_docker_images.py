@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from nao_sim import docker_images, suite
-from nao_sim.cli import main
-from nao_sim.docker_images import (
+from naoqi_sim import docker_images, suite
+from naoqi_sim.cli import main
+from naoqi_sim.docker_images import (
     IMAGES,
     TTS_IMAGE,
     check_images,
     fetch_and_build_images,
 )
-from nao_sim.errors import (
+from naoqi_sim.errors import (
     BootError,
     DockerUnavailableError,
     FetchError,
@@ -25,7 +25,7 @@ from nao_sim.errors import (
     ImagesOutdatedError,
     PortInUseError,
 )
-from nao_sim.suite import PACKAGE, PinnedFile, Version
+from naoqi_sim.suite import PACKAGE, PinnedFile, Version
 
 SUITE_BODY = b"not really a suite\n"
 PKG_BODY = b"not really a package\n"
@@ -61,7 +61,7 @@ def build(*versions: str, image_data: Path) -> None:
 def test_the_build_reads_the_image_data_from_the_folder_it_was_fetched_into(
     docker, image_data
 ):
-    # The image data folder is outside the recipes (as for an installed nao-sim): compose gets it
+    # The image data folder is outside the recipes (as for an installed naoqi-sim): compose gets it
     # as the NAOqi build's `image-data` context.
     assert not image_data.is_relative_to(docker_images.DOCKER)
     build("2.1", image_data=image_data)
@@ -78,14 +78,16 @@ def test_built_and_verified_images_pass_the_check(docker, image_data):
     check_images("2.1", image_data)
     labels = {tag: image["Labels"] for tag, image in docker.read()["images"].items()}
     built = {
-        "io.nao-sim.version": docker_images.nao_sim_version(),
-        "io.nao-sim.recipes": docker_images.recipes_digest(),
+        "io.naoqi-sim.version": docker_images.naoqi_sim_version(),
+        "io.naoqi-sim.recipes": docker_images.recipes_digest(),
     }
-    assert labels == {"nao-sim/naoqi:2.1.4.13": built, TTS_IMAGE: built}
+    assert labels == {"naoqi-sim/naoqi:2.1.4.13": built, TTS_IMAGE: built}
     # The verification boot was taken down again.
     assert docker.read()["containers"] == {}
     # 2.8 was not asked for: it is neither built nor verified.
-    with pytest.raises(ImagesMissingError, match="nao-sim fetch-and-build-images 2.8"):
+    with pytest.raises(
+        ImagesMissingError, match="naoqi-sim fetch-and-build-images 2.8"
+    ):
         check_images("2.8", image_data)
 
 
@@ -103,7 +105,7 @@ def test_an_image_that_does_not_boot_is_not_verified(docker, image_data):
         build("2.1", image_data=image_data)
 
     # Built, but never recorded: a start refuses it, and nothing is left running.
-    assert "nao-sim/naoqi:2.1.4.13" in docker.read()["images"]
+    assert "naoqi-sim/naoqi:2.1.4.13" in docker.read()["images"]
     with pytest.raises(ImagesMissingError, match="not verified"):
         check_images("2.1", image_data)
     assert docker.read()["containers"] == {}
@@ -140,7 +142,7 @@ def test_images_rebuilt_from_changed_sources_need_a_new_verification(
     # Rebuilt by hand after changing docker/naoqi/services: same tag, another image.
     docker.set(source="changed modules")
     state = docker.read()
-    tag = "nao-sim/naoqi:2.1.4.13"
+    tag = "naoqi-sim/naoqi:2.1.4.13"
     state["images"][tag]["Id"] = "sha256:" + "f" * 64
     docker.write(state)
     with pytest.raises(ImagesMissingError, match="not verified"):
@@ -156,7 +158,7 @@ def test_an_edit_under_docker_makes_the_images_outdated(
     recipes = tmp_path / "recipes"
     (recipes / "naoqi" / "services" / "speech" / "__pycache__").mkdir(parents=True)
     (recipes / "image-data").mkdir()
-    module = recipes / "naoqi" / "services" / "speech" / "nao_sim_speech_core.py"
+    module = recipes / "naoqi" / "services" / "speech" / "naoqi_sim_speech_core.py"
     module.write_text("# version 1\n")
     monkeypatch.setattr(docker_images, "DOCKER", recipes)
     build("2.1", image_data=image_data)
@@ -176,13 +178,13 @@ def test_an_edit_under_docker_makes_the_images_outdated(
     check_images("2.1", image_data)
 
 
-def test_images_from_another_nao_sim_version_are_outdated(
+def test_images_from_another_naoqi_sim_version_are_outdated(
     docker, image_data, monkeypatch
 ):
     build("2.1", image_data=image_data)
-    monkeypatch.setattr(docker_images, "nao_sim_version", lambda: "9.9.9")
+    monkeypatch.setattr(docker_images, "naoqi_sim_version", lambda: "9.9.9")
     with pytest.raises(
-        ImagesOutdatedError, match=r"built by nao-sim .* this is nao-sim 9\.9\.9"
+        ImagesOutdatedError, match=r"built by naoqi-sim .* this is naoqi-sim 9\.9\.9"
     ):
         check_images("2.1", image_data)
 
@@ -190,7 +192,7 @@ def test_images_from_another_nao_sim_version_are_outdated(
 def test_missing_images_name_the_command_to_run(docker, image_data):
     with pytest.raises(
         ImagesMissingError,
-        match=r"is not built: run `nao-sim fetch-and-build-images 2\.1`",
+        match=r"is not built: run `naoqi-sim fetch-and-build-images 2\.1`",
     ):
         check_images("2.1", image_data)
 

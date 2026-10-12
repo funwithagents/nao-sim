@@ -1,5 +1,5 @@
 """The render camera on each NAOqi version, as a vision client sees it: it subscribes to
-`ALVideoDevice` and reads frames with `getImageRemote`, which nao-viewer rendered and the video
+`ALVideoDevice` and reads frames with `getImageRemote`, which naoqi-viewer rendered and the video
 input injected (the live tier runs it: headless viewer, placeholder variant, 15 fps)."""
 
 import math
@@ -22,7 +22,7 @@ def camera(nao):
 
     def subscribe(index=TOP, resolution=QVGA, colorspace=RGB):
         handles.append(
-            video.subscribeCamera("nao_sim_e2e", index, resolution, colorspace, 30)
+            video.subscribeCamera("naoqi_sim_e2e", index, resolution, colorspace, 30)
         )
         return handles[-1]
 
@@ -52,7 +52,7 @@ def next_frame(video, handle, after: float, timeout: float = 2.0) -> np.ndarray:
 
 
 def test_the_robot_says_its_camera_is_the_render(nao):
-    assert nao.service("ALMemory").getData("NaoSim/Camera/Source") == "render"
+    assert nao.service("ALMemory").getData("NaoqiSim/Camera/Source") == "render"
 
 
 def test_a_client_reads_rendered_frames_at_the_configured_rate(camera):

@@ -1,5 +1,5 @@
 """Real sound devices, over a loopback: what comes out of the default output goes into the default
-input. CI provides one (a PulseAudio null sink and its monitor) and sets NAO_SIM_E2E_AUDIO=loopback;
+input. CI provides one (a PulseAudio null sink and its monitor) and sets NAOQI_SIM_E2E_AUDIO=loopback;
 anywhere else these tests skip, since they would play into the loudspeakers and record the room.
 
 They cover what the fake source and the memory sink cannot: the `DevicePlayer` sink on a device,
@@ -16,16 +16,16 @@ import pytest
 from conftest import live_config
 from support import AUDIO, Listener, connect, peak_hz, require_loopback, tone
 
-from nao_sim import NaoSim
-from nao_sim.audio_output import AudioOutput, DevicePlayer, Server
-from nao_sim.config import AudioInputSettings, AudioOutputSettings
+from naoqi_sim import NaoqiSim
+from naoqi_sim.audio_output import AudioOutput, DevicePlayer, Server
+from naoqi_sim.config import AudioInputSettings, AudioOutputSettings
 
 RATE = 22050  # the speech engine's rate, which the audio output plays
 
 # Decided before any fixture, so no NAOqi stack boots for tests that skip.
 pytestmark = pytest.mark.skipif(
     AUDIO != "loopback",
-    reason="uses the default sound devices: set NAO_SIM_E2E_AUDIO=loopback when they are wired "
+    reason="uses the default sound devices: set NAOQI_SIM_E2E_AUDIO=loopback when they are wired "
     "to each other (a virtual loopback), never your loudspeakers and microphone",
 )
 
@@ -122,7 +122,7 @@ def _send(port: int, header: dict, body: bytes = b"") -> None:
 
 @pytest.fixture
 def device_output():
-    """An audio output with a `DevicePlayer`, as `NaoSim` runs it by default, on a free port."""
+    """An audio output with a `DevicePlayer`, as `NaoqiSim` runs it by default, on a free port."""
     server = Server(("127.0.0.1", 0), AudioOutput(DevicePlayer()))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield server.server_address[1]
@@ -165,14 +165,14 @@ def test_a_stop_cuts_the_device_player(device_output):
 
 @pytest.fixture
 def mic_robot(nao):
-    """A NaoSim hearing through the microphone and speaking on the loudspeaker (its devices
+    """A NaoqiSim hearing through the microphone and speaking on the loudspeaker (its devices
     wired to each other by the loopback), in place of the session's."""
     config = live_config(
         nao.version.name,
         audio_input=AudioInputSettings(source="mic"),
         audio_output=AudioOutputSettings(mode="play"),
     )
-    sim = NaoSim(config)  # no sink passed: a DevicePlayer
+    sim = NaoqiSim(config)  # no sink passed: a DevicePlayer
     nao.stop()
     session = None
     try:
@@ -188,7 +188,7 @@ def mic_robot(nao):
 
 def test_the_microphone_hears_the_room_and_the_robot(mic_robot):
     sim, session = mic_robot
-    assert session.service("ALMemory").getData("NaoSim/Audio/Source") == "mic"
+    assert session.service("ALMemory").getData("NaoqiSim/Audio/Source") == "mic"
     listener = Listener(session).subscribe(16000, 3, 0)
     mic = sim._audio_input.source  # type: ignore[union-attr]
     try:

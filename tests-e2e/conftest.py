@@ -5,8 +5,8 @@
 # fast tier uses here — tests-e2e/ isn't a package that can import from tests/, so the
 # few lines are duplicated rather than shared.
 #
-# The tests run the simulated NAO the way any caller does, with a `NaoSim`: each test runs
-# once per NAOqi version, and pytest stops one version's NaoSim before it starts the next
+# The tests run the simulated NAO the way any caller does, with a `NaoqiSim`: each test runs
+# once per NAOqi version, and pytest stops one version's NaoqiSim before it starts the next
 # (both publish 9559). Its audio goes to a MemorySink, so a test asserts on what was played.
 import asyncio
 import json
@@ -29,12 +29,12 @@ from support import (
     require_free_ports,
 )
 
-from nao_sim import FakeAudioSource, MemorySink, NaoSim
-from nao_sim.config import (
+from naoqi_sim import FakeAudioSource, MemorySink, NaoqiSim
+from naoqi_sim.config import (
     AudioInputSettings,
     AudioOutputSettings,
     NaoqiSettings,
-    NaoSimConfig,
+    NaoqiSimConfig,
     VideoInputSettings,
     ViewerSettings,
 )
@@ -43,23 +43,23 @@ SCENE = Path(__file__).resolve().parent / "scenes" / "camera-target.xml"
 
 # Runs a test's Python 2.7 inside NAOqi's embedded interpreter, where Choregraphe's boxes run, on a
 # thread, and leaves `run()`'s result (or the traceback) as JSON in an ALMemory key.
-# (Python 2 refuses `exec` in a nested function, hence _naosim_exec at the top.)
+# (Python 2 refuses `exec` in a nested function, hence _naoqisim_exec at the top.)
 _IN_NAOQI = """
-def _naosim_exec(_body, _ns):
+def _naoqisim_exec(_body, _ns):
     exec(_body, _ns)
-def _naosim_test(_body, _key):
+def _naoqisim_test(_body, _key):
     import json, threading, traceback
     from naoqi import ALProxy
     def go():
         ns = {}
         try:
-            _naosim_exec(_body, ns)
+            _naoqisim_exec(_body, ns)
             out = {"ok": ns["run"]()}
         except Exception:
             out = {"error": traceback.format_exc()}
         ALProxy("ALMemory").insertData(_key, json.dumps(out))
     threading.Thread(target=go).start()
-_naosim_test(%r, %r)
+_naoqisim_test(%r, %r)
 """
 
 
@@ -67,7 +67,7 @@ def pytest_configure(config):
     check_audio_setting()
 
 
-def live_config(version: str, **blocks) -> NaoSimConfig:
+def live_config(version: str, **blocks) -> NaoqiSimConfig:
     """Headless and silent, with the render camera looking at the camera-target scene (a
     red pillar straight ahead) and the fake audio source: what the live tier runs, unless a test
     asks for something else."""
@@ -81,7 +81,7 @@ def live_config(version: str, **blocks) -> NaoSimConfig:
         "audio_input": AudioInputSettings(source="fake"),
         **blocks,
     }
-    return NaoSimConfig(**settings)
+    return NaoqiSimConfig(**settings)
 
 
 class Nao:
@@ -91,7 +91,7 @@ class Nao:
         self.version = version
         self.runner = runner
         self.sink = MemorySink()
-        self.sim = NaoSim(live_config(version.name), sink=self.sink)
+        self.sim = NaoqiSim(live_config(version.name), sink=self.sink)
         self.container = Container(version)
         self._session: qi.Session | None = None
 
@@ -111,7 +111,7 @@ class Nao:
 
     @property
     def session(self) -> qi.Session:
-        assert self._session is not None, "the NaoSim is stopped"
+        assert self._session is not None, "the NaoqiSim is stopped"
         return self._session
 
     def service(self, name: str):
@@ -126,7 +126,7 @@ class Nao:
         """Runs `body` (Python 2.7 defining `run()`) inside NAOqi, as a box would, and returns
         what `run()` returned (JSON-able)."""
         memory = self.service("ALMemory")
-        key = "NaoSimTest/" + uuid.uuid4().hex
+        key = "NaoqiSimTest/" + uuid.uuid4().hex
         memory.insertData(key, "")
         error = self.service("ALPythonBridge").eval(_IN_NAOQI % (body, key))
         if error:  # eval answers with the exception it raised

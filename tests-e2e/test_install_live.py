@@ -1,10 +1,10 @@
-"""nao-sim installed in another project as a uv git dependency builds it (specs/project.md,
-"Distribution"): a wheel holding the recipes, with nao-sim's own sources for qi and nao-viewer.
+"""naoqi-sim installed in another project as a uv git dependency builds it (specs/project.md,
+"Distribution"): a wheel holding the recipes, with naoqi-sim's own sources for qi and naoqi-viewer.
 
 The scratch project depends on this checkout as a non-editable path, which uv builds and installs
-exactly as it does a git dependency, without pushing a commit. It then runs nao-sim from that
+exactly as it does a git dependency, without pushing a commit. It then runs naoqi-sim from that
 project's environment: the recipes it reads from its package, the commands it installs, and a
-`nao-sim run` booting the images this checkout built, through `NAO_SIM_IMAGE_DATA`.
+`naoqi-sim run` booting the images this checkout built, through `NAOQI_SIM_IMAGE_DATA`.
 """
 
 import json
@@ -19,17 +19,17 @@ import pytest
 from conftest import live_config
 from support import IMAGE_DATA, REPO, unavailable
 
-from nao_sim import docker_images
+from naoqi_sim import docker_images
 
 PYPROJECT = """\
 [project]
 name = "scratch"
 version = "0.1.0"
 requires-python = ">=3.12,<3.14"
-dependencies = ["nao-sim[viewer]"]
+dependencies = ["naoqi-sim[viewer]"]
 
 [tool.uv.sources]
-nao-sim = {{ path = "{repo}", editable = false }}
+naoqi-sim = {{ path = "{repo}", editable = false }}
 
 [tool.uv]
 environments = [
@@ -40,9 +40,9 @@ environments = [
 
 # What the installed package says about itself, run with the project's Python.
 _WHERE = """\
-import json, os, nao_sim
-from nao_sim import docker_images, files
-package = os.path.dirname(nao_sim.__file__)
+import json, os, naoqi_sim
+from naoqi_sim import docker_images, files
+package = os.path.dirname(naoqi_sim.__file__)
 print(json.dumps({
     "package": package,
     "installed": files.INSTALLED,
@@ -58,7 +58,7 @@ print(json.dumps({
 
 
 class Project:
-    """The scratch project, and nao-sim's commands in its environment."""
+    """The scratch project, and naoqi-sim's commands in its environment."""
 
     def __init__(self, root: Path):
         self.root = root
@@ -69,7 +69,7 @@ class Project:
         env = {
             k: v
             for k, v in os.environ.items()
-            if k not in ("VIRTUAL_ENV", "NAO_SIM_IMAGE_DATA")
+            if k not in ("VIRTUAL_ENV", "NAOQI_SIM_IMAGE_DATA")
         }
         return {**env, **(extra or {})}
 
@@ -102,7 +102,7 @@ def project(tmp_path_factory) -> Project:
     project = Project(root)
     res = subprocess.run(
         # A path dependency's wheel is cached by uv: rebuild it from the checkout as it is now.
-        [uv, "sync", "--python", "3.12", "--reinstall-package", "nao-sim"],
+        [uv, "sync", "--python", "3.12", "--reinstall-package", "naoqi-sim"],
         cwd=root,
         env=project.env(),
         capture_output=True,
@@ -125,8 +125,8 @@ def test_the_package_carries_the_recipes_and_no_image_data(project):
         "docker/naoqi/Dockerfile.naoqi-2.1",
         "docker/naoqi/Dockerfile.naoqi-2.8",
         "docker/naoqi/entrypoint-lib.sh",
-        "docker/naoqi/services/speech/nao_sim_speech_core.py",
-        "docker/naoqi/services/speech/nao_sim_speech_front.cpp",
+        "docker/naoqi/services/speech/naoqi_sim_speech_core.py",
+        "docker/naoqi/services/speech/naoqi_sim_speech_front.cpp",
         "docker/tts-engine/server.py",
     } <= set(where["bundled"])
     assert not any(
@@ -140,37 +140,40 @@ def test_the_installed_recipes_are_the_checkouts(project):
 
 
 def test_the_image_data_goes_to_the_user_data_directory(project):
-    user_data = Path(platformdirs.user_data_dir("nao-sim", appauthor=False))
+    user_data = Path(platformdirs.user_data_dir("naoqi-sim", appauthor=False))
 
     assert project.where()["image_data"] == str(user_data / "image-data")
-    assert project.where({"NAO_SIM_IMAGE_DATA": str(IMAGE_DATA)})["image_data"] == str(
-        IMAGE_DATA.resolve()
-    )
+    assert project.where({"NAOQI_SIM_IMAGE_DATA": str(IMAGE_DATA)})[
+        "image_data"
+    ] == str(IMAGE_DATA.resolve())
 
 
 def test_the_project_has_both_commands(project):
-    for command in (("nao-sim", "--help"), ("nao-viewer", "fetch-meshes", "--help")):
+    for command in (
+        ("naoqi-sim", "--help"),
+        ("naoqi-viewer", "fetch-meshes", "--help"),
+    ):
         res = project.run(*command)
         assert res.returncode == 0, res.stdout + res.stderr
 
 
-def test_nao_sim_run_from_the_project(project, nao, tmp_path):
+def test_naoqi_sim_run_from_the_project(project, nao, tmp_path):
     config = tmp_path / "sim.json"
     config.write_text(json.dumps(live_config(nao.version.name).to_dict()))
     shared = {
-        "NAO_SIM_IMAGE_DATA": str(IMAGE_DATA)
+        "NAOQI_SIM_IMAGE_DATA": str(IMAGE_DATA)
     }  # the images this checkout built and verified
     check = project.run(
         "python",
         "-c",
-        f"from nao_sim import check_images; check_images({nao.version.name!r})",
+        f"from naoqi_sim import check_images; check_images({nao.version.name!r})",
         env=shared,
     )
     assert check.returncode == 0, check.stderr
 
     nao.stop()
     run = subprocess.Popen(
-        [str(project.bin / "nao-sim"), "run", "--config", str(config)],
+        [str(project.bin / "naoqi-sim"), "run", "--config", str(config)],
         cwd=project.root,
         env=project.env(shared),
         stdout=subprocess.PIPE,
@@ -186,9 +189,9 @@ def test_nao_sim_run_from_the_project(project, nao, tmp_path):
                 break
         else:
             pytest.fail(
-                f"nao-sim run exited ({run.wait()}) without being ready:\n{''.join(lines)}"
+                f"naoqi-sim run exited ({run.wait()}) without being ready:\n{''.join(lines)}"
             )
-        status = project.run("nao-sim", "status", env=shared)
+        status = project.run("naoqi-sim", "status", env=shared)
         assert status.returncode == 0, status.stdout + status.stderr
         assert "ready: true" in status.stdout
         run.send_signal(signal.SIGINT)
@@ -197,5 +200,5 @@ def test_nao_sim_run_from_the_project(project, nao, tmp_path):
         if run.poll() is None:
             run.kill()
             run.wait()
-            project.run("nao-sim", "cleanup", env=shared)
+            project.run("naoqi-sim", "cleanup", env=shared)
         nao.start()

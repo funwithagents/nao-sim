@@ -1,4 +1,4 @@
-# nao-sim speech engine container: Piper (onnxruntime) with eSpeak NG underneath.
+# naoqi-sim speech engine container: Piper (onnxruntime) with eSpeak NG underneath.
 # Native architecture (no emulation). Knows nothing about NAOqi: it synthesizes a list of
 # text / mark / pause items, streams PCM to the host audio output and returns the timings.
 FROM python:3.12-slim
@@ -17,7 +17,7 @@ RUN for v in en/en_US/lessac/medium/en_US-lessac-medium fr/fr_FR/siwis/medium/fr
     done && ls -la /voices
 
 COPY server.py /app/server.py
-ENV NAO_SIM_SOUNDCARD=host.docker.internal:9562 \
-    NAO_SIM_TTS_ENGINE=piper
+ENV NAOQI_SIM_SOUNDCARD=host.docker.internal:9562 \
+    NAOQI_SIM_TTS_ENGINE=piper
 EXPOSE 8080
 CMD ["python", "-u", "/app/server.py"]

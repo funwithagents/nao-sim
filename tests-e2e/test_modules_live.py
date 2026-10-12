@@ -1,4 +1,4 @@
-"""The modules a NAO of each version runs, on a running nao-sim stack (specs/container/container.md, "Matching
+"""The modules a NAO of each version runs, on a running naoqi-sim stack (specs/container/container.md, "Matching
 a NAO's modules"): on 2.1 the entrypoint launches the autonomous abilities the desktop suite ships
 without loading, then Autonomous Life after them, as a NAO's autoload does; 2.8 has them as the
 expressivity package's services. Every module in the image is also checked as Python 2.7."""
@@ -11,7 +11,7 @@ def services(nao) -> set[str]:
 
 
 def test_basic_awareness_runs_as_on_a_nao(nao):
-    # What a client such as nao-bridge's set_basic_awareness does with it.
+    # What a client such as naoqi-bridge's set_basic_awareness does with it.
     awareness = nao.service("ALBasicAwareness")
     awareness.startAwareness()
     try:

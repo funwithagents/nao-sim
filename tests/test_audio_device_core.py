@@ -1,16 +1,16 @@
 """The ALAudioDevice replacement's shared logic, against a real host link.
 
-The host side is `nao_sim.host_link.HostLink` with a recording handler, so the two framings are
+The host side is `naoqi_sim.host_link.HostLink` with a recording handler, so the two framings are
 tested against each other; the relay's `deliver` is a fake that records what each subscriber gets.
 """
 
 import threading
 import time
 
-import nao_sim_audio_device_core as core
+import naoqi_sim_audio_device_core as core
 import pytest
 
-from nao_sim.host_link import Connection, HostLink
+from naoqi_sim.host_link import Connection, HostLink
 
 
 class Host:
@@ -59,7 +59,7 @@ class Host:
 
 
 class Relay:
-    """Stands in for _NaoSimAudioRelay: records each delivery per subscriber."""
+    """Stands in for _NaoqiSimAudioRelay: records each delivery per subscriber."""
 
     def __init__(self):
         self.got: dict[str, list[tuple]] = {}

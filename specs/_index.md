@@ -1,12 +1,12 @@
-# nao-sim
+# naoqi-sim
 
-nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe suite, 2.1.4.13 or 2.8.7.4) runs in a local Docker container, and Python 2.7 override modules loaded inside it replace the services the desktop NAOqi lacks, so the container behaves like a NAO in its API on `127.0.0.1:9559`. Any qi client (Choregraphe, existing scripts, client libraries) connects to it exactly as it would to a NAO, with no nao-sim-specific code.
+naoqi-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe suite, 2.1.4.13 or 2.8.7.4) runs in a local Docker container, and Python 2.7 override modules loaded inside it replace the services the desktop NAOqi lacks, so the container behaves like a NAO in its API on `127.0.0.1:9559`. Any qi client (Choregraphe, existing scripts, client libraries) connects to it exactly as it would to a NAO, with no naoqi-sim-specific code.
 
 - **Containers**: the NAOqi image per version and a `tts` speech engine. Every NAOqi-specific decision stays there.
-- **Host**: dumb devices named after their role (the audio output today; audio, video and touch inputs planned), Python 3.12–3.13 with libqi. Perception and speech recognition are the clients' job, not nao-sim's.
-- **Simulated world** (planned, optional): the `nao-sim[viewer]` extra pulls nao-viewer, whose sim mode poses the NAO model from nao-sim's NAOqi in a scene and renders the head cameras that nao-sim injects into `ALVideoDevice`.
+- **Host**: dumb devices named after their role (the audio output today; audio, video and touch inputs planned), Python 3.12–3.13 with libqi. Perception and speech recognition are the clients' job, not naoqi-sim's.
+- **Simulated world** (planned, optional): the `naoqi-sim[viewer]` extra pulls naoqi-viewer, whose sim mode poses the NAO model from naoqi-sim's NAOqi in a scene and renders the head cameras that naoqi-sim injects into `ALVideoDevice`.
 
-Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement as a C++ front over a Python core, so the boxes stop a sentence as on a NAO; the `tts` engine), the audio output mixing named streams as a NAO's sound server, the `ALAudioPlayer` replacement (sound files through the suite's libsndfile, mixed with speech), the `NaoSim` status service with the Docker healthcheck, and `nao-sim run`: the `NaoSim` object with its config, the sim window and the CLI; the render camera (the headless viewer's top-camera frames injected into `ALVideoDevice`); the audio input (`ALAudioDevice` with its native relay, the host link, the fake source and the host microphone, the robot hearing its own voice); CI runs both test tiers on both versions, with a virtual audio loopback; another project depends on nao-sim from git with uv. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
+Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement as a C++ front over a Python core, so the boxes stop a sentence as on a NAO; the `tts` engine), the audio output mixing named streams as a NAO's sound server, the `ALAudioPlayer` replacement (sound files through the suite's libsndfile, mixed with speech), the `NaoqiSim` status service with the Docker healthcheck, and `naoqi-sim run`: the `NaoqiSim` object with its config, the sim window and the CLI; the render camera (the headless viewer's top-camera frames injected into `ALVideoDevice`); the audio input (`ALAudioDevice` with its native relay, the host link, the fake source and the host microphone, the robot hearing its own voice); CI runs both test tiers on both versions, with a virtual audio loopback; another project depends on naoqi-sim from git with uv. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
 
 ## Specs
 
@@ -22,13 +22,13 @@ How the repository is built and laid out.
 
 ### Runtime: `runtime/`
 
-The host-side front door: the config, the `NaoSim` object and the `nao-sim` command.
+The host-side front door: the config, the `NaoqiSim` object and the `naoqi-sim` command.
 
 | Spec | Description | Status |
 |---|---|---|
-| [config.md](runtime/config.md) | `NaoSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with its frame rate, viewer with its scene and variant), nao-bridge's loader conventions (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embedded as nao-bridge's `sim` block, JSON | Implemented |
-| [api.md](runtime/api.md) | The `NaoSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and nao-bridge's `sim` backend | Implemented |
-| [cli.md](runtime/cli.md) | The `nao-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Implemented |
+| [config.md](runtime/config.md) | `NaoqiSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with its frame rate, viewer with its scene and variant), naoqi-bridge's loader conventions (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embedded as naoqi-bridge's `sim` block, JSON | Implemented |
+| [api.md](runtime/api.md) | The `NaoqiSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and naoqi-bridge's `sim` backend | Implemented |
+| [cli.md](runtime/cli.md) | The `naoqi-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Implemented |
 
 ### Containers: `container/`
 
@@ -36,14 +36,14 @@ The Docker images and what makes them a NAO: the NAOqi image, how override modul
 
 | Spec | Description | Status |
 |---|---|---|
-| [container.md](container/container.md) | NAOqi 2.1 and 2.8 images, suite and `animations` package download, package store volume, single-port network layout, compose, the entrypoint's configuration interface, the `io.nao-sim.version` image label; matching a NAO's modules per version (autonomous abilities added on 2.1, `autonomouslife` after them); the build files (C++ SDKs, libqi, boost) and the native native build stage | Implemented |
+| [container.md](container/container.md) | NAOqi 2.1 and 2.8 images, suite and `animations` package download, package store volume, single-port network layout, compose, the entrypoint's configuration interface, the `io.naoqi-sim.version` image label; matching a NAO's modules per version (autonomous abilities added on 2.1, `autonomouslife` after them); the build files (C++ SDKs, libqi, boost) and the native native build stage | Implemented |
 | [service-replacement.md](container/service-replacement.md) | Loading override modules into NAOqi, `ALModule` vs qi service per version, replacing a built-in, calling host-registered services (measured on both versions), the native relay for binary arguments, a C++ front for callers that stop by task id (`post`/`pCall`/`wait`/`stop(id)`, qi signals on it, measured on both versions) | Implemented |
-| [status-service.md](container/status-service.md) | `NaoSim` status service: identity of a nao-sim target (versions, device sources, readiness) as a service and ALMemory keys, the entrypoint's readiness guarantees, the Docker healthcheck | Implemented |
+| [status-service.md](container/status-service.md) | `NaoqiSim` status service: identity of a naoqi-sim target (versions, device sources, readiness) as a service and ALMemory keys, the entrypoint's readiness guarantees, the Docker healthcheck | Implemented |
 | [tts-engine.md](container/tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the audio output as its `speech` stream | Implemented |
 
 ### NAOqi services: `services/`
 
-The NAOqi services nao-sim replaces or adds, as Python 2.7 modules inside NAOqi.
+The NAOqi services naoqi-sim replaces or adds, as Python 2.7 modules inside NAOqi.
 
 | Spec | Description | Status |
 |---|---|---|
@@ -53,27 +53,27 @@ The NAOqi services nao-sim replaces or adds, as Python 2.7 modules inside NAOqi.
 
 ### Host: `host/`
 
-The simulated robot's inputs and outputs on the host, owned by a running `NaoSim`, each named after its role; and the simulated world.
+The simulated robot's inputs and outputs on the host, owned by a running `NaoqiSim`, each named after its role; and the simulated world.
 
 | Spec | Description | Status |
 |---|---|---|
-| [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Implemented |
+| [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoqiSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Implemented |
 | [audio-output.md](host/audio-output.md) | The robot's loudspeakers, as a NAO's sound server: TCP PCM protocol with named streams (newest wins within a name; `stop`, `set`, `pause`/`resume`), a mixer at 48 kHz stereo with volume and pan, the `AudioSink` seam receiving the mix (device, null, WAV, memory with each stream kept), playing state, listeners (the fake room hears the mix) | Implemented |
 | [audio-input.md](host/audio-input.md) | The robot's microphones: the fake source tests play sounds into and the host microphone, every format produced on the host, mono policy, 85 ms chunks (provisional), the robot hearing itself (no gate), messages on the host link, loopback tests | Implemented |
-| [video-input.md](host/video-input.md) | The robot's head cameras: nao-viewer render then webcam, VGA `CameraTop` frames injected with `putImage` at a fixed `fps` whoever subscribes, NAOqi converting per subscriber; measured on both versions | Implemented |
+| [video-input.md](host/video-input.md) | The robot's head cameras: naoqi-viewer render then webcam, VGA `CameraTop` frames injected with `putImage` at a fixed `fps` whoever subscribes, NAOqi converting per subscriber; measured on both versions | Implemented |
 | [touch-input.md](host/touch-input.md) | The robot's touch sensors: clicks in the sim window and an API for tests, written to ALMemory | Draft |
-| [viewer.md](host/viewer.md) | The simulated world: nao-viewer's sim mode driven through its public API, which viewer runs, the `viewer` extra, the window closed by the user, headless with the render camera in the live tier and CI | Implemented |
+| [viewer.md](host/viewer.md) | The simulated world: naoqi-viewer's sim mode driven through its public API, which viewer runs, the `viewer` extra, the window closed by the user, headless with the render camera in the live tier and CI | Implemented |
 
 ### Testing: `testing/`
 
-How nao-sim is verified, locally and in CI.
+How naoqi-sim is verified, locally and in CI.
 
 | Spec | Description | Status |
 |---|---|---|
 | [testing.md](testing/testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, a live tier that drives its own stack per NAOqi version | Implemented |
-| [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAO_SIM_E2E_VERSION` turning skips into failures, a headless viewer; a PulseAudio loopback for the audio tests; the Python 2.7 check | Implemented |
+| [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAOQI_SIM_E2E_VERSION` turning skips into failures, a headless viewer; a PulseAudio loopback for the audio tests; the Python 2.7 check | Implemented |
 
-[_overview.md](_overview.md) is the overview of nao-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: the capability probe and the asset guard (both deferred), and the perception measurements kept for clients.
+[_overview.md](_overview.md) is the overview of naoqi-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: the capability probe and the asset guard (both deferred), and the perception measurements kept for clients.
 
 Each spec also opens with a YAML **frontmatter** block declaring the `code:` and `tests:` files it governs — the spec → code/tests mapping the spec-drift checks use to scope what they compare. Keep it current when files move, and see [AGENTS.md](../AGENTS.md) ("Spec frontmatter") for the full convention.
 

@@ -22,7 +22,7 @@ tests:
 
 ## Purpose
 
-nao-sim's testing strategy — the two-tier structure and what a good test looks like. It's a **cross-cutting practice**, not a runtime concept: nothing here ships in the library. It exists as a spec so the decisions have one honest home that stays in sync with the setup, rather than living half in [project.md](../project.md) (the tooling choices) and half in [AGENTS.md](../../AGENTS.md) (the operational how-to). The concrete shell commands to run each tier live in [AGENTS.md](../../AGENTS.md) "Testing".
+naoqi-sim's testing strategy — the two-tier structure and what a good test looks like. It's a **cross-cutting practice**, not a runtime concept: nothing here ships in the library. It exists as a spec so the decisions have one honest home that stays in sync with the setup, rather than living half in [project.md](../project.md) (the tooling choices) and half in [AGENTS.md](../../AGENTS.md) (the operational how-to). The concrete shell commands to run each tier live in [AGENTS.md](../../AGENTS.md) "Testing".
 
 ## Two tiers, physically separated
 
@@ -31,12 +31,12 @@ Tests split into two directories, and the split is structural — a directory bo
 | Tier | Directory | Network | Deterministic | Runs by default |
 |---|---|---|---|---|
 | Unit / integration | `tests/` | never | yes | **yes** |
-| Live / e2e | `tests-e2e/` | the nao-sim containers, started by the tests | no | **no** |
+| Live / e2e | `tests-e2e/` | the naoqi-sim containers, started by the tests | no | **no** |
 
 - **`tests/` is the normal dev loop.** Fast, deterministic, no real network, no credentials. `pyproject.toml`'s `testpaths = ["tests"]` points the default `uv run pytest` here, so this is what runs on every change and what any contributor or CI can run with zero credentials.
 - **`tests-e2e/` is opt-in.** It builds and runs the NAOqi and `tts` containers (Docker, the user's Choregraphe suite, real timing), so it is deliberately *not* collected by the default run. Because `testpaths` already excludes it, no pytest marker or `--run-e2e` flag is needed: the physical separation is the whole mechanism. Run it explicitly (`uv run pytest tests-e2e`).
 
-The `tests/` tier has one `test_<module>.py` per module under test: the `src/nao_sim/` modules and the host-importable container code (`test_speech_core.py` for `docker/naoqi/services/speech/nao_sim_speech_core.py`, `test_status_core.py` for `nao_sim_status_core.py`, `test_tts_engine.py` for `docker/tts-engine/server.py`), the container's shell scripts (`test_entrypoint.py` runs `docker/naoqi/entrypoint-2.1.sh`, `entrypoint-2.8.sh` and `healthcheck.sh` with fake `naoqi-bin` and `qicli` first on `PATH`, so the boot sequence and its failure exits are checked without Docker), plus the `test_project_map.py` drift guard. `tests/conftest.py` puts every `docker/naoqi/services/<service>/` and `docker/tts-engine` on `sys.path` (and pyright's `extraPaths`). `tests-e2e/` is organized around live scenarios rather than modules.
+The `tests/` tier has one `test_<module>.py` per module under test: the `src/naoqi_sim/` modules and the host-importable container code (`test_speech_core.py` for `docker/naoqi/services/speech/naoqi_sim_speech_core.py`, `test_status_core.py` for `naoqi_sim_status_core.py`, `test_tts_engine.py` for `docker/tts-engine/server.py`), the container's shell scripts (`test_entrypoint.py` runs `docker/naoqi/entrypoint-2.1.sh`, `entrypoint-2.8.sh` and `healthcheck.sh` with fake `naoqi-bin` and `qicli` first on `PATH`, so the boot sequence and its failure exits are checked without Docker), plus the `test_project_map.py` drift guard. `tests/conftest.py` puts every `docker/naoqi/services/<service>/` and `docker/tts-engine` on `sys.path` (and pyright's `extraPaths`). `tests-e2e/` is organized around live scenarios rather than modules.
 
 ## What a good test asserts
 
@@ -50,15 +50,15 @@ If the package holds process-global or singleton state, both tiers carry an iden
 
 ## Live tier: the tests drive the stack
 
-nao-sim is tested as what it is: containers that behave like a NAO in their API, reached over qi on `127.0.0.1:9559`. The live tests bring that stack up themselves; there is no target to configure.
+naoqi-sim is tested as what it is: containers that behave like a NAO in their API, reached over qi on `127.0.0.1:9559`. The live tests bring that stack up themselves; there is no target to configure.
 
-- **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it first runs `check_images` ([api.md](../runtime/api.md), "Images"): current images are used as they are; missing or outdated ones (an edit under `docker/` included) are built and verified with `fetch_and_build_images` when the image data are in `docker/image-data/`, and the version skips otherwise. Then it starts a `NaoSim` for that version, headless and silent, as any caller does ([api.md](../runtime/api.md)), connects, and stops it at the end; a test that needs another configuration (`nao-sim run`, the window) stops it and starts it again. Versions run one after the other, since both publish 9559.
+- **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it first runs `check_images` ([api.md](../runtime/api.md), "Images"): current images are used as they are; missing or outdated ones (an edit under `docker/` included) are built and verified with `fetch_and_build_images` when the image data are in `docker/image-data/`, and the version skips otherwise. Then it starts a `NaoqiSim` for that version, headless and silent, as any caller does ([api.md](../runtime/api.md)), connects, and stops it at the end; a test that needs another configuration (`naoqi-sim run`, the window) stops it and starts it again. Versions run one after the other, since both publish 9559.
 - **Skip, never fail, without the means.** No Docker, or neither the version's suite tarball nor its image: that version's tests skip. A contributor (or CI) without the suites is never broken.
-- **Fail loudly on a conflict.** If 9559 or the audio output's 9562 is already taken (a nao-sim, or a stack started by hand), the tests fail with that message rather than test someone else's stack.
+- **Fail loudly on a conflict.** If 9559 or the audio output's 9562 is already taken (a naoqi-sim, or a stack started by hand), the tests fail with that message rather than test someone else's stack.
 - **Connect with a retry**: the libqi 3 wheel fails about one connect in three against NAOqi 2.1, instantly, with `disconnected` (`support.connect`).
-- **What was played.** The `NaoSim` runs with a `MemorySink` ([audio-output.md](../host/audio-output.md), "Audio sinks"): the tests assert on each playback's audio, its timing and whether it was cut. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
-- **What the robot hears.** The `NaoSim` runs the fake audio source ([audio-input.md](../host/audio-input.md), "The fake source"): a test subscribes to `ALAudioDevice` as a client does, plays sounds through `fake_audio` when it chooses, and checks what it receives against them.
-- **Real devices only on a declared loopback.** The tests that use the machine's sound devices (the microphone, the robot's speech played aloud and heard back, the `DevicePlayer`) skip unless `NAO_SIM_E2E_AUDIO=loopback` says the default output and input are wired to each other; a developer never has the tests play into their loudspeakers or record their microphone by surprise. CI sets it over a PulseAudio null sink ([ci.md](ci.md)), where a missing loopback fails, as `NAO_SIM_E2E_VERSION` turns a missing version into a failure. An unknown value fails the session at collection.
+- **What was played.** The `NaoqiSim` runs with a `MemorySink` ([audio-output.md](../host/audio-output.md), "Audio sinks"): the tests assert on each playback's audio, its timing and whether it was cut. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
+- **What the robot hears.** The `NaoqiSim` runs the fake audio source ([audio-input.md](../host/audio-input.md), "The fake source"): a test subscribes to `ALAudioDevice` as a client does, plays sounds through `fake_audio` when it chooses, and checks what it receives against them.
+- **Real devices only on a declared loopback.** The tests that use the machine's sound devices (the microphone, the robot's speech played aloud and heard back, the `DevicePlayer`) skip unless `NAOQI_SIM_E2E_AUDIO=loopback` says the default output and input are wired to each other; a developer never has the tests play into their loudspeakers or record their microphone by surprise. CI sets it over a PulseAudio null sink ([ci.md](ci.md)), where a missing loopback fails, as `NAOQI_SIM_E2E_VERSION` turns a missing version into a failure. An unknown value fails the session at collection.
 
 ## Tooling
 
@@ -67,5 +67,5 @@ nao-sim is tested as what it is: containers that behave like a NAO in their API,
 
 ## Open questions
 
-1. **CI wiring** is built ([ci.md](ci.md)): both tiers run on GitHub's hosted runners. The live tier's rule of skipping what the machine lacks has its CI counterpart: `NAO_SIM_E2E_VERSION` runs one version and makes it required, so what would skip fails.
-2. **Python 2.7 override modules.** The shared core (`nao_sim_speech_core`) is Python 2.7 code kept importable under Python 3, so the fast tier tests it on the host; the version-specific modules (`naoqi`/`qi` objects) are only exercised by the live tier. A live test (`test_modules_live.py`) compiles every module in each image with the image's own `/opt/naoqi/bin/python2`, so the live tier, and CI's entries with it, prove they are still valid Python 2.7.
+1. **CI wiring** is built ([ci.md](ci.md)): both tiers run on GitHub's hosted runners. The live tier's rule of skipping what the machine lacks has its CI counterpart: `NAOQI_SIM_E2E_VERSION` runs one version and makes it required, so what would skip fails.
+2. **Python 2.7 override modules.** The shared core (`naoqi_sim_speech_core`) is Python 2.7 code kept importable under Python 3, so the fast tier tests it on the host; the version-specific modules (`naoqi`/`qi` objects) are only exercised by the live tier. A live test (`test_modules_live.py`) compiles every module in each image with the image's own `/opt/naoqi/bin/python2`, so the live tier, and CI's entries with it, prove they are still valid Python 2.7.

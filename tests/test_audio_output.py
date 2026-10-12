@@ -10,10 +10,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from nao_sim.audio_output import (
+from naoqi_sim.audio_output import (
     RATE as MIX_RATE,
 )
-from nao_sim.audio_output import (
+from naoqi_sim.audio_output import (
     TICK_S,
     AudioOutput,
     AudioSink,

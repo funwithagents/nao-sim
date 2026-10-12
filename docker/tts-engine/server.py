@@ -1,9 +1,9 @@
-"""nao-sim speech engine. One HTTP endpoint, standard library only.
+"""naoqi-sim speech engine. One HTTP endpoint, standard library only.
 
 POST /say   {"language": "English", "rate": 100, "pitch": 100, "engine": "piper"|"espeak",
              "items": [{"type":"text","text":"Hello"}, {"type":"mark","id":1}, {"type":"pause","ms":500}]}
         ->  {"duration": s, "marks": {"1": offset_s}, "rate": 22050, "engine": "piper"}
-            The PCM is streamed to the host sound card (NAO_SIM_SOUNDCARD) before the reply.
+            The PCM is streamed to the host sound card (NAOQI_SIM_SOUNDCARD) before the reply.
 POST /stop  stops streaming and asks the sound card to stop.
 GET  /health
 
@@ -28,8 +28,8 @@ import numpy as np
 VOICES = {"english": "en_US-lessac-medium", "french": "fr_FR-siwis-medium"}
 ESPEAK_LANG = {"english": "en-us", "french": "fr"}
 VOICE_DIR = "/voices"
-SOUNDCARD = os.environ.get("NAO_SIM_SOUNDCARD", "host.docker.internal:9562")
-DEFAULT_ENGINE = os.environ.get("NAO_SIM_TTS_ENGINE", "piper")
+SOUNDCARD = os.environ.get("NAOQI_SIM_SOUNDCARD", "host.docker.internal:9562")
+DEFAULT_ENGINE = os.environ.get("NAOQI_SIM_TTS_ENGINE", "piper")
 
 _piper_voices = {}
 _lock = threading.Lock()
@@ -257,7 +257,9 @@ if __name__ == "__main__":
     # The server is the container's PID 1, to which the kernel applies no default signal action:
     # without a handler `docker stop` would wait its 10 s grace period, then kill it.
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
-    print(f"nao-sim tts: engine={DEFAULT_ENGINE} soundcard={SOUNDCARD} voices={VOICES}")
+    print(
+        f"naoqi-sim tts: engine={DEFAULT_ENGINE} soundcard={SOUNDCARD} voices={VOICES}"
+    )
     if (
         DEFAULT_ENGINE == "piper"
     ):  # pre-load the voices so the first say() does not pay for it

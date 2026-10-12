@@ -9,9 +9,9 @@ import time
 import numpy as np
 import pytest
 
-from nao_sim import video_input
-from nao_sim.video_input import VideoInput
-from nao_sim.viewer import WorldClosed
+from naoqi_sim import video_input
+from naoqi_sim.video_input import VideoInput
+from naoqi_sim.viewer import WorldClosed
 
 
 class FakeNaoqi:
@@ -118,10 +118,10 @@ def test_a_slow_source_skips_slots_and_never_catches_up(naoqi):
 
 def test_publishes_its_source_while_it_runs(naoqi):
     device = running(Frames(), naoqi)
-    assert naoqi.memory["NaoSim/Camera/Source"] == "render"
+    assert naoqi.memory["NaoqiSim/Camera/Source"] == "render"
     device.stop()
 
-    assert naoqi.memory["NaoSim/Camera/Source"] == "none"
+    assert naoqi.memory["NaoqiSim/Camera/Source"] == "none"
     assert naoqi.closed
 
 
@@ -130,9 +130,9 @@ def test_a_closed_viewer_stops_the_camera_and_says_so_once(naoqi, caplog):
     device = running(source, naoqi)
     wait_until(lambda: len(naoqi.puts) >= 1)
 
-    with caplog.at_level(logging.WARNING, logger="nao_sim.video_input"):
+    with caplog.at_level(logging.WARNING, logger="naoqi_sim.video_input"):
         source.closed = True  # the user closes the window
-        wait_until(lambda: naoqi.memory["NaoSim/Camera/Source"] == "none")
+        wait_until(lambda: naoqi.memory["NaoqiSim/Camera/Source"] == "none")
         put = len(naoqi.puts)
         time.sleep(0.3)
         device.stop()
@@ -145,7 +145,7 @@ def test_a_closed_viewer_stops_the_camera_and_says_so_once(naoqi, caplog):
 
 def test_refused_frames_warn_once_and_injection_resumes(naoqi, caplog):
     naoqi.refuse = True
-    with caplog.at_level(logging.WARNING, logger="nao_sim.video_input"):
+    with caplog.at_level(logging.WARNING, logger="naoqi_sim.video_input"):
         device = running(Frames(), naoqi, fps=30)
         time.sleep(0.3)
         naoqi.refuse = False
@@ -168,5 +168,5 @@ def test_stop_does_not_wait_on_a_blocked_source(naoqi, monkeypatch):
     started = time.monotonic()
     device.stop()
     assert time.monotonic() - started < 1.0
-    assert naoqi.memory["NaoSim/Camera/Source"] == "none"
+    assert naoqi.memory["NaoqiSim/Camera/Source"] == "none"
     device.stop()  # twice is harmless

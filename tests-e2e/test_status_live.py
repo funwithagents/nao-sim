@@ -1,31 +1,31 @@
-"""The NaoSim status service on a running nao-sim stack, on each NAOqi version: how a client
-learns the target is nao-sim, its versions and device sources, and the Docker healthcheck."""
+"""The NaoqiSim status service on a running naoqi-sim stack, on each NAOqi version: how a client
+learns the target is naoqi-sim, its versions and device sources, and the Docker healthcheck."""
 
 
-def test_the_target_identifies_as_nao_sim(nao):
-    naosim = nao.service("NaoSim")
+def test_the_target_identifies_as_naoqi_sim(nao):
+    naoqisim = nao.service("NaoqiSim")
     memory = nao.service("ALMemory")
-    built_with = nao.container.image_env()["NAO_SIM_VERSION"]
+    built_with = nao.container.image_env()["NAOQI_SIM_VERSION"]
 
-    assert "NaoSim" in {s["name"] for s in nao.session.services()}
-    assert naosim.getVersion() == built_with
-    assert naosim.getNaoqiVersion() == nao.version.naoqi_version
-    assert memory.getData("NaoSim/Version") == built_with
-    assert memory.getData("NaoSim/NaoqiVersion") == nao.version.naoqi_version
+    assert "NaoqiSim" in {s["name"] for s in nao.session.services()}
+    assert naoqisim.getVersion() == built_with
+    assert naoqisim.getNaoqiVersion() == nao.version.naoqi_version
+    assert memory.getData("NaoqiSim/Version") == built_with
+    assert memory.getData("NaoqiSim/NaoqiVersion") == nao.version.naoqi_version
     assert (
-        memory.getData("NaoSim/Camera/Source") == "render"
+        memory.getData("NaoqiSim/Camera/Source") == "render"
     )  # the live tier's render camera
     assert (
-        memory.getData("NaoSim/Audio/Source") == "fake"
+        memory.getData("NaoqiSim/Audio/Source") == "fake"
     )  # the live tier's fake source
-    assert memory.getData("NaoSim/Audio/Channels") == "duplicate"
-    # Perception runs in the clients: nao-sim publishes no perception source.
-    assert "NaoSim/Perception/Source" not in memory.getDataListName()
+    assert memory.getData("NaoqiSim/Audio/Channels") == "duplicate"
+    # Perception runs in the clients: naoqi-sim publishes no perception source.
+    assert "NaoqiSim/Perception/Source" not in memory.getDataListName()
 
 
 def test_ready_means_the_replacements_answer(nao):
-    assert nao.service("NaoSim").isReady() is True
-    assert nao.service("ALMemory").getData("NaoSim/Ready") == 1
+    assert nao.service("NaoqiSim").isReady() is True
+    assert nao.service("ALMemory").getData("NaoqiSim/Ready") == 1
     assert nao.version.implementation in nao.service("ALTextToSpeech").whoami()
 
 

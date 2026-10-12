@@ -107,8 +107,8 @@ wheels = [
 ]
 
 [[package]]
-name = "nao-sim"
-version = "0.0.1"
+name = "naoqi-sim"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -122,12 +122,12 @@ dependencies = [
 
 [package.optional-dependencies]
 viewer = [
-    { name = "nao-viewer" },
+    { name = "naoqi-viewer" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "nao-sim", extra = ["viewer"] },
+    { name = "naoqi-sim", extra = ["viewer"] },
     { name = "pyright" },
     { name = "pytest" },
     { name = "ruff" },
@@ -135,7 +135,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "nao-viewer", marker = "extra == 'viewer'", git = "https://github.com/funwithagents/nao-viewer?rev=db0b59cc2e2875a15e01d206c87f1b181bc4ae01" },
+    { name = "naoqi-viewer", marker = "extra == 'viewer'", git = "https://github.com/funwithagents/naoqi-viewer?rev=917a78243aa10a45b1c85ff2e625164bcdabb9ed" },
     { name = "numpy" },
     { name = "platformdirs" },
     { name = "qi", marker = "(python_full_version < '3.12' and sys_platform == 'darwin') or (python_full_version >= '3.14' and sys_platform == 'darwin') or (python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.14' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux')", specifier = "==3.1.6" },
@@ -149,16 +149,16 @@ provides-extras = ["viewer"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "nao-sim", extras = ["viewer"] },
+    { name = "naoqi-sim", extras = ["viewer"] },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.16.10" },
 ]
 
 [[package]]
-name = "nao-viewer"
+name = "naoqi-viewer"
 version = "0.1.0"
-source = { git = "https://github.com/funwithagents/nao-viewer?rev=db0b59cc2e2875a15e01d206c87f1b181bc4ae01#db0b59cc2e2875a15e01d206c87f1b181bc4ae01" }
+source = { git = "https://github.com/funwithagents/naoqi-viewer?rev=917a78243aa10a45b1c85ff2e625164bcdabb9ed#917a78243aa10a45b1c85ff2e625164bcdabb9ed" }
 dependencies = [
     { name = "mujoco" },
     { name = "numpy" },

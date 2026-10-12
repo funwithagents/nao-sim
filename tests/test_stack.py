@@ -1,5 +1,5 @@
-"""What other terminals read and do without a `NaoSim` object, against the fake `docker`
-(tests/fake_docker.py): `read_status` and `cleanup`. The qi read of the `NaoSim` service is
+"""What other terminals read and do without a `NaoqiSim` object, against the fake `docker`
+(tests/fake_docker.py): `read_status` and `cleanup`. The qi read of the `NaoqiSim` service is
 replaced; the live tier covers it."""
 
 import asyncio
@@ -7,11 +7,11 @@ import socket
 
 import pytest
 
-from nao_sim import stack
-from nao_sim.errors import DockerUnavailableError, NaoSimError
-from nao_sim.stack import ContainerState, NaoSimStatus
+from naoqi_sim import stack
+from naoqi_sim.errors import DockerUnavailableError, NaoqiSimError
+from naoqi_sim.stack import ContainerState, NaoqiSimStatus
 
-STATUS = NaoSimStatus("0.0.1", "2.1.4.13", True, "none", "none")
+STATUS = NaoqiSimStatus("0.0.1", "2.1.4.13", True, "none", "none")
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def qi_reads(monkeypatch) -> list[str]:
         reads.append(url)
         return STATUS
 
-    monkeypatch.setattr(stack, "read_naosim_status", read)
+    monkeypatch.setattr(stack, "read_naoqisim_status", read)
     return reads
 
 
@@ -34,13 +34,13 @@ def test_nothing_running(docker, qi_reads):
 
 
 def test_a_ready_robot(docker, qi_reads):
-    docker.set(containers={"nao-sim-naoqi28": "healthy", "nao-sim-tts": "running"})
+    docker.set(containers={"naoqi-sim-naoqi28": "healthy", "naoqi-sim-tts": "running"})
 
     status = asyncio.run(stack.read_status())
 
     assert status.containers == [
-        ContainerState("nao-sim-naoqi28", "naoqi28", "running", "healthy"),
-        ContainerState("nao-sim-tts", "tts", "running", ""),
+        ContainerState("naoqi-sim-naoqi28", "naoqi28", "running", "healthy"),
+        ContainerState("naoqi-sim-tts", "tts", "running", ""),
     ]
     assert status.naoqi == STATUS and status.ready
     assert qi_reads == ["tcp://127.0.0.1:9559"]
@@ -48,7 +48,7 @@ def test_a_ready_robot(docker, qi_reads):
 
 @pytest.mark.parametrize("boot", ["starting", "unhealthy", "exited"])
 def test_the_service_is_read_only_once_naoqi_is_healthy(docker, qi_reads, boot):
-    docker.set(containers={"nao-sim-naoqi21": boot, "nao-sim-tts": "running"})
+    docker.set(containers={"naoqi-sim-naoqi21": boot, "naoqi-sim-tts": "running"})
 
     status = asyncio.run(stack.read_status())
 
@@ -61,23 +61,23 @@ def test_cleanup_removes_what_a_dead_run_left(docker, monkeypatch):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", s.getsockname()[1])
-    docker.set(containers={"nao-sim-naoqi21": "healthy", "nao-sim-tts": "running"})
+    docker.set(containers={"naoqi-sim-naoqi21": "healthy", "naoqi-sim-tts": "running"})
 
     removed = asyncio.run(stack.cleanup())
 
-    assert removed == ["nao-sim-naoqi21", "nao-sim-tts"]
+    assert removed == ["naoqi-sim-naoqi21", "naoqi-sim-tts"]
     assert docker.read()["containers"] == {}
     assert any("--profile * down" in c for c in docker.calls)
     assert asyncio.run(stack.cleanup()) == []
 
 
 def test_cleanup_refuses_while_a_run_is_alive(docker, monkeypatch):
-    docker.set(containers={"nao-sim-naoqi21": "healthy", "nao-sim-tts": "running"})
+    docker.set(containers={"naoqi-sim-naoqi21": "healthy", "naoqi-sim-tts": "running"})
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         s.listen()
         monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", s.getsockname()[1])
-        with pytest.raises(NaoSimError, match="Ctrl-C"):
+        with pytest.raises(NaoqiSimError, match="Ctrl-C"):
             asyncio.run(stack.cleanup())
     assert len(docker.read()["containers"]) == 2
     assert not any("down" in c for c in docker.calls)

@@ -1,6 +1,6 @@
 ---
 code:
-  - src/nao_sim/config.py
+  - src/naoqi_sim/config.py
   - docker/compose.yaml
   - examples/configs/default.json
   - examples/configs/2.8.json
@@ -17,15 +17,15 @@ tests:
 
 ## Purpose
 
-One declarative description of *which simulated NAO to run and which devices to attach to it*. A [`NaoSim`](api.md) is built from it, the `nao-sim` CLI loads it from a file, and nao-bridge's `sim` backend embeds it. Today the same facts are spread over `docker compose` profiles, environment variables (`NAO_SIM_VERSION`, `NAO_SIM_TTS_ENGINE`) and the audio output's flags; a config file makes a setup reproducible and lets a test, a CLI user and nao-bridge describe the same stack the same way.
+One declarative description of *which simulated NAO to run and which devices to attach to it*. A [`NaoqiSim`](api.md) is built from it, the `naoqi-sim` CLI loads it from a file, and naoqi-bridge's `sim` backend embeds it. Today the same facts are spread over `docker compose` profiles, environment variables (`NAOQI_SIM_VERSION`, `NAOQI_SIM_TTS_ENGINE`) and the audio output's flags; a config file makes a setup reproducible and lets a test, a CLI user and naoqi-bridge describe the same stack the same way.
 
-It follows nao-bridge's configuration conventions on purpose (its `specs/config.md`), so the two packages' files look alike and a nao-sim config can be pasted into a nao-bridge one unchanged.
+It follows naoqi-bridge's configuration conventions on purpose (its `specs/config.md`), so the two packages' files look alike and a naoqi-sim config can be pasted into a naoqi-bridge one unchanged.
 
-This config is the **host-level** description. The container keeps its own interface, the entrypoint's environment variables ([container.md](../container/container.md), "Entrypoint"); `NaoSim` generates the compose environment from the config, and nobody writes those variables by hand any more.
+This config is the **host-level** description. The container keeps its own interface, the entrypoint's environment variables ([container.md](../container/container.md), "Entrypoint"); `NaoqiSim` generates the compose environment from the config, and nobody writes those variables by hand any more.
 
 ## Decided
 
-### `NaoSimConfig`: top-level structure
+### `NaoqiSimConfig`: top-level structure
 
 ```json
 {
@@ -40,7 +40,7 @@ This config is the **host-level** description. The container keeps its own inter
 
 ```python
 @dataclass
-class NaoSimConfig:
+class NaoqiSimConfig:
     naoqi: NaoqiSettings = field(default_factory=NaoqiSettings)
     speech: SpeechSettings = field(default_factory=SpeechSettings)
     audio_output: AudioOutputSettings = field(default_factory=AudioOutputSettings)
@@ -59,7 +59,7 @@ class NaoqiSettings:
 
 @dataclass
 class SpeechSettings:
-    # "piper" | "espeak" (the tts container's NAO_SIM_TTS_ENGINE)
+    # "piper" | "espeak" (the tts container's NAOQI_SIM_TTS_ENGINE)
     engine: SpeechEngine = "piper"
 
 
@@ -77,9 +77,9 @@ class AudioOutputSettings:
 class AudioInputSettings:
     """The audio input, feeding the ALAudioDevice replacement (audio-input.md)."""
 
-    # "none" | "mic" | "fake" (code plays sounds through NaoSim.fake_audio)
+    # "none" | "mic" | "fake" (code plays sounds through NaoqiSim.fake_audio)
     source: AudioInputSource = "none"
-    # "duplicate" | "silence", published as NaoSim/Audio/Channels
+    # "duplicate" | "silence", published as NaoqiSim/Audio/Channels
     mono: MonoPolicy = "duplicate"
 
 
@@ -97,18 +97,18 @@ class VideoInputSettings:
 
 @dataclass
 class ViewerSettings:
-    """The simulated world (nao-viewer sim mode)."""
+    """The simulated world (naoqi-viewer sim mode)."""
 
     headless: bool = False
     # a bundled scene name ("empty", "table") or a path to an MJCF file
     scene: str = "empty"
-    # "auto" | "placeholder" | "aldebaran" (nao-viewer's world.variant)
+    # "auto" | "placeholder" | "aldebaran" (naoqi-viewer's world.variant)
     variant: ViewerVariant = "auto"
 ```
 
 - Every block is optional. Missing blocks and fields take the defaults above. **A default is declared once**, on the dataclass field; the loaders read it from there (`dataclasses.fields`), so a default cannot drift between direct construction and JSON.
 - **The device blocks are named after the device** ([devices.md](../host/devices.md)): `audio_output`, `audio_input`, `video_input`, each specified in its own spec under `host/`.
-- **`NaoSimConfig()` is valid and useful**: NAOqi 2.1 with speech on the host loudspeaker, the viewer window on the `empty` scene, and no video or audio input (each `NaoSim/*/Source` key stays `none`).
+- **`NaoqiSimConfig()` is valid and useful**: NAOqi 2.1 with speech on the host loudspeaker, the viewer window on the `empty` scene, and no video or audio input (each `NaoqiSim/*/Source` key stays `none`).
 - The `audio_output` block picks the audio output's sink when the caller passes none ([audio-output.md](../host/audio-output.md), "Audio sinks"; [api.md](api.md)): `play` a `DevicePlayer`, `silent` a `NullSink`, `record` a `WavSink`. A sink passed in code (`MemorySink` in tests) wins over the block.
 - Paths (`audio_output.record`, and `viewer.scene` when it ends in `.xml`) are resolved relative to the config file when loaded with `from_json_file`, and relative to the working directory otherwise.
 
@@ -119,37 +119,37 @@ class ViewerSettings:
 - **Unknown keys are errors**, so a typo fails when the config loads.
 - **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; `video_input.fps` is an integer from 1 to 30 (a NAO camera's maximum); `device` is a non-negative integer; `viewer.scene` is a non-empty string.
 - **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`. Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
-- **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists: `NaoSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
-- `config.py` imports neither `qi`, nor `nao_viewer`, nor `sounddevice`.
+- **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists: `NaoqiSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
+- `config.py` imports neither `qi`, nor `naoqi_viewer`, nor `sounddevice`.
 
 ### The viewer and the video input
 
 `viewer.headless` and `video_input.source` together decide whether the simulated world runs ([viewer.md](../host/viewer.md), "Which viewer runs"):
 
-| `viewer.headless` | `video_input.source` | Sim process | Needs `nao-sim[viewer]` |
+| `viewer.headless` | `video_input.source` | Sim process | Needs `naoqi-sim[viewer]` |
 | --- | --- | --- | --- |
-| `false` | any | `NaoViewer` in sim mode, with its window | Yes |
-| `true` | `render` | `NaoViewer` in sim mode, headless | Yes |
+| `false` | any | `NaoqiViewer` in sim mode, with its window | Yes |
+| `true` | `render` | `NaoqiViewer` in sim mode, headless | Yes |
 | `true` | `none` or `webcam` | None | No |
 
 So a server config is `{"viewer": {"headless": true}}`, and it needs no extra; CI runs a headless viewer with the render camera instead ([ci.md](../testing/ci.md)).
 
-The `viewer` block is nao-sim's own, not an embedded `NaoViewerConfig`: `NaoSim` builds the viewer's config from it as `NaoViewerConfig(mode="sim", headless=headless, naoqi=NaoqiSettings(url=sim.url), world=WorldSettings(scene=scene, variant=variant))`. The mode and the NAOqi URL follow from running nao-sim, so they are not settings; nao-viewer's other fields (`ghost`, `naoqi.rate_hz`, `launch_timeout_s`) keep nao-viewer's defaults. `scene` and `variant` take nao-viewer's values and defaults (`empty`, `auto`); this module only checks their form (a non-empty string; one of the three variants), since `config.py` does not import `nao_viewer`. The rest is checked by nao-viewer itself, in `NaoSim.start()` ([api.md](api.md), "Lifecycle"): an unknown bundled scene when step 1 builds the `NaoViewerConfig` (re-raised as a `ConfigError` with key `viewer.scene`, before anything starts), missing meshes when the viewer launches.
+The `viewer` block is naoqi-sim's own, not an embedded `NaoqiViewerConfig`: `NaoqiSim` builds the viewer's config from it as `NaoqiViewerConfig(mode="sim", headless=headless, naoqi=NaoqiSettings(url=sim.url), world=WorldSettings(scene=scene, variant=variant))`. The mode and the NAOqi URL follow from running naoqi-sim, so they are not settings; naoqi-viewer's other fields (`ghost`, `naoqi.rate_hz`, `launch_timeout_s`) keep naoqi-viewer's defaults. `scene` and `variant` take naoqi-viewer's values and defaults (`empty`, `auto`); this module only checks their form (a non-empty string; one of the three variants), since `config.py` does not import `naoqi_viewer`. The rest is checked by naoqi-viewer itself, in `NaoqiSim.start()` ([api.md](api.md), "Lifecycle"): an unknown bundled scene when step 1 builds the `NaoqiViewerConfig` (re-raised as a `ConfigError` with key `viewer.scene`, before anything starts), missing meshes when the viewer launches.
 
 ### Sources not built yet
 
-The config accepts every source value from the start (`webcam`, `render`, `mic`, `fake`), so config files written now stay valid as the device specs land. Until a device is built, `NaoSim.start()` fails with an error naming the missing device instead of silently running without it; today that is the `webcam` source only.
+The config accepts every source value from the start (`webcam`, `render`, `mic`, `fake`), so config files written now stay valid as the device specs land. Until a device is built, `NaoqiSim.start()` fails with an error naming the missing device instead of silently running without it; today that is the `webcam` source only.
 
-- **The `wav` source is gone.** It was accepted from the start but never built (`NaoSim.start()` refused it); the `fake` source replaced it before any release ([audio-input.md](../host/audio-input.md), "Sources"), so a file that still says `"wav"`, or has a `wav` field, fails at load like any unknown value or key. `audio_input.gate_tail_s` went with the microphone gate ([audio-input.md](../host/audio-input.md), "The robot hears itself") and fails the same way.
+- **The `wav` source is gone.** It was accepted from the start but never built (`NaoqiSim.start()` refused it); the `fake` source replaced it before any release ([audio-input.md](../host/audio-input.md), "Sources"), so a file that still says `"wav"`, or has a `wav` field, fails at load like any unknown value or key. `audio_input.gate_tail_s` went with the microphone gate ([audio-input.md](../host/audio-input.md), "The robot hears itself") and fails the same way.
 
 ### File format
 
-JSON, as nao-bridge: a `sim` block is pasted between a nao-sim file and a nao-bridge file unchanged, which a second format would break. The example files carry no comments; what each one is for is listed below and in the README.
+JSON, as naoqi-bridge: a `sim` block is pasted between a naoqi-sim file and a naoqi-bridge file unchanged, which a second format would break. The example files carry no comments; what each one is for is listed below and in the README.
 
 ### Embedding in other configs
 
-- The `nao-sim` CLI reads a `NaoSimConfig` file as is (`nao-sim run --config sim.json`, see [cli.md](cli.md)).
-- nao-bridge's `sim` backend (`"backend": "sim"`) embeds it as its `sim` block, exactly a `NaoSimConfig`, so a block can be copied between a nao-sim file and a nao-bridge file. nao-bridge imports `NaoSimConfig` from `nao_sim` (lazily, behind its `[sim]` extra); nao-sim never imports nao-bridge.
+- The `naoqi-sim` CLI reads a `NaoqiSimConfig` file as is (`naoqi-sim run --config sim.json`, see [cli.md](cli.md)).
+- naoqi-bridge's `sim` backend (`"backend": "sim"`) embeds it as its `sim` block, exactly a `NaoqiSimConfig`, so a block can be copied between a naoqi-sim file and a naoqi-bridge file. naoqi-bridge imports `NaoqiSimConfig` from `naoqi_sim` (lazily, behind its `[sim]` extra); naoqi-sim never imports naoqi-bridge.
 
 ### Example files
 
@@ -163,4 +163,4 @@ JSON, as nao-bridge: a `sim` block is pasted between a nao-sim file and a nao-br
 
 ## Open questions
 
-1. **More blocks.** Candidates, each deferred until its spec needs it: `speech.language` and voice, the audio output's device and volume ([audio-output.md](../host/audio-output.md), open questions), the microphone's device ([audio-input.md](../host/audio-input.md), open questions), an image data folder other than the default ([api.md](api.md), "Files on disk"), ports (today 9559, 9562 and the host link's 9563 are fixed, so one nao-sim runs per machine). Adding a block does not break existing files.
+1. **More blocks.** Candidates, each deferred until its spec needs it: `speech.language` and voice, the audio output's device and volume ([audio-output.md](../host/audio-output.md), open questions), the microphone's device ([audio-input.md](../host/audio-input.md), open questions), an image data folder other than the default ([api.md](api.md), "Files on disk"), ports (today 9559, 9562 and the host link's 9563 are fixed, so one naoqi-sim runs per machine). Adding a block does not break existing files.

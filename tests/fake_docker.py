@@ -1,11 +1,11 @@
-"""A fake `docker` first on PATH, for the tests of what nao-sim asks Docker.
+"""A fake `docker` first on PATH, for the tests of what naoqi-sim asks Docker.
 
 The fake keeps its state in a JSON file: the images (ID and labels, set by `compose build` from
-the environment's `NAO_SIM_VERSION` and `NAO_SIM_RECIPES`, the same ID for the same inputs, as
+the environment's `NAOQI_SIM_VERSION` and `NAOQI_SIM_RECIPES`, the same ID for the same inputs, as
 Docker's cache), the containers and how the NAOqi one boots (`boot`: healthy, starting,
 unhealthy, exited), whether the tts engine answers, and whether Docker is up or a build fails.
-Every invocation is logged, and `up` records the `NAO_SIM_TTS_ENGINE` it was given. A NAOqi build
-reads its `image-data` context as compose does, from `$NAO_SIM_IMAGE_DATA/<version>`: it records the
+Every invocation is logged, and `up` records the `NAOQI_SIM_TTS_ENGINE` it was given. A NAOqi build
+reads its `image-data` context as compose does, from `$NAOQI_SIM_IMAGE_DATA/<version>`: it records the
 folder, and fails as BuildKit does when the folder is not there.
 """
 
@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from nao_sim import docker_images
-from nao_sim.docker_images import IMAGES, TTS_IMAGE
+from naoqi_sim import docker_images
+from naoqi_sim.docker_images import IMAGES, TTS_IMAGE
 
 FAKE_DOCKER = textwrap.dedent(
     """\
@@ -50,13 +50,13 @@ FAKE_DOCKER = textwrap.dedent(
                 print("failed to solve: boom", file=sys.stderr)
                 done(1)
             labels = {
-                "io.nao-sim.version": os.environ.get("NAO_SIM_VERSION", "dev"),
-                "io.nao-sim.recipes": os.environ.get("NAO_SIM_RECIPES", ""),
+                "io.naoqi-sim.version": os.environ.get("NAOQI_SIM_VERSION", "dev"),
+                "io.naoqi-sim.recipes": os.environ.get("NAOQI_SIM_RECIPES", ""),
             }
             for s in services:
                 version = state["services"][s].get("version")
                 if version is not None:
-                    context = os.path.join(os.environ.get("NAO_SIM_IMAGE_DATA", "./image-data"), version)
+                    context = os.path.join(os.environ.get("NAOQI_SIM_IMAGE_DATA", "./image-data"), version)
                     if not os.path.isdir(context):
                         print(f"failed to solve: {context}: no such directory", file=sys.stderr)
                         done(1)
@@ -68,12 +68,12 @@ FAKE_DOCKER = textwrap.dedent(
                     "Labels": labels,
                 }
         elif verb == "up":
-            state["up_tts_engine"] = os.environ.get("NAO_SIM_TTS_ENGINE")
+            state["up_tts_engine"] = os.environ.get("NAOQI_SIM_TTS_ENGINE")
             for s in services:
                 name = state["services"][s]["container"]
                 state["containers"][name] = state["boot"] if s != "tts" else "running"
         elif verb == "logs":
-            print("nao-sim-naoqi21  | [entrypoint] fake log line")
+            print("naoqi-sim-naoqi21  | [entrypoint] fake log line")
         elif verb == "ps":
             looks = {"healthy": ("running", "healthy"), "starting": ("running", "starting"),
                      "unhealthy": ("running", "unhealthy"), "exited": ("exited", ""),

@@ -1,0 +1,381 @@
+"""Fetch what the NAOqi images are built from into the image data folder's <version>/ (`files.IMAGE_DATA`:
+docker/image-data/ in a checkout, the user data directory when installed): the pinned Choregraphe
+suite, the robot's `animations` package extracted from the public robot image, and the build files
+whose headers our C++ NAOqi modules are compiled against (the version's own C++ SDK:
+specs/container/container.md, "Build files").
+
+These are Aldebaran's files, downloaded from Aldebaran's own public sources (its GitHub
+repositories with Git LFS; its download site for the 2.1 SDK, which no repository holds) to this
+machine only: they stay in the image data folder (gitignored in a checkout, never in the wheel)
+and in locally built images, never in the repository or a pushed image.
+
+A file already there with the pinned hash is kept, so the command is cheap to re-run. A file with
+the expected name but another hash (a Git LFS pointer, a truncated copy) is an error and is left
+alone. Downloads and extractions go to `<file>.part`, are hashed on the fly and only take the
+final name once the hash matches. Each verified file's size, modification time and hash are
+recorded in `<image-data>/hashes.json`, so a file that has not changed since is not hashed again
+(the 2.8 suite alone is 1.3 GB).
+
+The robot image (`.opn`) is a 4096-byte `ALDIMAGE` header, an installer shell script whose
+variables locate the payload, then the compressed ext3 root filesystem (bzip2 on 2.1, gzip on
+2.8). It is decompressed here and streamed into a throwaway Alpine container, whose `debugfs`
+writes the package to stdout: no ext3 tooling or mount is needed on the host.
+"""
+
+import bz2
+import hashlib
+import json
+import re
+import subprocess
+import sys
+import threading
+import urllib.parse
+import urllib.request
+import zlib
+from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass
+from pathlib import Path
+
+from naoqi_sim import files
+from naoqi_sim.errors import FetchError
+
+IMAGE_DATA = files.IMAGE_DATA
+CHUNK = 1 << 20
+PACKAGE = "animations.pkg"
+
+# Git LFS files are served from media.githubusercontent.com; the raw URL returns the pointer.
+_V5 = "https://media.githubusercontent.com/media/aldebaran/NAO-V5-ressources/main/"
+_V6 = "https://media.githubusercontent.com/media/aldebaran/nao6-binaries/master/"
+_V6_SDK = "https://media.githubusercontent.com/media/aldebaran/nao6-doc-sdk/master/"
+_SDK = "https://community-static.aldebaran.com/resources/"  # 2.1's SDK: on no GitHub repository
+
+
+@dataclass(frozen=True)
+class PinnedFile:
+    url: str
+    sha256: str
+    name: str | None = None  # saved under this name instead of the URL's last part
+
+    @property
+    def filename(self) -> str:
+        return self.name or urllib.parse.unquote(self.url.rsplit("/", 1)[1])
+
+
+@dataclass(frozen=True)
+class Version:
+    name: str
+    suite: PinnedFile
+    image: PinnedFile  # the robot system image the package is extracted from
+    package_path: str  # animations.pkg inside the image's root filesystem
+    package_sha256: str
+    # Headers the native relay is compiled against in the image build (Dockerfile stage `relay`)
+    build_files: tuple[PinnedFile, ...] = ()
+
+
+VERSIONS = {
+    "2.1": Version(
+        "2.1",
+        PinnedFile(
+            _V5
+            + "Choregraphe/Linux/Binaries/choregraphe-suite-2.1.4.13-linux64.tar.gz",
+            "bad0212956e2223f36736cff33bdc1e008311b8bf9efd81a52dcf05895c8abce",
+        ),
+        PinnedFile(
+            _V5
+            + "NAOqi%202.1.4.13/NAOqi%20Images/opennao-atom-system-image-2.1.4.13_2015-08-27.opn",
+            "5d18427ba6f5199d30cf29941b20ad5fa6a06b8f64a29126953cdfa33dbb9a24",
+        ),
+        "/usr/share/naoqi/apps/animations.pkg",  # version 5.0.9
+        "a1d46221f5f28b91c8e7564ade4532f390e5911f14210787b3352a84c2b507e1",
+        (
+            PinnedFile(
+                _SDK + "2.1.4.13/sdk-c%2B%2B/naoqi-sdk-2.1.4.13-linux64.tar.gz",
+                "a1669524819088b7aac82e04450e2c5dce6ffdd11c968444db89b6831955683b",
+            ),
+        ),
+    ),
+    "2.8": Version(
+        "2.8",
+        PinnedFile(
+            _V6 + "choregraphe-suite-2.8.7.4-linux64.tar.gz",
+            "edf95da2ae8ec7573e3a590b6db47a472f9d2733280a4a597841fbf0c1e6c63c",
+        ),
+        PinnedFile(
+            _V6 + "nao-x86-2.8.7.4_20210820_094013.opn",
+            "d82e5dd221712555f20c430f3ebcbe46825d5179f1bc0e2594629489855e24a4",
+        ),
+        "/opt/aldebaran/share/naoqi/apps/animations.pkg",  # version 7.0.3
+        "8866ddf4bb45eab79068cfe5746c66f3b8f507356fd93affed204bc834002f2c",
+        (
+            # The suite's own release: module API, libqi and boost 1.64 headers.
+            PinnedFile(
+                _V6_SDK + "naoqi-sdk-2.8.7.4-linux64.tar.gz",
+                "e42c8b95e6e3de349cf76100d006a9f5b48bd625f0236b0a0fe094fc29970967",
+            ),
+        ),
+    ),
+}
+
+
+def _log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
+
+
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(CHUNK):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+HASHES = "hashes.json"  # in the image data folder
+
+
+def _record_path(path: Path) -> tuple[Path, str]:
+    """The image data folder's hash record and the file's key in it (`<version>/<name>`)."""
+    return path.parent.parent / HASHES, f"{path.parent.name}/{path.name}"
+
+
+def _load_record(record: Path) -> dict[str, dict]:
+    try:
+        data = json.loads(record.read_text())
+    except (OSError, ValueError):  # absent or unreadable: hash everything again
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _stamp(path: Path) -> dict:
+    st = path.stat()
+    return {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def _remember(path: Path, sha256: str) -> None:
+    """Record that `path`, as it is now, has hash `sha256`."""
+    record, key = _record_path(path)
+    entries = _load_record(record)
+    entries[key] = {**_stamp(path), "sha256": sha256}
+    record.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
+
+
+def _unchanged(path: Path, sha256: str) -> bool:
+    """True if `path` was verified with hash `sha256` and its size and time have not changed."""
+    record, key = _record_path(path)
+    return _load_record(record).get(key) == {**_stamp(path), "sha256": sha256}
+
+
+def _present(path: Path, sha256: str) -> bool:
+    """True if `path` holds the pinned file, False if absent; any other file is an error."""
+    if not path.exists():
+        return False
+    if _unchanged(path, sha256):
+        _log(f"{path.name}: already present (unchanged since verified)")
+        return True
+    if _sha256(path) != sha256:
+        raise FetchError(
+            f"{path} is not the pinned file (SHA-256 mismatch; a Git LFS pointer or a "
+            "partial copy?). Delete it to fetch it again."
+        )
+    _remember(path, sha256)
+    _log(f"{path.name}: already present")
+    return True
+
+
+def _write(chunks: Iterable[bytes], dest: Path, sha256: str, source: str) -> None:
+    """Write `chunks` to `<dest>.part`, then rename it to `dest` if its hash is `sha256`."""
+    part = dest.with_name(dest.name + ".part")
+    h = hashlib.sha256()
+    try:
+        with part.open("wb") as f:
+            for chunk in chunks:
+                f.write(chunk)
+                h.update(chunk)
+        if h.hexdigest() != sha256:
+            raise FetchError(
+                f"{source}: got SHA-256 {h.hexdigest()}, expected {sha256}"
+            )
+        part.rename(dest)
+    finally:
+        part.unlink(missing_ok=True)
+    _remember(dest, sha256)
+    _log(f"{dest} verified")
+
+
+def _download(url: str) -> Iterator[bytes]:
+    with urllib.request.urlopen(url) as r:
+        total = int(r.headers.get("Content-Length") or 0)
+        done, shown = 0, -1
+        while chunk := r.read(CHUNK):
+            yield chunk
+            done += len(chunk)
+            if total and (pct := done * 100 // total) // 10 != shown:
+                shown = pct // 10
+                _log(f"  {pct}% of {total // 1_000_000} MB")
+
+
+def fetch_file(f: PinnedFile, folder: Path) -> Path:
+    """Make sure `folder` holds the pinned file; download it if absent. Returns its path."""
+    dest = folder / f.filename
+    if not _present(dest, f.sha256):
+        folder.mkdir(parents=True, exist_ok=True)
+        _log(f"downloading {f.url}")
+        _write(_download(f.url), dest, f.sha256, f.url)
+    return dest
+
+
+@dataclass(frozen=True)
+class OpnPayload:
+    offset: int
+    length: int
+    compression: str  # "bzip2" or "gzip"
+
+
+_MAGIC = {"bzip2": b"BZh", "gzip": b"\x1f\x8b"}
+
+
+def opn_payload(opn: Path) -> OpnPayload:
+    """Where a robot image's compressed root filesystem is, from its installer's variables."""
+    with opn.open("rb") as f:
+        head = f.read(4096 + 128 * 1024)
+        if not head.startswith(b"ALDIMAGE"):
+            raise FetchError(f"{opn} is not a NAO robot image (no ALDIMAGE header)")
+        found = dict(
+            re.findall(
+                rb'^(MAGIC_SIZE|SIZE_BASE|INSTALLER_SIZE|IMAGE_CMP_SIZE)="?(\d+)"?\s*$',
+                head,
+                re.MULTILINE,
+            )
+        )
+        try:
+            magic, base, installer, size = (
+                int(found[k])
+                for k in (
+                    b"MAGIC_SIZE",
+                    b"SIZE_BASE",
+                    b"INSTALLER_SIZE",
+                    b"IMAGE_CMP_SIZE",
+                )
+            )
+        except KeyError as e:
+            raise FetchError(
+                f"{opn}: installer variable {e.args[0].decode()} not found"
+            ) from None
+        offset = magic + installer * base
+        f.seek(offset)
+        start = f.read(3)
+    for compression, m in _MAGIC.items():
+        if start.startswith(m):
+            return OpnPayload(offset, size * base, compression)
+    raise FetchError(f"{opn}: unknown compression at byte {offset} ({start.hex()})")
+
+
+def rootfs_chunks(opn: Path) -> Iterator[bytes]:
+    """The robot image's root filesystem, decompressed (concatenated streams included)."""
+    p = opn_payload(opn)
+    magic = _MAGIC[p.compression]
+
+    def new():
+        return (
+            bz2.BZ2Decompressor()
+            if p.compression == "bzip2"
+            else zlib.decompressobj(31)
+        )
+
+    d = None
+    pending = b""
+    with opn.open("rb") as f:
+        f.seek(p.offset)
+        left = p.length
+        while left > 0 and (data := f.read(min(CHUNK, left))):
+            left -= len(data)
+            data = pending + data
+            pending = b""
+            while data:
+                if (
+                    d is None
+                ):  # between streams: another one, or the padding after the last
+                    if len(data) < len(magic):
+                        pending = data
+                        break
+                    if not data.startswith(magic):
+                        return
+                    d = new()
+                if out := d.decompress(data):
+                    yield out
+                if not d.eof:
+                    break
+                data = d.unused_data
+                d = None
+    if d is not None:
+        raise FetchError(f"{opn}: the compressed root filesystem is truncated")
+
+
+# Runs in alpine: store the filesystem streamed on stdin, then print one file of it ($0).
+_DEBUGFS = 'apk add --no-cache -q e2fsprogs-extra >&2 && cat > /rootfs && debugfs -R "cat $0" /rootfs'
+
+
+def docker_cat(rootfs: Iterable[bytes], path: str) -> Iterator[bytes]:
+    """The file at `path` in the ext3 filesystem `rootfs`, read by debugfs in a throwaway container."""
+    proc = subprocess.Popen(
+        ["docker", "run", "-i", "--rm", "alpine:3.20", "sh", "-c", _DEBUGFS, path],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    assert proc.stdin is not None and proc.stdout is not None
+    stdin, stdout = proc.stdin, proc.stdout
+    failed: list[Exception] = []
+
+    def feed():
+        try:
+            for chunk in rootfs:
+                stdin.write(chunk)
+        except BrokenPipeError:
+            pass
+        except (FetchError, OSError, zlib.error) as e:  # bad payload: re-raised below
+            failed.append(e)
+            proc.kill()
+        finally:
+            stdin.close()
+
+    feeder = threading.Thread(target=feed, daemon=True)
+    feeder.start()
+    yield from iter(lambda: stdout.read(CHUNK), b"")
+    feeder.join()
+    if failed:
+        raise failed[0]
+    if proc.wait() != 0:
+        raise FetchError(
+            f"extracting {path} with docker failed (exit {proc.returncode})"
+        )
+
+
+Cat = Callable[[Iterable[bytes], str], Iterable[bytes]]
+
+
+def fetch(
+    version: Version, image_data: Path = IMAGE_DATA, cat: Cat = docker_cat
+) -> Path:
+    """Make sure `<image-data>/<version>/` holds the suite, `animations.pkg` and the build files.
+    Returns the folder."""
+    folder = image_data / version.name
+    _log(f"NAOqi {version.name}")
+    fetch_file(version.suite, folder)
+    for f in version.build_files:
+        fetch_file(f, folder)
+    package = folder / PACKAGE
+    if not _present(package, version.package_sha256):
+        opn = folder / version.image.filename
+        users = opn.exists()  # a robot image the user put there is kept
+        try:
+            fetch_file(version.image, folder)
+            _log(f"extracting {version.package_path} from {opn.name} (needs Docker)")
+            _write(
+                cat(rootfs_chunks(opn), version.package_path),
+                package,
+                version.package_sha256,
+                f"{opn.name}:{version.package_path}",
+            )
+        finally:
+            if not users:
+                opn.unlink(missing_ok=True)
+    return folder

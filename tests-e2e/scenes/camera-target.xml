@@ -1,7 +1,7 @@
-<!-- The live tier's scene: nao-viewer's empty scene plus one target for the head camera, a red
+<!-- The live tier's scene: naoqi-viewer's empty scene plus one target for the head camera, a red
      pillar 1.5 m straight ahead of the robot, 1 m tall so it is in view whatever the robot's
      height. Emissive, so its red does not depend on the light. The robot is attached by
-     nao-viewer (model.load_world). -->
+     naoqi-viewer (model.load_world). -->
 <mujoco model="camera-target">
   <visual>
     <headlight ambient="0.35 0.35 0.35" diffuse="0.5 0.5 0.5" specular="0.1 0.1 0.1"/>

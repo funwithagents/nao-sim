@@ -10,10 +10,10 @@
 . "$(dirname "$0")/entrypoint-lib.sh"
 
 REPLACED="ALTextToSpeech ALAudioPlayer"                              # built-ins our modules take over
-RELAY="$NAOQI_HOME/lib/nao-sim/libnao_sim_audio_device_relay.so" # the native relay, loaded before our modules
-MODULES="nao_sim_status_almodule nao_sim_speech_almodule nao_sim_audio_device_almodule nao_sim_audio_player_almodule" # ours, in load order
-FRONTS="$NAOQI_HOME/lib/nao-sim/libnao_sim_speech_front.so $NAOQI_HOME/lib/nao-sim/libnao_sim_audio_player_front.so"      # C++ fronts taking the replaced names, after them
-ADDED="ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech _NaoSimAudioPlayer" # names no built-in holds, which we register
+RELAY="$NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_audio_device_relay.so" # the native relay, loaded before our modules
+MODULES="naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule" # ours, in load order
+FRONTS="$NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_speech_front.so $NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_audio_player_front.so"      # C++ fronts taking the replaced names, after them
+ADDED="ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer" # names no built-in holds, which we register
 LATE="expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog"
 # LATE, launched after our modules in a NAO's autoload order:
 #   animatedspeech, dialog       hold a proxy to ALTextToSpeech (deferred from the autoload file)

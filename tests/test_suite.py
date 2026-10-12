@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from nao_sim import suite
-from nao_sim.errors import FetchError
-from nao_sim.suite import (
+from naoqi_sim import suite
+from naoqi_sim.errors import FetchError
+from naoqi_sim.suite import (
     PACKAGE,
     VERSIONS,
     PinnedFile,
@@ -295,7 +295,7 @@ def test_the_dockerfile_builds_from_the_fetched_files(name):
         in dockerfile
     )
     compose = (DOCKER / "compose.yaml").read_text()
-    assert f"image-data: ${{NAO_SIM_IMAGE_DATA:-./image-data}}/{name}\n" in compose
+    assert f"image-data: ${{NAOQI_SIM_IMAGE_DATA:-./image-data}}/{name}\n" in compose
     for f in (v.suite, v.image):
         assert f.url.startswith("https://media.githubusercontent.com/media/aldebaran/")
         assert re.fullmatch(r"[0-9a-f]{64}", f.sha256)

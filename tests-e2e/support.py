@@ -2,9 +2,9 @@
 
 The live tests drive their own simulated NAO: they build and verify a version's images with
 `fetch_and_build_images` when `check_images` finds them missing or outdated (an edit under
-docker/ included), then run it with a `NaoSim` (tests-e2e/conftest.py). A version whose suite
+docker/ included), then run it with a `NaoqiSim` (tests-e2e/conftest.py). A version whose suite
 (or image) is missing, or a machine without Docker, skips, never fails, unless
-`NAO_SIM_E2E_VERSION` names the version to run (CI, specs/testing/ci.md): then only that version
+`NAOQI_SIM_E2E_VERSION` names the version to run (CI, specs/testing/ci.md): then only that version
 runs, and what would skip fails. `Container` reaches into the running NAOqi container for what qi
 does not show (the replacement's log, files, the image).
 """
@@ -25,8 +25,8 @@ import numpy as np
 import pytest
 import qi
 
-from nao_sim import docker_images, suite
-from nao_sim.errors import ImagesMissingError, ImagesOutdatedError, NaoSimError
+from naoqi_sim import docker_images, suite
+from naoqi_sim.errors import ImagesMissingError, ImagesOutdatedError, NaoqiSimError
 
 REPO = Path(__file__).resolve().parent.parent
 COMPOSE = REPO / "docker" / "compose.yaml"
@@ -34,16 +34,16 @@ IMAGE_DATA = REPO / "docker" / "image-data"
 URL = "tcp://127.0.0.1:9559"
 AUDIO_OUTPUT_PORT = 9562
 HOST_LINK_PORT = 9563
-REQUIRED = os.environ.get("NAO_SIM_E2E_VERSION") or None  # CI: this version must run
+REQUIRED = os.environ.get("NAOQI_SIM_E2E_VERSION") or None  # CI: this version must run
 # "loopback": the default audio output and input are wired to each other (CI's PulseAudio null
 # sink), so the tests that use real sound devices run; without it they skip.
-AUDIO = os.environ.get("NAO_SIM_E2E_AUDIO") or None
+AUDIO = os.environ.get("NAOQI_SIM_E2E_AUDIO") or None
 
 
 @dataclass(frozen=True)
 class Version:
     name: str
-    naoqi_version: str  # what NaoSim.getNaoqiVersion() reports
+    naoqi_version: str  # what NaoqiSim.getNaoqiVersion() reports
     service: str  # compose service
     container: str
     image: str
@@ -59,21 +59,21 @@ VERSIONS = {
         "2.1",
         "2.1.4.13",
         "naoqi21",
-        "nao-sim-naoqi21",
-        "nao-sim/naoqi:2.1.4.13",
+        "naoqi-sim-naoqi21",
+        "naoqi-sim/naoqi:2.1.4.13",
         "2.1",
         "/home/nao/speech_almodule.jsonl",
-        "nao-sim ALModule replacement",
+        "naoqi-sim ALModule replacement",
     ),
     "2.8": Version(
         "2.8",
         "2.8.7.4",
         "naoqi28",
-        "nao-sim-naoqi28",
-        "nao-sim/naoqi:2.8.7.4",
+        "naoqi-sim-naoqi28",
+        "naoqi-sim/naoqi:2.8.7.4",
         "2.8",
         "/home/nao/speech_qiservice.jsonl",
-        "nao-sim qi.Session replacement",
+        "naoqi-sim qi.Session replacement",
     ),
 }
 
@@ -84,7 +84,7 @@ def e2e_versions() -> list[str]:
         return sorted(VERSIONS)
     if REQUIRED not in VERSIONS:
         raise pytest.UsageError(
-            f"NAO_SIM_E2E_VERSION={REQUIRED!r}: choose from {', '.join(sorted(VERSIONS))}"
+            f"NAOQI_SIM_E2E_VERSION={REQUIRED!r}: choose from {', '.join(sorted(VERSIONS))}"
         )
     return [REQUIRED]
 
@@ -92,7 +92,7 @@ def e2e_versions() -> list[str]:
 def check_audio_setting() -> None:
     if AUDIO not in (None, "loopback"):
         raise pytest.UsageError(
-            f"NAO_SIM_E2E_AUDIO={AUDIO!r}: the only value is 'loopback'"
+            f"NAOQI_SIM_E2E_AUDIO={AUDIO!r}: the only value is 'loopback'"
         )
 
 
@@ -101,7 +101,7 @@ def require_loopback() -> None:
     sound system fails instead (CI)."""
     if AUDIO != "loopback":
         pytest.skip(
-            "uses the default sound devices: set NAO_SIM_E2E_AUDIO=loopback when they are "
+            "uses the default sound devices: set NAOQI_SIM_E2E_AUDIO=loopback when they are "
             "wired to each other (a virtual loopback), never your loudspeakers and microphone"
         )
     try:
@@ -110,7 +110,7 @@ def require_loopback() -> None:
         sd.query_devices(kind="input")
         sd.query_devices(kind="output")
     except Exception as e:  # noqa: BLE001 (PortAudio's errors are not typed)
-        pytest.fail(f"NAO_SIM_E2E_AUDIO=loopback but no default sound devices: {e}")
+        pytest.fail(f"NAOQI_SIM_E2E_AUDIO=loopback but no default sound devices: {e}")
 
 
 def tone(freq: float, seconds: float, rate: int, amplitude: float = 8000) -> np.ndarray:
@@ -145,13 +145,13 @@ class Chunk:
 
 class Listener:
     """A client's audio service: registered on a session, subscribed to ALAudioDevice like
-    nao-bridge's microphone, recording every buffer with its arrival time."""
+    naoqi-bridge's microphone, recording every buffer with its arrival time."""
 
     count = 0
 
     def __init__(self, session: qi.Session):
         Listener.count += 1
-        self.name = f"NaoSimE2EListener{Listener.count}"
+        self.name = f"NaoqiSimE2EListener{Listener.count}"
         self.session = session
         self.chunks: list[Chunk] = []
         self._lock = threading.Lock()
@@ -208,7 +208,7 @@ class Listener:
 def unavailable(reason: str) -> NoReturn:
     """Skip a test whose means the machine lacks; fail it when a version is required."""
     if REQUIRED is not None:
-        pytest.fail(f"{reason} (NAO_SIM_E2E_VERSION={REQUIRED} requires it)")
+        pytest.fail(f"{reason} (NAOQI_SIM_E2E_VERSION={REQUIRED} requires it)")
     pytest.skip(reason)
 
 
@@ -251,7 +251,7 @@ def ensure_images(version: Version) -> None:
     pinned = suite.VERSIONS[version.name]
     folder = IMAGE_DATA / version.name
     try:
-        # Current images (this nao-sim, these recipes, verified) are used as they are.
+        # Current images (this naoqi-sim, these recipes, verified) are used as they are.
         docker_images.check_images(version.name)
     except (ImagesMissingError, ImagesOutdatedError) as stale:
         if not (
@@ -265,7 +265,7 @@ def ensure_images(version: Version) -> None:
         # The one slow step, as a user runs it: build from the checkout and verify.
         try:
             asyncio.run(docker_images.fetch_and_build_images([version.name]))
-        except NaoSimError as e:
+        except NaoqiSimError as e:
             pytest.fail(f"fetch-and-build-images failed for {version.name}: {e}")
 
 
@@ -277,7 +277,7 @@ def require_free_ports() -> None:
     ):
         if _port_taken(port):
             pytest.fail(
-                f"port {port} ({what}) is taken: stop the running nao-sim (or the stack "
+                f"port {port} ({what}) is taken: stop the running naoqi-sim (or the stack "
                 "started by hand) first"
             )
 
@@ -293,7 +293,7 @@ class Container:
         assert res.returncode == 0, res.stderr
 
     def image_env(self) -> dict[str, str]:
-        """The environment baked into the version's image (`NAO_SIM_VERSION`, ...)."""
+        """The environment baked into the version's image (`NAOQI_SIM_VERSION`, ...)."""
         res = _run(
             "docker",
             "image",
@@ -352,7 +352,7 @@ V28 = %(v28)r
 if V28:
     import qi
     _s = qi.Session()
-    _s.connect("tcp://127.0.0.1:%%s" %% os.environ.get("NAO_SIM_INTERNAL_PORT", "9559"))
+    _s.connect("tcp://127.0.0.1:%%s" %% os.environ.get("NAOQI_SIM_INTERNAL_PORT", "9559"))
     def proxies(name):
         return _s.service(name), _s.service(name)
     def start(p, method, *args):

@@ -1,6 +1,6 @@
 ---
 code:
-  - src/nao_sim/example.py
+  - src/naoqi_sim/example.py
 tests:
   - tests/test_example.py
 ---
