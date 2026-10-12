@@ -1,6 +1,6 @@
 # Rename to naoqi-sim
 
-**Status:** In progress
+**Status:** Done
 
 Implements the toolkit rename decided on Oct 12, 2026 ([analysis/naoqi-rename.md](../analysis/naoqi-rename.md): what changes, what stays, the order across the four repositories, the local migration). This plan renames nao-sim to naoqi-sim everywhere a name comes from the package: repository, distribution, import package, CLI, the `NaoSim*` classes and config, the `NaoSim` service and `NaoSim/*` ALMemory keys (the cross-package contract, [status-service.md](../specs/container/status-service.md)), the NAOqi-side modules and files, Docker names and labels, `NAO_SIM_*` variables, the user data directory, specs and docs; and follows naoqi-viewer's rename. It changes no behavior and adds no compatibility alias.
 
@@ -75,3 +75,12 @@ Spec statuses: the spec edits land in the same change as the code, so every `Imp
 - CI green on both tiers and both versions.
 
 Mark this plan `Done` here and in [_index.md](_index.md) once merged with CI green and the memories updated.
+
+## Outcome
+
+Done Oct 12, 2026. The four GitHub repositories are renamed. naoqi-sim `8ca438d` pins naoqi-viewer `917a782`; naoqi-viewer's CI builds naoqi-sim at `8ca438d`, and both CI runs are green (one 2.1 live run failed on a timing race in `test_a_sound_and_a_sentence_play_together`, sentence ending 60 ms before the beep; it passed on rerun). Deviations:
+
+- Step 1's moves of the working folders and Claude project folders could not run from a Claude session inside them: they are in `../naoqi-migrate.sh`, run once every session is closed. The GitHub rename and the remote URL ran first, as planned.
+- Branches merged fast-forward, so every pinned commit is on `main`.
+- Also renamed, outside the table: the C++ macro `NAOSIM_NAOQI_28` → `NAOQISIM_NAOQI_28` and the speech engine name `"naosim"` → `"naoqisim"`.
+- naoqi-meshes' release `r1` was deleted and republished, not `r2`; its repository keeps no `plans/`.
