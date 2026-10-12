@@ -1,10 +1,14 @@
 ---
 code:
-  - docker/modules/nao_sim_tts_core.py
-  - docker/modules/nao_sim_tts_almodule.py
-  - docker/modules/nao_sim_tts_qiservice.py
+  - docker/naoqi/services/speech/nao_sim_speech_core.py
+  - docker/naoqi/services/speech/nao_sim_speech_almodule.py
+  - docker/naoqi/services/speech/nao_sim_speech_qiservice.py
+  - docker/naoqi/services/speech/nao_sim_speech_front.cpp
+  - docker/naoqi/entrypoint-2.1.sh
+  - docker/naoqi/entrypoint-2.8.sh
 tests:
-  - tests/test_tts_core.py
+  - tests/test_speech_core.py
+  - tests/test_entrypoint.py
   - tests-e2e/test_speech_live.py
 ---
 
@@ -45,13 +49,26 @@ Only one request and one reply cross from the NAOqi container per sentence, and 
   - The text carries `\mrk=N\` only (no `\pau=500\`). In contextual mode it also contains the module's own auto-inserted `\mrk=N\` tags.
   - At start it connects to the hidden signal `_started`, and dies without it.
   - Bookmark and `Status` expectations are as on 2.1.
+- **How `ALAnimatedSpeech` stops the speech** (measured Oct 12, 2026: today a stop on it never reaches the Python replacement, and the sentence plays to its end):
+  - 2.1: it posts `say` and, when stopped, calls `ALTextToSpeech`'s generic `stop(id)` on that call, polling `isRunning(id)` (its library's own messages; the C++ front's live test passes through this path).
+  - 2.8: it calls `_sayWithLocale` as a qi call and, when stopped, cancels that call's future: `qicli trace ALTextToSpeech` shows `locale`, `_sayWithLocale` and nothing else, no `stop` and no `stopAll`.
 - **Choregraphe box library** (all 160 boxes of the 2.1 suite scanned):
-  - Say box: `say` and `stop`.
-  - Animated Say: goes through `ALAnimatedSpeech`.
+  - Say box: `id = post.say(text)`, `wait(id, 0)`, and `stop(id)` from a second proxy (2.1); on 2.8, `id = pCall("say", text)`, `wait(id)` and `stop(id)` on qi service objects. `stop(id)` and `wait` are the `ALModule` generics, which a Python replacement cannot serve (measured Oct 12, 2026: [service-replacement.md](../container/service-replacement.md), "Task ids, `wait` and `stop(id)`").
+  - Animated Say: goes through `ALAnimatedSpeech`, with the same pattern on `ALAnimatedSpeech`.
   - About a dozen boxes: `getLanguage`.
   - Language boxes: `setLanguage`.
   - Nothing else.
 - `ALDialog` is not a v1 target.
+
+### Architecture: a C++ front over the Python core
+
+Only a C++ `ALModule` serves `post`/`pCall`, `wait(id)`, `stop(id)` and `isRunning(id)` as a NAO's built-in does, on both versions ([service-replacement.md](../container/service-replacement.md), "Task ids, `wait` and `stop(id)`: a C++ front"). So the replacement is split, as `ALAudioPlayer`'s ([audio-player.md](audio-player.md)):
+
+- **`ALTextToSpeech`, the C++ front** (`docker/naoqi/services/speech/nao_sim_speech_front.cpp`, one source for both versions, built in the native build stage and loaded with `launchLocal`): every method of the contract above, each forwarding to the core. `say` (both overloads) takes the task id with `getMethodID()` (a new id from the core when called blocking), starts the sentence in the core and polls every 20 ms until the core reports it done, calling the core's `stop(id)` when `isStopRequired(id)` turns true. On 2.8, `_sayWithLocale` answers with a `qi::Future` whose cancel calls the core's `stop(id)`, a thread following the sentence completing it ([service-replacement.md](../container/service-replacement.md), "Stopped by a cancel"). The generics (`pCall`, `wait`, `stop`, `isRunning`) are the front's own, so the Say and Animated Say boxes and `ALAnimatedSpeech` work unchanged.
+- **The front reaches the core** through `ALProxy` on 2.1 and a `qi::AnyObject` from the broker's session on 2.8, with typed calls.
+- **The hidden signals are the front's** (2.8): `_started (s)`, `synchroTTS (L)` and `languageTTS (s)` are advertised on the C++ module with `getBuilder().advertiseSignal` and fired as member signals, which a client in another process (`ALAnimatedSpeech` runs in `qilaunch`) receives (measured). The core asks the front to fire them through a hidden method (`_fire(name, text)`); the core never connects to them. `synchroTTS` is declared, never fired, as today.
+- **`_NaoSimTextToSpeech`, the Python core**: today's `nao_sim_speech_core.Speaker` and its shells, registered under the hidden name instead of `ALTextToSpeech` (an `ALModule` on 2.1, a qi service on 2.8), with the per-call ids and stops below. It is what the fast tier tests.
+- **Boot:** step 3 of "Replacing a built-in" loads the core, then the front; the readiness check covers both names. The dependents restarted in step 4 (`ALAnimatedSpeech`, `ALDialog` on 2.1; `expressivity.autonomousabilitiesmodules` on 2.8) find the front.
 
 ### Behaviour
 
@@ -60,9 +77,11 @@ Only one request and one reply cross from the NAOqi container per sentence, and 
   2. After the engine replies: `Status [id, "started"]`, `CurrentSentence text`, and the `_started` signal (2.8).
   3. `CurrentBookMark N` at each marker offset.
   4. At the end: `TextInterrupted 1` (only if stopped), `Status [id, "done"]`, `CurrentSentence ""`, `TextDone 1`, `CurrentBookMark 0`, `TextStarted 0`.
-- **Blocking**: `say()` returns when the engine's `duration` has elapsed from the reply, or on `stopAll`. Calls are serialized by a lock: a second `say` waits until the first is done.
+- **Blocking**: `say()` returns when the engine's `duration` has elapsed from the reply, on `stopAll`, or on a `stop(id)` of that call. Calls are serialized by a lock: a second `say` waits until the first is done.
+- **Ids**: each call's id is its task id from the front (the id `post`/`pCall` returned, or one from the core for a blocking call), and it is the id of its `Status [id, ...]` events, so a caller that posted the call can match them.
+- **Stop by id**: `stop(id)` on the call that is speaking ends it as `stopAll` does (`TextInterrupted 1`, the engine's `/stop`); on a call still waiting for the lock, it returns at once without being spoken; on an unknown or finished id, nothing happens.
 - **Stop**: `stopAll()` ends the current `say` at once, including while the engine is still synthesizing (the stop flag is cleared when `say()` starts, not when the engine replies). Bookmarks not yet reached are not raised. The engine's `/stop` cuts the audio (measured within about 0.1 s).
-- **Tags** (`nao_sim_tts_core.parse`):
+- **Tags** (`nao_sim_speech_core.parse`):
   - `\pau=N\` becomes a pause item; `\mrk=N\` and `\mrkpause=N\` become mark items.
   - `\rspd=N\` and `\vct=N\` set rate and pitch; `\rst\` resets both to 100.
   - `\vol`, `\emph`, `\bound`, `\readmode`, `\tn` are ignored.
@@ -74,14 +93,14 @@ Only one request and one reply cross from the NAOqi container per sentence, and 
 - **Language**: English and French. `say(text, language)` switches language for that call only (2.1: explicit second binding; 2.8: varargs). `setLanguage` also emits `languageTTS` (2.8).
 - **Fallback clock**: if the engine is unreachable, `say()` still blocks for 0.3 s per token and raises bookmarks on that clock, so behaviours keep running without sound.
 - **Stubs**: `setVoice`, `loadVoicePreference`, `setLanguageDefaultVoice`, `enableNotifications`, `disableNotifications` and `sayToFile` are accepted and logged, with no effect. `getVoice` returns `"naosim"`; `locale` returns `"en_US"`. 2.8 also has `_pause`, `_resume` and `reset`.
-- **Diagnostics**: `whoami()` names the implementation. Calls are logged as JSON lines to `/home/nao/tts_almodule.jsonl` (2.1) or `/home/nao/tts_qiservice.jsonl` (2.8).
+- **Diagnostics**: `whoami()` names the implementation. Calls are logged as JSON lines to `/home/nao/speech_almodule.jsonl` (2.1) or `/home/nao/speech_qiservice.jsonl` (2.8).
 - **Measured end to end**:
   - 2.1: `say` blocked 4.74 s for 3.91 s of audio on the first call; `ALAnimatedSpeech` bookmarks arrived about 0.17 s after the engine's offsets (reply latency).
   - 2.8: `say` blocked 4.01 s for 3.69 s of audio.
 
 ## Open questions
 
-1. **Missing methods.** `getLanguageEncoding` and `sayToFileAndPlay` are not implemented, and the box library's `stop` is not a method of either replacement: 2.1 maps `stop` to the `ALModule` generic. Check what the Say box's `stop` does against the replacement.
+1. **Missing methods.** `getLanguageEncoding` and `sayToFileAndPlay` are not implemented. (Closed: the Say box. It calls `id = tts.post.say(...)`, `tts.wait(id, 0)` and stops with `ALProxy('ALTextToSpeech', True).stop(id)`. Measured Oct 12, 2026 (`spike/RESULTS.md`): on 2.1 `post` and `wait` work but `stop(id)` is ignored (the sentence plays to its end); on 2.8, against the qi service, `post.say` blocks for the whole sentence and returns `-1`, then `wait` raises "Can't find method", so the Say box fails. The fix, decided Oct 12, 2026, is the C++ front above, which also carries 2.8's hidden signals.)
 2. **Subtitles** are not built: they belong to the viewer ([viewer.md](../host/viewer.md), open questions). The robot hears its own speech, as a NAO does; no microphone gate ([audio-input.md](../host/audio-input.md), "The robot hears itself").
 3. **Duration tolerance** against a NAO's own `say()` (proposed ±20% per sentence) is not agreed, and no reference durations are available yet.
 4. **Word events**: `CurrentWord` and `PositionOfCurrentWord` are not raised in v1 (see [tts-engine.md](../container/tts-engine.md)).

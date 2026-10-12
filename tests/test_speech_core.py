@@ -1,7 +1,7 @@
 import threading
 import time
 
-import nao_sim_tts_core as core
+import nao_sim_speech_core as core
 import pytest
 
 END = [
@@ -28,9 +28,9 @@ class FakeEngine(core.Speaker):
     def _record(self, key, value):
         self.events.append((time.monotonic(), key, value))
 
-    def _engine_say(self, items, rate, pitch):
+    def _engine_say(self, items, rate, pitch, language):
         self.engine_calls.append(
-            {"items": items, "rate": rate, "pitch": pitch, "language": self.language}
+            {"items": items, "rate": rate, "pitch": pitch, "language": language}
         )
         time.sleep(self.synth_s)
         if self.fail:
@@ -47,14 +47,23 @@ class FakeEngine(core.Speaker):
         return [t for t, k, _ in self.events if k == key]
 
 
-def say_in_thread(sp, text):
+def say_in_thread(sp, text, sid=1):
     done: list[float] = []
     t0 = time.monotonic()
     th = threading.Thread(
-        target=lambda: (sp.say(text), done.append(time.monotonic() - t0))
+        target=lambda: (sp.say(text, sid), done.append(time.monotonic() - t0))
     )
     th.start()
     return th, done
+
+
+def spoken(sp):
+    """The ids that reached the engine, in order, from their `started` status."""
+    return [
+        v[0]
+        for _, k, v in sp.events
+        if k == "ALTextToSpeech/Status" and v[1] == "started"
+    ]
 
 
 # -- parse -------------------------------------------------------------------
@@ -105,7 +114,7 @@ def test_rate_and_pitch_apply_to_the_call_and_carry_over():
 def test_say_raises_the_event_sequence_on_the_engine_clock():
     sp = FakeEngine(duration=0.3, marks={"2": 0.2, "1": 0.1})
     t0 = time.monotonic()
-    sp.say("\\mrk=1\\ Hello \\mrk=2\\ world")
+    sp.say("\\mrk=1\\ Hello \\mrk=2\\ world", 1)
     took = time.monotonic() - t0
 
     assert sp.sequence() == [
@@ -190,7 +199,7 @@ def test_fallback_clock_when_the_engine_is_unreachable(monkeypatch):
     monkeypatch.setattr(core, "FALLBACK_SECONDS_PER_TOKEN", 0.05)
     sp = FakeEngine(fail=True)
     t0 = time.monotonic()
-    sp.say("one \\mrk=1\\ two three \\mrkpause=2\\")
+    sp.say("one \\mrk=1\\ two three \\mrkpause=2\\", 1)
     took = time.monotonic() - t0
 
     # 5 whitespace tokens, tags included.
@@ -215,3 +224,116 @@ def test_parameters_round_trip_and_reach_the_engine():
         70.0,
         pytest.approx(120.0),
     )
+
+
+# -- calls by id (the C++ front's task ids) ----------------------------------
+
+
+def test_a_call_without_an_id_gets_one_above_the_task_ids():
+    sp = FakeEngine(duration=0.0)
+    sp.say("a")
+    sp.say("b")
+
+    assert spoken(sp) == [core.FIRST_OWN_ID, core.FIRST_OWN_ID + 1]
+
+
+def test_a_call_speaks_in_the_language_it_was_given_only():
+    sp = FakeEngine(duration=0.0)
+    sp.say("bonjour", 7, "French")
+    sp.say("hello", 8)
+
+    assert [c["language"] for c in sp.engine_calls] == ["French", "English"]
+    assert sp.language == "English"
+
+
+def test_stop_by_id_ends_the_speaking_call_and_the_next_one_speaks():
+    sp = FakeEngine(duration=0.6)
+    first, first_done = say_in_thread(sp, "first", 5)
+    time.sleep(0.05)
+    second, second_done = say_in_thread(sp, "second", 6)
+    time.sleep(0.15)
+    sp.stop_call(5)
+    first.join(2)
+    second.join(2)
+
+    assert first_done[0] < 0.35
+    assert spoken(sp) == [5, 6]
+    assert sp.sequence().count(("ALTextToSpeech/TextInterrupted", 1)) == 1
+    # The second call was not cut by the first one's stop: it played its whole duration.
+    assert second_done[0] == pytest.approx(0.15 + 0.6, abs=0.15)
+    assert sp.engine_stops == 1
+
+
+def test_stop_by_id_of_a_waiting_call_drops_it_unspoken():
+    sp = FakeEngine(duration=0.4)
+    first, first_done = say_in_thread(sp, "first", 5)
+    time.sleep(0.05)
+    second, second_done = say_in_thread(sp, "second", 6)
+    time.sleep(0.05)
+    sp.stop_call(6)
+    second.join(2)
+
+    assert second_done[0] < 0.1  # returned at once, not after the first call
+    first.join(2)
+    assert first_done[0] == pytest.approx(0.4, abs=0.1)  # untouched
+    assert spoken(sp) == [5]
+    assert [v for _, k, v in sp.events if k == "ALTextToSpeech/Status"] == [
+        [5, "enqueued"],
+        [5, "started"],
+        [5, "done"],
+    ]
+    assert sp.engine_stops == 0
+
+
+def test_stop_by_an_unknown_or_finished_id_does_nothing():
+    sp = FakeEngine(duration=0.0)
+    sp.say("done already", 3)
+    sp.stop_call(3)
+    sp.stop_call(99)
+    sp.say("next", 4)
+
+    assert ("ALTextToSpeech/TextInterrupted", 1) not in sp.sequence()
+    assert spoken(sp) == [3, 4]
+
+
+def test_calls_speak_in_arrival_order():
+    sp = FakeEngine(duration=0.1)
+    threads = []
+    for sid in (10, 11, 12):
+        threads.append(say_in_thread(sp, f"call {sid}", sid)[0])
+        time.sleep(0.02)
+    for th in threads:
+        th.join(2)
+
+    assert spoken(sp) == [10, 11, 12]
+
+
+def test_start_returns_at_once_and_wait_done_follows_the_call():
+    sp = FakeEngine(duration=0.3)
+    t0 = time.monotonic()
+    sp.start(21, "background")
+
+    assert time.monotonic() - t0 < 0.05
+    assert sp.wait_done(21, 0.05) is False  # still speaking
+    assert sp.wait_done(21, 1.0) is True
+    assert time.monotonic() - t0 == pytest.approx(0.3, abs=0.1)
+    assert spoken(sp) == [21]
+    assert sp.wait_done(21, 0.0) is True  # finished, then unknown: done
+
+
+def test_a_started_call_stopped_by_id_is_done_early():
+    sp = FakeEngine(duration=1.0)
+    sp.start(30, "long")
+    time.sleep(0.1)
+    sp.stop_call(30)
+
+    assert sp.wait_done(30, 0.5) is True
+    assert ("ALTextToSpeech/TextInterrupted", 1) in sp.sequence()
+
+
+def test_status_events_carry_the_call_id():
+    sp = FakeEngine(duration=0.0)
+    sp.say("hi", 42)
+
+    statuses = [v for _, k, v in sp.events if k == "ALTextToSpeech/Status"]
+    assert statuses == [[42, "enqueued"], [42, "started"], [42, "done"]]

@@ -283,7 +283,7 @@ def test_leaves_a_mismatching_local_file_alone(origin, tmp_path):
 @pytest.mark.parametrize("name", ["2.1", "2.8"])
 def test_the_dockerfile_builds_from_the_fetched_files(name):
     v = VERSIONS[name]
-    dockerfile = (DOCKER / f"Dockerfile.naoqi-{name}").read_text()
+    dockerfile = (DOCKER / "naoqi" / f"Dockerfile.naoqi-{name}").read_text()
     assert re.search(
         rf"^ARG SUITE={re.escape(v.suite.filename)}$", dockerfile, re.MULTILINE
     )

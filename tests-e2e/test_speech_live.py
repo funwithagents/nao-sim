@@ -55,7 +55,7 @@ def test_animated_speech_gets_every_bookmark(nao):
     finally:
         subscriber.signal.disconnect(link)
 
-    received = last(nao.container.tts_log(), "say")["text"]
+    received = last(nao.container.speech_log(), "say")["text"]
     expected = {int(m) for m in MARK.findall(received)}
     assert len(expected) >= 2, received
     assert expected <= set(raised)
@@ -73,7 +73,7 @@ def test_stop_all_cuts_the_sentence(nao):
     returned = time.time() - t_stop
     played = nao.played(mark)
 
-    done = last(nao.container.tts_log(), "say-done")
+    done = last(nao.container.speech_log(), "say-done")
     assert done["interrupted"] is True
     assert returned < 0.5
     assert played < done["duration"] - 2.0
@@ -89,8 +89,153 @@ def test_stop_all_during_synthesis(nao):
     future.wait(10000)
     returned = time.time() - t0
 
-    done = last(nao.container.tts_log(), "say-done")
+    done = last(nao.container.speech_log(), "say-done")
     assert done["interrupted"] is True
     # Synthesis plus the stop, not the ~15 s of audio; synthesis alone varies on a shared runner.
     assert returned < 3.0
     assert nao.played(mark) < 0.3
+
+
+# -- the boxes' pattern: start, wait for and stop a sentence by task id -------------------------
+#
+# Run inside NAOqi as Choregraphe's boxes do: on 2.1 `ALProxy.post` / `wait(id, 0)` / `stop(id)`
+# from a second proxy; on 2.8 `pCall` / `wait(id)` / `stop(id)` on qi service objects.
+
+BOX = """
+import json, os, threading, time
+V28 = %(v28)r
+if V28:
+    import qi
+    _s = qi.Session()
+    _s.connect("tcp://127.0.0.1:%%s" %% os.environ.get("NAO_SIM_INTERNAL_PORT", "9559"))
+    def proxies(name):
+        return _s.service(name), _s.service(name)
+    def start(p, method, *args):
+        return p.pCall(method, *args)
+    def wait(p, tid):
+        p.wait(tid)
+    def memory():
+        return _s.service("ALMemory")
+else:
+    from naoqi import ALProxy
+    def proxies(name):
+        return ALProxy(name), ALProxy(name, True)
+    def start(p, method, *args):
+        return getattr(p.post, method)(*args)
+    def wait(p, tid):
+        p.wait(tid, 0)
+    def memory():
+        return ALProxy("ALMemory")
+def stop_later(p, tid, after):
+    def go():
+        time.sleep(after)
+        p.stop(tid)
+    threading.Thread(target=go).start()
+"""
+
+
+def box(nao, body: str):
+    return nao.run_in_naoqi(BOX % {"v28": nao.version.name == "2.8"} + body)
+
+
+def done_entry(nao, call_id):
+    return [
+        e
+        for e in nao.container.speech_log()
+        if e.get("method") == "say-done" and e["id"] == call_id
+    ]
+
+
+def test_the_say_box_stops_its_sentence(nao):
+    mark = time.monotonic()
+    out = box(
+        nao,
+        f"""
+def run():
+    tts, stopper = proxies("ALTextToSpeech")
+    t0 = time.time()
+    tid = start(tts, "say", {LONG!r})
+    stop_later(stopper, tid, 1.0)
+    wait(tts, tid)
+    return {{"id": tid, "waited": time.time() - t0, "status": memory().getData("ALTextToSpeech/Status")}}
+""",
+    )
+    playback = nao.sink.wait_for(lambda p: p.started_at >= mark)
+
+    assert out["id"] >= 0  # a task id, from post/pCall
+    assert out["waited"] < 2.0  # the stop at 1 s, not the sentence's ~9 s
+    assert out["status"] == [out["id"], "done"]  # the call's own id
+    assert done_entry(nao, out["id"])[0]["interrupted"] is True
+    assert playback.interrupted
+    assert playback.duration_s < 2.0
+
+
+def test_stopping_a_waiting_sentence_skips_it(nao):
+    mark = time.monotonic()
+    out = box(
+        nao,
+        f"""
+def run():
+    tts, stopper = proxies("ALTextToSpeech")
+    a = start(tts, "say", {SENTENCE!r})
+    time.sleep(0.3)
+    b = start(tts, "say", "This second sentence must never be heard.")
+    time.sleep(0.3)
+    stopper.stop(b)
+    t0 = time.time()
+    wait(tts, b)
+    waited_b = time.time() - t0
+    wait(tts, a)
+    return {{"a": a, "b": b, "waited_b": waited_b}}
+""",
+    )
+    log = nao.container.speech_log()
+
+    assert (
+        out["waited_b"] < 1.0
+    )  # returned at once, while the first sentence still spoke
+    assert done_entry(nao, out["a"])[0]["interrupted"] is False
+    assert [e for e in log if e.get("method") == "say-dropped" and e["id"] == out["b"]]
+    assert not [e for e in log if e.get("method") == "say" and e["id"] == out["b"]]
+    playbacks = [p for p in nao.sink.playbacks if p.started_at >= mark]
+    assert len(playbacks) == 1 and not playbacks[0].interrupted
+
+
+def test_the_animated_say_box_stops_the_speech(nao):
+    mode = (
+        {"speakingMovementMode": "disabled"}
+        if nao.version.name == "2.8"
+        else {"bodyLanguageMode": "disabled"}
+    )
+    out = box(
+        nao,
+        f"""
+def run():
+    speech, stopper = proxies("ALAnimatedSpeech")
+    t0 = time.time()
+    tid = start(speech, "say", {LONG!r}, {mode!r})
+    stop_later(stopper, tid, 1.5)
+    wait(speech, tid)
+    return {{"waited": time.time() - t0}}
+""",
+    )
+
+    # ALAnimatedSpeech passed the stop on to the speech with stop(id) on its own call.
+    assert last(nao.container.speech_log(), "say-done")["interrupted"] is True
+    assert out["waited"] < 4.0  # not the ~9 s of the sentence
+
+
+def test_set_language_emits_language_tts(nao):
+    if nao.version.name != "2.8":
+        pytest.skip("languageTTS is a 2.8 signal")
+    tts = nao.service("ALTextToSpeech")
+    got: list[str] = []
+    link = tts.languageTTS.connect(got.append)
+    try:
+        tts.setLanguage("French")
+        tts.setLanguage("English")
+        time.sleep(0.5)
+    finally:
+        tts.languageTTS.disconnect(link)
+
+    assert got == ["French", "English"]

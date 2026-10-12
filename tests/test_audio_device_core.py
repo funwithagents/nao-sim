@@ -7,7 +7,7 @@ tested against each other; the relay's `deliver` is a fake that records what eac
 import threading
 import time
 
-import nao_sim_audiodevice_core as core
+import nao_sim_audio_device_core as core
 import pytest
 
 from nao_sim.host_link import Connection, HostLink

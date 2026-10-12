@@ -96,13 +96,14 @@ load_modules() {
   done
 }
 
-# load_relay <path>: the native relay, a C++ module (specs/container/service-replacement.md, "Binary
-# arguments: the native relay"), loaded with launchLocal like a built-in; it must register a module.
-load_relay() {
+# load_native <path>: one of our C++ modules, the native relay or a C++ front
+# (specs/container/service-replacement.md, "Binary arguments: the native relay" and "Task ids, wait
+# and stop(id): a C++ front"), loaded with launchLocal like a built-in; it must register a module.
+load_native() {
   local out
-  log "loading the native relay $1"
-  out=$(call ALLauncher.launchLocal "$1" 2>&1) || fail "loading the relay $1 failed: $out"
-  printf '%s\n' "$out" | grep -q '\[ *"' || fail "the relay $1 registered no module: $out"
+  log "loading the native module $1"
+  out=$(call ALLauncher.launchLocal "$1" 2>&1) || fail "loading the native module $1 failed: $out"
+  printf '%s\n' "$out" | grep -q '\[ *"' || fail "the native module $1 registered no module: $out"
 }
 
 # launch_local <entries...>: ALLauncher.launchLocal each autoload entry, in order. It answers with the

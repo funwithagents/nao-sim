@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """ALAudioDevice replacement for NAOqi 2.1, registered through naoqi-bin's broker (ALModule).
 The desktop suite has no ALAudioDevice, so the name is registered directly. The logic lives in
-nao_sim_audiodevice_core; buffers reach a subscriber through the native relay (_NaoSimAudioRelay),
+nao_sim_audio_device_core; buffers reach a subscriber through the native relay (_NaoSimAudioRelay),
 which this module calls through the broker."""
 import sys
 import threading
 
 from naoqi import ALModule, ALProxy
 
-import nao_sim_audiodevice_core as core
+import nao_sim_audio_device_core as core
 
 _local = threading.local()  # one relay proxy per delivery thread
 
@@ -103,4 +103,4 @@ class ALAudioDevice(ALModule):
 
 # The instance must be a global named like the module: the broker finds it by that name.
 ALAudioDevice = ALAudioDevice(core.SERVICE)
-sys.stderr.write("[nao_sim_audiodevice_almodule] registered %s through the broker\n" % core.SERVICE)
+sys.stderr.write("[nao_sim_audio_device_almodule] registered %s through the broker\n" % core.SERVICE)

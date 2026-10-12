@@ -1,14 +1,14 @@
 ---
 code:
-  - docker/modules/nao_sim_audiodevice_core.py
-  - docker/modules/nao_sim_audiodevice_almodule.py
-  - docker/modules/nao_sim_audiodevice_qiservice.py
-  - docker/relay/naosim_audiorelay.cpp
-  - docker/entrypoint-2.1.sh
-  - docker/entrypoint-2.8.sh
+  - docker/naoqi/services/audio-device/nao_sim_audio_device_core.py
+  - docker/naoqi/services/audio-device/nao_sim_audio_device_almodule.py
+  - docker/naoqi/services/audio-device/nao_sim_audio_device_qiservice.py
+  - docker/naoqi/services/audio-device/nao_sim_audio_device_relay.cpp
+  - docker/naoqi/entrypoint-2.1.sh
+  - docker/naoqi/entrypoint-2.8.sh
   - docker/compose.yaml
 tests:
-  - tests/test_audiodevice_core.py
+  - tests/test_audio_device_core.py
   - tests/test_entrypoint.py
   - tests-e2e/test_audio_input_live.py
 ---
@@ -27,9 +27,9 @@ The module routes audio; it does no signal processing. The host produces every f
 
 ### Modules
 
-- `docker/modules/nao_sim_audiodevice_core.py`: the subscribers, their preferences, the formats they need, the host link client and the delivery threads. Python 2.7, importable under Python 3 so the fast tier tests it on the host, as the speech and status cores are.
-- `nao_sim_audiodevice_almodule.py` (2.1, an `ALModule` named `ALAudioDevice`) and `nao_sim_audiodevice_qiservice.py` (2.8, a qi service, `@qi.multiThreaded()`): thin shells per object model.
-- `docker/relay/naosim_audiorelay.cpp`: the native relay, one C++ source for both versions ([service-replacement.md](../container/service-replacement.md), "Binary arguments: the native relay").
+- `docker/naoqi/services/audio-device/nao_sim_audio_device_core.py`: the subscribers, their preferences, the formats they need, the host link client and the delivery threads. Python 2.7, importable under Python 3 so the fast tier tests it on the host, as the speech and status cores are.
+- `nao_sim_audio_device_almodule.py` (2.1, an `ALModule` named `ALAudioDevice`) and `nao_sim_audio_device_qiservice.py` (2.8, a qi service, `@qi.multiThreaded()`): thin shells per object model.
+- `docker/naoqi/services/audio-device/nao_sim_audio_device_relay.cpp`: the native relay, one C++ source for both versions ([service-replacement.md](../container/service-replacement.md), "Binary arguments: the native relay").
 - Each entrypoint loads the relay, then the module with the other modules, and its readiness check covers both names ([container.md](../container/container.md), "Entrypoint").
 
 ### Methods

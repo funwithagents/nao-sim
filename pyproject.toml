@@ -64,9 +64,9 @@ qi = [
 
 [tool.ruff]
 target-version = "py312"  # keep in sync with requires-python
-# docker/modules/ is Python 2.7 running inside NAOqi (naoqi, qi, urllib2): not linted here.
+# docker/naoqi/services/ is Python 2.7 running inside NAOqi (naoqi, qi, urllib2): not linted here.
 # spike/ holds local, untracked investigation scripts.
-extend-exclude = ["docker/modules", "spike"]
+extend-exclude = ["docker/naoqi/services", "spike"]
 
 [tool.pytest.ini_options]
 # Only the fast, deterministic tier is collected by default; tests-e2e/ is opt-in.
@@ -78,5 +78,10 @@ venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
 # Host-side tests import the container code by module name (tests/conftest.py adds these to sys.path).
-extraPaths = ["docker/modules", "docker/tts"]
+extraPaths = [
+    "docker/naoqi/services/speech",
+    "docker/naoqi/services/audio-device",
+    "docker/naoqi/services/status-service",
+    "docker/tts-engine",
+]
 typeCheckingMode = "standard"

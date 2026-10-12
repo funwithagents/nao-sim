@@ -9,6 +9,9 @@
 # once per NAOqi version, and pytest stops one version's NaoSim before it starts the next
 # (both publish 9559). Its audio goes to a MemorySink, so a test asserts on what was played.
 import asyncio
+import json
+import time
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -37,6 +40,27 @@ from nao_sim.config import (
 )
 
 SCENE = Path(__file__).resolve().parent / "scenes" / "camera-target.xml"
+
+# Runs a test's Python 2.7 inside NAOqi's embedded interpreter, where Choregraphe's boxes run, on a
+# thread, and leaves `run()`'s result (or the traceback) as JSON in an ALMemory key.
+# (Python 2 refuses `exec` in a nested function, hence _naosim_exec at the top.)
+_IN_NAOQI = """
+def _naosim_exec(_body, _ns):
+    exec(_body, _ns)
+def _naosim_test(_body, _key):
+    import json, threading, traceback
+    from naoqi import ALProxy
+    def go():
+        ns = {}
+        try:
+            _naosim_exec(_body, ns)
+            out = {"ok": ns["run"]()}
+        except Exception:
+            out = {"error": traceback.format_exc()}
+        ALProxy("ALMemory").insertData(_key, json.dumps(out))
+    threading.Thread(target=go).start()
+_naosim_test(%r, %r)
+"""
 
 
 def pytest_configure(config):
@@ -97,6 +121,26 @@ class Nao:
     def audio(self) -> FakeAudioSource:
         """The fake audio source: what the robot's microphones hear."""
         return self.sim.fake_audio
+
+    def run_in_naoqi(self, body: str, timeout: float = 60.0):
+        """Runs `body` (Python 2.7 defining `run()`) inside NAOqi, as a box would, and returns
+        what `run()` returned (JSON-able)."""
+        memory = self.service("ALMemory")
+        key = "NaoSimTest/" + uuid.uuid4().hex
+        memory.insertData(key, "")
+        error = self.service("ALPythonBridge").eval(_IN_NAOQI % (body, key))
+        if error:  # eval answers with the exception it raised
+            pytest.fail("in NAOqi:\n" + error)
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            raw = memory.getData(key)
+            if raw:
+                out = json.loads(raw)
+                if "error" in out:
+                    pytest.fail("in NAOqi:\n" + out["error"])
+                return out["ok"]
+            time.sleep(0.1)
+        pytest.fail(f"no result from NAOqi after {timeout} s")
 
     def played(self, after: float, timeout: float = 10.0) -> float:
         """Seconds of audio in the first stream that started after `after` (time.monotonic())."""

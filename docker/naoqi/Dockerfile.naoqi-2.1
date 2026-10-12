@@ -1,12 +1,13 @@
 # nao-sim: NAOqi 2.1.4.13 (NAO V4/V5) runtime container.
 # Built locally only, by `nao-sim fetch-and-build-images 2.1`, from the image data folder's 2.1/ (the
-# Choregraphe suite, the robot's animations package and the C++ SDK the relay is compiled against),
+# Choregraphe suite, the robot's animations package and the C++ SDK our modules are compiled against),
 # which compose passes as the `image-data` build context.
 # Never push this image: it contains Aldebaran's software.
 #
-# Three stages (specs/container/container.md, "The relay's build"): `suite` extracts NAOqi, `relay`
-# compiles the native relay against the SDK's headers and the suite's libraries, and the final
-# stage adds our files and only the relay's .so, so neither the compiler nor the SDK reaches it.
+# Three stages (specs/container/container.md, "The native build"): `suite` extracts NAOqi, `native`
+# compiles our C++ NAOqi modules (each service's relay or front, docker/services/*/*.cpp) against the
+# SDK's headers and the suite's libraries, and the final stage adds our files and only the .so files,
+# so neither the compiler nor the SDK reaches it.
 
 FROM --platform=linux/amd64 ubuntu:14.04 AS suite
 ARG SUITE=choregraphe-suite-2.1.4.13-linux64.tar.gz
@@ -25,10 +26,11 @@ RUN mkdir -p /opt && cd /opt \
  && rm /tmp/suite.tar.gz
 
 
-# The native relay (specs/container/service-replacement.md, "Binary arguments: the native relay").
+# Our C++ NAOqi modules (specs/container/service-replacement.md, "Binary arguments: the native relay"
+# and "Task ids, wait and stop(id): a C++ front"), one lib<name>.so per docker/services/*/*.cpp.
 # g++ 4.8 from this base: the suite was built with gcc 4.6.3, same C++ library ABI. The SDK is the
 # suite's own release, so its headers (module API, libqi, boost 1.55) match the suite's libraries.
-FROM suite AS relay
+FROM suite AS native
 ARG SDK=naoqi-sdk-2.1.4.13-linux64.tar.gz
 
 RUN apt-get update \
@@ -37,24 +39,29 @@ RUN apt-get update \
 COPY --from=image-data ${SDK} /tmp/sdk.tar.gz
 RUN mkdir -p /tmp/sdk && tar -xzf /tmp/sdk.tar.gz -C /tmp/sdk --strip-components=1 --wildcards '*/include' \
  && rm /tmp/sdk.tar.gz
-COPY relay/naosim_audiorelay.cpp /tmp/relay/
-RUN cd /tmp/relay \
- && g++ -std=gnu++98 -O2 -fPIC -shared -DBOOST_SIGNALS_NO_DEPRECATION_WARNING -w \
-      -I/tmp/sdk/include naosim_audiorelay.cpp -o libnaosim_audiorelay.so \
-      -L/opt/naoqi/lib -lalcommon -lalvalue -lalerror -lqi -lqitype -lqimessaging \
-      -lboost_thread -lboost_system \
- && LD_LIBRARY_PATH=/opt/naoqi/lib ldd -r libnaosim_audiorelay.so > ldd.txt 2>&1 \
- && if grep -E "undefined symbol|not found" ldd.txt; then exit 1; fi
+COPY services/*/*.cpp /tmp/native/
+RUN cd /tmp/native \
+ && for src in *.cpp; do \
+      m=${src%.cpp}; \
+      g++ -std=gnu++98 -O2 -fPIC -shared -DBOOST_SIGNALS_NO_DEPRECATION_WARNING -w \
+        -I/tmp/sdk/include $src -o lib$m.so \
+        -L/opt/naoqi/lib -lalcommon -lalvalue -lalerror -lqi -lqitype -lqimessaging \
+        -lboost_thread -lboost_system \
+      && LD_LIBRARY_PATH=/opt/naoqi/lib ldd -r lib$m.so > ldd-$m.txt 2>&1 \
+      && if grep -E "undefined symbol|not found" ldd-$m.txt; then exit 1; fi \
+      || exit 1; \
+    done
 
 
 FROM suite
 # The nao-sim version the NaoSim service reports (compose passes ${NAO_SIM_VERSION:-dev}).
 ARG NAO_SIM_VERSION=dev
 
-# Our override modules (Python 2.7), loaded into the naoqi-bin process by the entrypoint.
-COPY modules/ /opt/naoqi/modules/
-# The native relay, loaded by the entrypoint with ALLauncher.launchLocal.
-COPY --from=relay /tmp/relay/libnaosim_audiorelay.so /opt/naoqi/lib/nao-sim/libnaosim_audiorelay.so
+# Our override modules (Python 2.7, each service's core and shells), flat in one importable folder,
+# loaded into NAOqi by the entrypoint.
+COPY services/*/*.py /opt/naoqi/modules/
+# Our C++ modules, loaded by the entrypoint with ALLauncher.launchLocal.
+COPY --from=native /tmp/native/*.so /opt/naoqi/lib/nao-sim/
 # This version's boot procedure, and what it shares with the other one.
 COPY entrypoint-2.1.sh /opt/naoqi/bin/nao-sim-entrypoint.sh
 COPY entrypoint-lib.sh /opt/naoqi/bin/entrypoint-lib.sh

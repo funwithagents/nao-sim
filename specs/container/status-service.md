@@ -1,14 +1,14 @@
 ---
 code:
-  - docker/modules/nao_sim_status_core.py
-  - docker/modules/nao_sim_status_almodule.py
-  - docker/modules/nao_sim_status_qiservice.py
-  - docker/healthcheck.sh
-  - docker/entrypoint-2.1.sh
-  - docker/entrypoint-2.8.sh
-  - docker/entrypoint-lib.sh
-  - docker/Dockerfile.naoqi-2.1
-  - docker/Dockerfile.naoqi-2.8
+  - docker/naoqi/services/status-service/nao_sim_status_core.py
+  - docker/naoqi/services/status-service/nao_sim_status_almodule.py
+  - docker/naoqi/services/status-service/nao_sim_status_qiservice.py
+  - docker/naoqi/healthcheck.sh
+  - docker/naoqi/entrypoint-2.1.sh
+  - docker/naoqi/entrypoint-2.8.sh
+  - docker/naoqi/entrypoint-lib.sh
+  - docker/naoqi/Dockerfile.naoqi-2.1
+  - docker/naoqi/Dockerfile.naoqi-2.8
   - docker/compose.yaml
 tests:
   - tests/test_status_core.py
@@ -72,7 +72,7 @@ So a container that is `running` and printed the ready line has its overrides in
 
 ### Healthcheck
 
-`docker/healthcheck.sh` calls `NaoSim.isReady` with `qicli` on the **public** port, `tcp://127.0.0.1:9559`, and succeeds when the answer is `true`. The two suites' `qicli` differ: 2.1 prints `NaoSim.isReady: true`, 2.8 prints `true` followed by its `[W] qitype.signal` warnings on stdout; the script reads the first line and drops any `name: ` prefix. On 2.8 that goes through the suite's gateway, so a health of `healthy` also means the relay works; on 2.1 it is the broker itself.
+`docker/naoqi/healthcheck.sh` calls `NaoSim.isReady` with `qicli` on the **public** port, `tcp://127.0.0.1:9559`, and succeeds when the answer is `true`. The two suites' `qicli` differ: 2.1 prints `NaoSim.isReady: true`, 2.8 prints `true` followed by its `[W] qitype.signal` warnings on stdout; the script reads the first line and drops any `name: ` prefix. On 2.8 that goes through the suite's gateway, so a health of `healthy` also means the relay works; on 2.1 it is the broker itself.
 
 Both Dockerfiles declare it: `HEALTHCHECK --interval=5s --timeout=5s --start-period=120s --retries=3`. The container is `starting` during boot (about 5 s on 2.1, 15 s on 2.8, plus module loading), `healthy` within one interval of the ready line, and `unhealthy` if NAOqi stops answering. `docker compose ps` and `docker inspect -f '{{.State.Health.Status}}'` show it; `NaoSim.start()` (behind `nao-sim run`) will wait on it rather than on the log line.
 

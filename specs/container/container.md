@@ -1,17 +1,18 @@
 ---
 code:
-  - docker/Dockerfile.naoqi-2.1
-  - docker/Dockerfile.naoqi-2.8
+  - docker/naoqi/Dockerfile.naoqi-2.1
+  - docker/naoqi/Dockerfile.naoqi-2.8
   - docker/compose.yaml
-  - docker/entrypoint-2.1.sh
-  - docker/entrypoint-2.8.sh
-  - docker/entrypoint-lib.sh
-  - docker/healthcheck.sh
-  - docker/Dockerfile.naoqi-2.1.dockerignore
-  - docker/Dockerfile.naoqi-2.8.dockerignore
+  - docker/naoqi/entrypoint-2.1.sh
+  - docker/naoqi/entrypoint-2.8.sh
+  - docker/naoqi/entrypoint-lib.sh
+  - docker/naoqi/healthcheck.sh
+  - docker/naoqi/Dockerfile.naoqi-2.1.dockerignore
+  - docker/naoqi/Dockerfile.naoqi-2.8.dockerignore
   - src/nao_sim/suite.py
   - src/nao_sim/docker_images.py
-  - docker/relay/naosim_audiorelay.cpp
+  - docker/naoqi/services/audio-device/nao_sim_audio_device_relay.cpp
+  - docker/naoqi/services/speech/nao_sim_speech_front.cpp
 tests:
   - tests/test_suite.py
   - tests/test_docker_images.py
@@ -50,7 +51,7 @@ Each image is built from two Aldebaran files per version, kept in the image data
 
 #### Build files: the C++ SDK
 
-The native relay ([service-replacement.md](service-replacement.md), "Binary arguments: the native relay") is compiled in the image build against the version's own C++ SDK, kept in the same `<version>/` folder and fetched by the same step. It never reaches the final image: only the compiled relay does.
+Our C++ NAOqi modules (the native relay, [service-replacement.md](service-replacement.md), "Binary arguments: the native relay", and the C++ fronts) are compiled in the image build against the version's own C++ SDK, kept in the same `<version>/` folder and fetched by the same step. It never reaches the final image: only the compiled modules do.
 
 | Version | File | Source | SHA-256 | Used for |
 | --- | --- | --- | --- | --- |
@@ -58,7 +59,7 @@ The native relay ([service-replacement.md](service-replacement.md), "Binary argu
 | 2.8 | `naoqi-sdk-2.8.7.4-linux64.tar.gz` (1.3 GB) | Aldebaran's GitHub repository `aldebaran/nao6-doc-sdk` (Git LFS, `https://media.githubusercontent.com/media/aldebaran/nao6-doc-sdk/master/`) | `e42c8b95e6e3de349cf76100d006a9f5b48bd625f0236b0a0fe094fc29970967` | The NAOqi module API, libqi (`qi`, `ka`) and boost 1.64 headers: the same release as the suite |
 
 - The pins live in `src/nao_sim/suite.py` with the others, and follow the same rules (kept when the hash matches, `.part` and hash check, `FetchError`). 2.8's SDK comes from GitHub like its suite and robot image (`aldebaran/nao6-binaries`); 2.1's from Aldebaran's download site, since no repository holds it (`aldebaran/NAO-V5-ressources` has the suite and image only).
-- Each SDK is its suite's own release, so the header code compiled into our C++ (the `ALProxy` and `qi::AnyObject` call templates) matches the suite's libraries. Until Oct 12, 2026 the 2.8 build used the 2.8.5.10 SDK's module API headers with libqi `qi-framework-v1.8.7` (our fork) and boost 1.64 first on the include path: it linked and the relay worked, but those libqi headers differ from 2.8.7.4's in 57 files, and typed calls from C++ to Python services sent "Invalid" values that crashed `naoqi-service` (measured while building a C++ front for `ALTextToSpeech`, `spike/RESULTS.md`).
+- Each SDK is its suite's own release, so the header code compiled into our modules (the `ALProxy` and `qi::AnyObject` call templates) matches the suite's libraries. Until Oct 12, 2026 the 2.8 build used the 2.8.5.10 SDK's module API headers with libqi `qi-framework-v1.8.7` (our fork) and boost 1.64 first on the include path: it linked and the relay worked, but those libqi headers differ from 2.8.7.4's in 57 files, and typed calls from C++ to Python services sent "Invalid" values that crashed `naoqi-service` (`spike/RESULTS.md`, "Building the speech front").
 - Like the suite, the SDKs are Aldebaran's public files downloaded to the user's machine; nothing is redistributed, and an image that contains the relay is local, as every nao-sim image is.
 
 #### Fetching the image data
@@ -81,13 +82,13 @@ The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--image-data DIR]
 - Copying the unzipped package into the package store does not work: `PackageManager` only knows the packages in its registry (`~/.local/share/PackageManager/pm.db`, SQLite, table `packages(uuid, path, installer)`).
 - Once built, the image needs neither the suite nor the package. A rebuild (after changing the modules or the entrypoint) still needs both in the image data folder: Docker checks every file a `COPY` uses, even for a cached step. The same holds for the build files.
 
-### The relay's build
+### The native build
 
 Each Dockerfile has three stages, so the compiler and the headers never reach the image:
 
-1. **`naoqi`**: the image as it was (suite, packages, modules, entrypoint, healthcheck).
-2. **`relay`**, `FROM naoqi`: installs `g++` from the base's own Ubuntu (the suite's compiler generation), extracts the version's headers from the build files (`COPY --from=image-data`), compiles `relay/naosim_audiorelay.cpp` into `libnaosim_audiorelay.so`, linked against the suite's libraries in `/opt/naoqi/lib`, and checks that `ldd -r` reports no undefined symbol.
-3. The final stage, `FROM naoqi`, copies only the `.so` to `/opt/naoqi/lib/nao-sim/`.
+1. **`suite`**: the suite extracted to `/opt/naoqi`.
+2. **`native`**, `FROM suite`: installs `g++` from the base's own Ubuntu (the suite's compiler generation), extracts the version's headers from the C++ SDK (`COPY --from=image-data`), and compiles every `services/*/*.cpp` of `docker/naoqi/` into `lib<name>.so`: today `nao_sim_audio_device_relay.cpp`, the native relay, and `nao_sim_speech_front.cpp`, `ALTextToSpeech`'s C++ front ([speech.md](../services/speech.md), "Architecture"); 2.8 compiles with `-DNAOSIM_NAOQI_28`, which switches on the fronts' 2.8 parts. Each is linked against the suite's libraries in `/opt/naoqi/lib`, and `ldd -r` must report no undefined symbol.
+3. The final stage, `FROM suite`: our files, the Python of `services/*/` copied flat to `/opt/naoqi/modules/`, and only the `.so` files from `native`, in `/opt/naoqi/lib/nao-sim/`.
 
 | | 2.1 | 2.8 |
 | --- | --- | --- |
@@ -112,7 +113,7 @@ Each Dockerfile has three stages, so the compiler and the headers never reach th
 
 One image per version, `linux/amd64`, suite extracted to `/opt/naoqi`, override modules copied to `/opt/naoqi/modules/`, entrypoint at `/opt/naoqi/bin/nao-sim-entrypoint.sh`, healthcheck at `/opt/naoqi/bin/nao-sim-healthcheck.sh` ([status-service.md](status-service.md)).
 
-- The build context is the recipes folder (`docker/`, or `nao_sim/docker/` when installed). The image data come from a second, named build context, `image-data`: compose sets it per service to `${NAO_SIM_IMAGE_DATA:-./image-data}/<version>`, so a build uploads only its own version's folder, and the Dockerfile copies from it with `COPY --from=image-data <file>`. Each Dockerfile keeps its own ignore file (`Dockerfile.naoqi-<version>.dockerignore`, read by BuildKit next to the Dockerfile), which leaves the whole `image-data/`, `tts/` and Python caches out of the main context. BuildKit's named contexts need Docker Compose 2.17 or later.
+- The build context is the image's own folder, `docker/naoqi/` (`nao_sim/docker/naoqi/` when installed); the speech engine's is `docker/tts-engine/`. The image data come from a second, named build context, `image-data`: compose sets it per service to `${NAO_SIM_IMAGE_DATA:-./image-data}/<version>`, so a build uploads only its own version's folder, and the Dockerfile copies from it with `COPY --from=image-data <file>`. Each Dockerfile keeps its own ignore file (`Dockerfile.naoqi-<version>.dockerignore`, read by BuildKit next to the Dockerfile), which leaves Python caches out of the context; the image data are in no build context but their own. BuildKit's named contexts need Docker Compose 2.17 or later.
 
 | | 2.1 (`Dockerfile.naoqi-2.1`) | 2.8 (`Dockerfile.naoqi-2.8`) |
 | --- | --- | --- |
@@ -153,9 +154,10 @@ One script per version, each reading top to bottom as that version's procedure: 
 | `naoqi-bin` | `-b 0.0.0.0 -p 9559`: the broker is the public port | `--qi-listen-url tcp://127.0.0.1:9558`, behind the suite's gateway on 9559 |
 | Reached from inside on | `tcp://127.0.0.1:9559` | `tcp://127.0.0.1:9558`, exported as `NAO_SIM_INTERNAL_PORT` for our qi services |
 | `REPLACED` (built-ins whose `exit()` is called) | `ALTextToSpeech` | `ALTextToSpeech` |
-| `RELAY` (the native relay, loaded with `ALLauncher.launchLocal` before our modules) | `/opt/naoqi/lib/nao-sim/libnaosim_audiorelay.so` | Same |
-| `MODULES` (ours, loaded with `ALLauncher.launchPythonModule`, in order) | `nao_sim_status_almodule nao_sim_tts_almodule nao_sim_audiodevice_almodule` | `nao_sim_status_qiservice nao_sim_tts_qiservice nao_sim_audiodevice_qiservice` |
-| `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoSimAudioRelay` | Same |
+| `RELAY` (the native relay, loaded with `ALLauncher.launchLocal` before our modules) | `/opt/naoqi/lib/nao-sim/libnao_sim_audio_device_relay.so` | Same |
+| `MODULES` (ours, loaded with `ALLauncher.launchPythonModule`, in order) | `nao_sim_status_almodule nao_sim_speech_almodule nao_sim_audio_device_almodule` | `nao_sim_status_qiservice nao_sim_speech_qiservice nao_sim_audio_device_qiservice` |
+| `FRONTS` (C++ fronts taking a replaced name, loaded with `ALLauncher.launchLocal` after our modules) | `/opt/naoqi/lib/nao-sim/libnao_sim_speech_front.so` (`ALTextToSpeech`) | Same |
+| `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech` | Same |
 | Dependents (hold a proxy to a replaced built-in) | Autoload entries `animatedspeech dialog`, launched late (`LATE`) | `DEPENDENTS`: package service `expressivity.autonomousabilitiesmodules`, `ALServiceManager.stopService` before, `startService` after |
 | Added (built-ins a NAO autoloads that the desktop suite ships but does not; see "Matching a NAO's modules") | `expressiveness basicawareness autonomousblinking autonomousmoves`, launched late (`LATE`) | None |
 | `LATE` (launched with `ALLauncher.launchLocal` after our modules, in a NAO's autoload order; those the desktop autoloads are commented out of a copy of `autoload.ini`) | `expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog`: the dependents, the added built-ins, and `autonomouslife`, which a NAO loads after the added built-ins and may depend on | None |
@@ -169,7 +171,7 @@ Sequence (2.1 / 2.8):
 2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge`, every replaced built-in and the last service are registered **and** the list has not changed for `NAO_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAO_SIM_READY_TRIES` polls fail, exit 1. The settling matters on 2.8: on a slow boot (cold cache, right after an image rebuild) the last service appears while `naoqi-service` is still loading modules, and exiting a built-in or loading a module into that half-started process killed it (measured: `ALServiceManager` restarted it and `launchPythonModule` was cancelled after 50 s).
 3. 2.8: stop the dependent services.
 4. `exit()` the replaced built-ins.
-5. Load the relay (`launchLocal` of `RELAY`; a launch that registers no module exits 1), add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`) and load our modules.
+5. Load the relay (`launchLocal` of `RELAY`; a launch that registers no module exits 1), add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`), load our modules, then the `FRONTS` (`launchLocal`, same check), which take the replaced names over their cores.
 6. 2.1: launch the `LATE` entries in order; a launch that registers no module (`launchLocal` returns an empty list) exits 1. 2.8: start the dependent services.
 7. Check that every replaced and every added name answers (up to 10 s each; `launchPythonModule` does not report an import failure). If one does not, exit 1.
 8. Call `NaoSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] nao-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.

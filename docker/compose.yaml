@@ -4,7 +4,7 @@ name: nao-sim
 services:
   tts:
     build:
-      context: ./tts
+      context: ./tts-engine
       labels:
         io.nao-sim.version: ${NAO_SIM_VERSION:-dev}
         io.nao-sim.recipes: ${NAO_SIM_RECIPES:-}
@@ -18,7 +18,7 @@ services:
   naoqi21:
     profiles: ["2.1"]
     build:
-      context: .
+      context: ./naoqi
       dockerfile: Dockerfile.naoqi-2.1
       # The suite and animations.pkg (COPY --from=image-data): the image data folder nao-sim passes as
       # NAO_SIM_IMAGE_DATA, or a checkout's ./image-data when compose runs by hand.
@@ -46,7 +46,7 @@ services:
   naoqi28:
     profiles: ["2.8"]
     build:
-      context: .
+      context: ./naoqi
       dockerfile: Dockerfile.naoqi-2.8
       # The suite and animations.pkg (COPY --from=image-data): the image data folder nao-sim passes as
       # NAO_SIM_IMAGE_DATA, or a checkout's ./image-data when compose runs by hand.

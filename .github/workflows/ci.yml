@@ -43,7 +43,7 @@ jobs:
       - name: Lint
         run: uv run ruff check .
       - name: Format check (code directories only — `ruff format .` reflows Markdown)
-        run: uv run ruff format --check src tests tests-e2e docker/tts
+        run: uv run ruff format --check src tests tests-e2e docker/tts-engine
       - name: Type check
         run: uv run pyright
 

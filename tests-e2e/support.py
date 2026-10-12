@@ -48,7 +48,7 @@ class Version:
     container: str
     image: str
     profile: str  # compose profile
-    tts_log: (
+    speech_log: (
         str  # JSON-lines log of the ALTextToSpeech replacement, inside the container
     )
     implementation: str  # what ALTextToSpeech.whoami() names
@@ -62,7 +62,7 @@ VERSIONS = {
         "nao-sim-naoqi21",
         "nao-sim/naoqi:2.1.4.13",
         "2.1",
-        "/home/nao/tts_almodule.jsonl",
+        "/home/nao/speech_almodule.jsonl",
         "nao-sim ALModule replacement",
     ),
     "2.8": Version(
@@ -72,7 +72,7 @@ VERSIONS = {
         "nao-sim-naoqi28",
         "nao-sim/naoqi:2.8.7.4",
         "2.8",
-        "/home/nao/tts_qiservice.jsonl",
+        "/home/nao/speech_qiservice.jsonl",
         "nao-sim qi.Session replacement",
     ),
 }
@@ -330,10 +330,10 @@ class Container:
         res = _run("docker", "logs", "--since", since, self.version.container)
         return res.stdout + res.stderr
 
-    def tts_log(self) -> list[dict]:
+    def speech_log(self) -> list[dict]:
         """Entries of the ALTextToSpeech replacement's JSON-lines log."""
         res = _run(
-            "docker", "exec", self.version.container, "cat", self.version.tts_log
+            "docker", "exec", self.version.container, "cat", self.version.speech_log
         )
         return [
             json.loads(line) for line in res.stdout.splitlines() if line.startswith("{")

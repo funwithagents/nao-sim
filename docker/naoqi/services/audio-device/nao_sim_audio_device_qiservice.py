@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """ALAudioDevice replacement for NAOqi 2.8, registered as a qi service (the gateway relays it).
 The desktop suite has no ALAudioDevice, so the name is registered directly. The logic lives in
-nao_sim_audiodevice_core; buffers reach a subscriber through the native relay (_NaoSimAudioRelay),
+nao_sim_audio_device_core; buffers reach a subscriber through the native relay (_NaoSimAudioRelay),
 which this module calls through its own session."""
 import os
 import sys
@@ -9,7 +9,7 @@ import time
 
 import qi
 
-import nao_sim_audiodevice_core as core
+import nao_sim_audio_device_core as core
 
 _url = "tcp://127.0.0.1:%s" % os.environ.get("NAO_SIM_INTERNAL_PORT", "9559")
 _session = qi.Session()
@@ -92,4 +92,4 @@ class ALAudioDevice(object):
 
 _service = ALAudioDevice()
 _sid = _session.registerService(core.SERVICE, _service)
-sys.stderr.write("[nao_sim_audiodevice_qiservice] registered %s (id %s)\n" % (core.SERVICE, _sid))
+sys.stderr.write("[nao_sim_audio_device_qiservice] registered %s (id %s)\n" % (core.SERVICE, _sid))

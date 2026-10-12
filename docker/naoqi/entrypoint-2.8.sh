@@ -5,14 +5,16 @@
 # Our modules are qi.Session services in naoqi-service, which connect to NAO_SIM_INTERNAL_PORT.
 #
 # Replacing ALTextToSpeech: the package service that holds a proxy to it is stopped, the built-in
-# exits, our modules load, then that service starts again and binds to our replacement
+# exits, our modules load (its Python core among them), its C++ front takes the name with the
+# hidden signals ALAnimatedSpeech connects to, then that service starts again and binds to it
 # (specs/container/service-replacement.md, "Replacing a built-in").
 . "$(dirname "$0")/entrypoint-lib.sh"
 
 REPLACED="ALTextToSpeech"                                   # built-ins our modules take over
-RELAY="$NAOQI_HOME/lib/nao-sim/libnaosim_audiorelay.so"     # the native relay, loaded before our modules
-MODULES="nao_sim_status_qiservice nao_sim_tts_qiservice nao_sim_audiodevice_qiservice" # ours, in load order
-ADDED="ALAudioDevice _NaoSimAudioRelay"                     # names no built-in holds, which we register
+RELAY="$NAOQI_HOME/lib/nao-sim/libnao_sim_audio_device_relay.so"     # the native relay, loaded before our modules
+MODULES="nao_sim_status_qiservice nao_sim_speech_qiservice nao_sim_audio_device_qiservice" # ours, in load order
+FRONTS="$NAOQI_HOME/lib/nao-sim/libnao_sim_speech_front.so"           # C++ fronts taking the replaced names, after them
+ADDED="ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech" # names no built-in holds, which we register
 DEPENDENTS="expressivity.autonomousabilitiesmodules"        # package services holding a proxy to it (ALAnimatedSpeech)
 LAST_SERVICE="ALPanoramaCompass"                            # registered last at boot
 
@@ -25,8 +27,9 @@ for svc in $DEPENDENTS; do
   call ALServiceManager.stopService "$svc"
 done
 exit_builtins $REPLACED
-load_relay "$RELAY"
+load_native "$RELAY"
 load_modules $MODULES
+for front in $FRONTS; do load_native "$front"; done
 for svc in $DEPENDENTS; do
   log "starting service $svc"
   call ALServiceManager.startService "$svc"

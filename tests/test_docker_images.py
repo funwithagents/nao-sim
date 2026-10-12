@@ -137,7 +137,7 @@ def test_images_rebuilt_from_changed_sources_need_a_new_verification(
     docker, image_data
 ):
     build("2.1", image_data=image_data)
-    # Rebuilt by hand after changing docker/modules: same tag, another image.
+    # Rebuilt by hand after changing docker/naoqi/services: same tag, another image.
     docker.set(source="changed modules")
     state = docker.read()
     tag = "nao-sim/naoqi:2.1.4.13"
@@ -154,16 +154,18 @@ def test_an_edit_under_docker_makes_the_images_outdated(
     docker, image_data, tmp_path, monkeypatch
 ):
     recipes = tmp_path / "recipes"
-    (recipes / "modules" / "__pycache__").mkdir(parents=True)
+    (recipes / "naoqi" / "services" / "speech" / "__pycache__").mkdir(parents=True)
     (recipes / "image-data").mkdir()
-    module = recipes / "modules" / "nao_sim_tts_core.py"
+    module = recipes / "naoqi" / "services" / "speech" / "nao_sim_speech_core.py"
     module.write_text("# version 1\n")
     monkeypatch.setattr(docker_images, "DOCKER", recipes)
     build("2.1", image_data=image_data)
 
     # Image data, caches and hidden files are not recipes: the images stay current.
     (recipes / "image-data" / "images.json").write_text("{}")
-    (recipes / "modules" / "__pycache__" / "x.pyc").write_bytes(b"cache")
+    (recipes / "naoqi" / "services" / "speech" / "__pycache__" / "x.pyc").write_bytes(
+        b"cache"
+    )
     (recipes / ".DS_Store").write_bytes(b"finder")
     check_images("2.1", image_data)
 

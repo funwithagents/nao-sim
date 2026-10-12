@@ -36,8 +36,8 @@ The Docker images and what makes them a NAO: the NAOqi image, how override modul
 
 | Spec | Description | Status |
 |---|---|---|
-| [container.md](container/container.md) | NAOqi 2.1 and 2.8 images, suite and `animations` package download, package store volume, single-port network layout, compose, the entrypoint's configuration interface, the `io.nao-sim.version` image label; matching a NAO's modules per version (autonomous abilities added on 2.1, `autonomouslife` after them); the build files (C++ SDKs, libqi, boost) and the native relay's builder stage | Implemented |
-| [service-replacement.md](container/service-replacement.md) | Loading override modules into NAOqi, `ALModule` vs qi service per version, replacing a built-in, calling host-registered services (measured on both versions), the native relay for binary arguments | Implemented |
+| [container.md](container/container.md) | NAOqi 2.1 and 2.8 images, suite and `animations` package download, package store volume, single-port network layout, compose, the entrypoint's configuration interface, the `io.nao-sim.version` image label; matching a NAO's modules per version (autonomous abilities added on 2.1, `autonomouslife` after them); the build files (C++ SDKs, libqi, boost) and the native native build stage | Implemented |
+| [service-replacement.md](container/service-replacement.md) | Loading override modules into NAOqi, `ALModule` vs qi service per version, replacing a built-in, calling host-registered services (measured on both versions), the native relay for binary arguments, a C++ front for callers that stop by task id (`post`/`pCall`/`wait`/`stop(id)`, qi signals on it, measured on both versions) | Implemented |
 | [status-service.md](container/status-service.md) | `NaoSim` status service: identity of a nao-sim target (versions, device sources, readiness) as a service and ALMemory keys, the entrypoint's readiness guarantees, the Docker healthcheck | Implemented |
 | [tts-engine.md](container/tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the audio output | Implemented |
 
@@ -47,7 +47,7 @@ The NAOqi services nao-sim replaces or adds, as Python 2.7 modules inside NAOqi.
 
 | Spec | Description | Status |
 |---|---|---|
-| [speech.md](services/speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock | Implemented |
+| [speech.md](services/speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock; a C++ front over the Python core so the Say and Animated Say boxes and `ALAnimatedSpeech` stop by task id, with 2.8's hidden signals on the front | Implemented |
 | [audio-device.md](services/audio-device.md) | `ALAudioDevice` replacement: registered directly, NAO's formats and methods, energy, per-subscriber delivery to `processRemote` through the native relay, as a binary | Implemented |
 | [audio-player.md](services/audio-player.md) | `ALAudioPlayer`: the `sndfile-play` shim streaming sound files to the audio output, then a full replacement with mixing and sound sets | Draft |
 

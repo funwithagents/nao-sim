@@ -9,7 +9,7 @@ conversion, this side does no signal processing. Each subscriber has its own del
 slow one costs only itself. The buffer reaches the subscriber's processRemote through the native
 relay, which sends it as a binary, as a NAO's C++ ALAudioDevice does (Python 2.7 cannot).
 
-Used by nao_sim_audiodevice_almodule (2.1, ALModule) and nao_sim_audiodevice_qiservice (2.8, qi
+Used by nao_sim_audio_device_almodule (2.1, ALModule) and nao_sim_audio_device_qiservice (2.8, qi
 service). Kept importable under Python 3 so the host's fast tests cover it.
 """
 import json
@@ -42,7 +42,7 @@ _LENGTHS = struct.Struct(">II")
 
 
 def _stderr(msg):
-    sys.stderr.write("[nao_sim_audiodevice] %s\n" % msg)
+    sys.stderr.write("[nao_sim_audio_device] %s\n" % msg)
 
 
 def parse_preferences(sample_rate, channels, deinterleaved):

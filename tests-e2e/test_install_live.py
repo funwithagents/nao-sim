@@ -122,11 +122,12 @@ def test_the_package_carries_the_recipes_and_no_image_data(project):
     assert where["recipes"] == str(Path(where["package"]) / "docker")
     assert {
         "docker/compose.yaml",
-        "docker/Dockerfile.naoqi-2.1",
-        "docker/Dockerfile.naoqi-2.8",
-        "docker/entrypoint-lib.sh",
-        "docker/modules/nao_sim_tts_core.py",
-        "docker/tts/server.py",
+        "docker/naoqi/Dockerfile.naoqi-2.1",
+        "docker/naoqi/Dockerfile.naoqi-2.8",
+        "docker/naoqi/entrypoint-lib.sh",
+        "docker/naoqi/services/speech/nao_sim_speech_core.py",
+        "docker/naoqi/services/speech/nao_sim_speech_front.cpp",
+        "docker/tts-engine/server.py",
     } <= set(where["bundled"])
     assert not any(
         "image-data" in path or path.endswith(".pyc") for path in where["bundled"]

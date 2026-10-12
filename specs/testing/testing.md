@@ -6,7 +6,7 @@ code:
   - tests-e2e/support.py
 tests:
   - tests/test_audio_output.py
-  - tests/test_tts_core.py
+  - tests/test_speech_core.py
   - tests/test_tts_engine.py
   - tests/test_status_core.py
   - tests/test_entrypoint.py
@@ -36,7 +36,7 @@ Tests split into two directories, and the split is structural — a directory bo
 - **`tests/` is the normal dev loop.** Fast, deterministic, no real network, no credentials. `pyproject.toml`'s `testpaths = ["tests"]` points the default `uv run pytest` here, so this is what runs on every change and what any contributor or CI can run with zero credentials.
 - **`tests-e2e/` is opt-in.** It builds and runs the NAOqi and `tts` containers (Docker, the user's Choregraphe suite, real timing), so it is deliberately *not* collected by the default run. Because `testpaths` already excludes it, no pytest marker or `--run-e2e` flag is needed: the physical separation is the whole mechanism. Run it explicitly (`uv run pytest tests-e2e`).
 
-The `tests/` tier has one `test_<module>.py` per module under test: the `src/nao_sim/` modules and the host-importable container code (`test_tts_core.py` for `docker/modules/nao_sim_tts_core.py`, `test_status_core.py` for `nao_sim_status_core.py`, `test_tts_engine.py` for `docker/tts/server.py`), the container's shell scripts (`test_entrypoint.py` runs `docker/entrypoint-2.1.sh`, `entrypoint-2.8.sh` and `healthcheck.sh` with fake `naoqi-bin` and `qicli` first on `PATH`, so the boot sequence and its failure exits are checked without Docker), plus the `test_project_map.py` drift guard. `tests/conftest.py` puts `docker/modules` and `docker/tts` on `sys.path` (and pyright's `extraPaths`). `tests-e2e/` is organized around live scenarios rather than modules.
+The `tests/` tier has one `test_<module>.py` per module under test: the `src/nao_sim/` modules and the host-importable container code (`test_speech_core.py` for `docker/naoqi/services/speech/nao_sim_speech_core.py`, `test_status_core.py` for `nao_sim_status_core.py`, `test_tts_engine.py` for `docker/tts-engine/server.py`), the container's shell scripts (`test_entrypoint.py` runs `docker/naoqi/entrypoint-2.1.sh`, `entrypoint-2.8.sh` and `healthcheck.sh` with fake `naoqi-bin` and `qicli` first on `PATH`, so the boot sequence and its failure exits are checked without Docker), plus the `test_project_map.py` drift guard. `tests/conftest.py` puts every `docker/naoqi/services/<service>/` and `docker/tts-engine` on `sys.path` (and pyright's `extraPaths`). `tests-e2e/` is organized around live scenarios rather than modules.
 
 ## What a good test asserts
 
@@ -68,4 +68,4 @@ nao-sim is tested as what it is: containers that behave like a NAO in their API,
 ## Open questions
 
 1. **CI wiring** is built ([ci.md](ci.md)): both tiers run on GitHub's hosted runners. The live tier's rule of skipping what the machine lacks has its CI counterpart: `NAO_SIM_E2E_VERSION` runs one version and makes it required, so what would skip fails.
-2. **Python 2.7 override modules.** The shared core (`nao_sim_tts_core`) is Python 2.7 code kept importable under Python 3, so the fast tier tests it on the host; the version-specific modules (`naoqi`/`qi` objects) are only exercised by the live tier. A live test (`test_modules_live.py`) compiles every module in each image with the image's own `/opt/naoqi/bin/python2`, so the live tier, and CI's entries with it, prove they are still valid Python 2.7.
+2. **Python 2.7 override modules.** The shared core (`nao_sim_speech_core`) is Python 2.7 code kept importable under Python 3, so the fast tier tests it on the host; the version-specific modules (`naoqi`/`qi` objects) are only exercised by the live tier. A live test (`test_modules_live.py`) compiles every module in each image with the image's own `/opt/naoqi/bin/python2`, so the live tier, and CI's entries with it, prove they are still valid Python 2.7.

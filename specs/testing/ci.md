@@ -32,13 +32,13 @@ One file, `.github/workflows/ci.yml`. It triggers on `pull_request`, on `push` t
 
 | Job | What |
 | --- | --- |
-| `check` | `uv sync --locked`, then `ruff check .`, `ruff format --check src tests tests-e2e docker/tts`, `pyright` |
+| `check` | `uv sync --locked`, then `ruff check .`, `ruff format --check src tests tests-e2e docker/tts-engine`, `pyright` |
 | `fast-tier` | The same environment; `uv run pytest -rs` |
 | `e2e-sim` | A matrix over the NAOqi versions (`2.1`, `2.8`), `fail-fast: false`, each entry on its own runner: restore or build the version's images, then `uv run pytest tests-e2e -rs` on that version only |
 
 - The three jobs run side by side and none waits on another: a run takes as long as its slowest job, a live entry.
 - **`--locked`**: the sync fails when `uv.lock` does not match `pyproject.toml`, so a dependency edit lands with its relock. The sync installs the `dev` group, so the `viewer` extra (nao-viewer, from its pinned Git commit) is there in every job.
-- **The format check covers the code directories only**, since `ruff format .` would reflow the Python blocks inside Markdown files. `docker/modules/` is Python 2.7, outside ruff ([project.md](../project.md)).
+- **The format check covers the code directories only**, since `ruff format .` would reflow the Python blocks inside Markdown files. The Python in `docker/naoqi/services/` is Python 2.7, outside ruff ([project.md](../project.md)).
 - **Audio only where it is tested.** `sounddevice` is imported at the first stream of the device sink and when the microphone opens ([audio-output.md](../host/audio-output.md), [audio-input.md](../host/audio-input.md)): the `check` and `fast-tier` jobs fake it and need no sound system. The live entries get a **virtual loopback**, a PulseAudio null sink as the default output and its monitor as the default input (a virtual microphone wired to a virtual loudspeaker), so the live tier's loopback tests run on every push: the `mic` source, the robot's own speech coming back into the microphone, and the `DevicePlayer` sink ([testing.md](testing.md), "Live tier"). The `MemorySink` stays the live tier's sink for every other test.
 - **One version per live entry.** Both versions publish 9559 and one nao-sim runs per machine, so each version gets its own runner. The entry sets `NAO_SIM_E2E_VERSION` to its version: the `nao` fixture then runs that version only, and a missing suite, image or Docker **fails** the entry instead of skipping it. An unknown value fails the session at collection. Without the variable (a local run) the tier keeps its rule of skipping what the machine lacks ([testing.md](testing.md), "Skip, never fail, without the means"); in CI a skip would turn the job green with nothing tested.
 - **Each job carries a `timeout-minutes`** well under GitHub's default (10 for `check`, 15 for `fast-tier`, 45 for a live entry, whose cold build is the longest step), so a hung boot fails in minutes.

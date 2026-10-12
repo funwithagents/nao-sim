@@ -82,13 +82,13 @@ Everything slow or downloaded happens once, before any start, in `await fetch_an
 
 An unknown version is a `ValueError`. Docker is checked first (`DockerUnavailableError`), and each verification needs port 9559 free (`PortInUseError`); the audio output's 9562 is not used by a boot, so a running audio output does not stop it.
 
-So `start()` only checks: an image missing or not verified raises `ImagesMissingError`, an image built by another nao-sim version or from other recipes raises `ImagesOutdatedError` (its override modules are stale, or `docker/` was edited since); both name the command to run. Working on `docker/modules/` means rerunning `fetch-and-build-images`; the live tier runs it only for a version whose images fail `check_images`.
+So `start()` only checks: an image missing or not verified raises `ImagesMissingError`, an image built by another nao-sim version or from other recipes raises `ImagesOutdatedError` (its override modules are stale, or `docker/` was edited since); both name the command to run. Working on `docker/naoqi/services/` means rerunning `fetch-and-build-images`; the live tier runs it only for a version whose images fail `check_images`.
 
 ### Files on disk
 
 | What | From a checkout | Installed (a git dependency) |
 | --- | --- | --- |
-| Recipes (Dockerfiles, compose, entrypoints, healthcheck, `modules/`, `tts/`) | `docker/` | `nao_sim/docker/`, the package data ([project.md](../project.md), "Distribution") |
+| Recipes (compose, `naoqi/`: Dockerfiles, entrypoints, healthcheck, `services/`; `tts-engine/`) | `docker/` | `nao_sim/docker/`, the package data ([project.md](../project.md), "Distribution") |
 | Image data (suites, `animations.pkg`, `hashes.json`) | `docker/image-data/<version>/` | `platformdirs.user_data_dir("nao-sim")/image-data/<version>/` |
 | `images.json` (verified image IDs) | `docker/image-data/images.json` (gitignored with the image data) | Next to the image data |
 | Build context | The recipes folder, with the image data folder of the version as a second, named context | The same |

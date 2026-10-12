@@ -1,7 +1,7 @@
 ---
 code:
-  - docker/tts/server.py
-  - docker/tts/Dockerfile
+  - docker/tts-engine/server.py
+  - docker/tts-engine/Dockerfile
 tests:
   - tests/test_tts_engine.py
   - tests-e2e/test_speech_live.py

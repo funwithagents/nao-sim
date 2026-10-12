@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
-"""ALTextToSpeech replacement for NAOqi 2.1, registered through naoqi-bin's broker (ALModule).
-Speech itself is done by nao_sim_tts_core (tts container + host speaker)."""
+"""The speech core for NAOqi 2.1, registered through naoqi-bin's broker (ALModule) as the hidden
+_NaoSimTextToSpeech. ALTextToSpeech is the C++ front (docker/services/speech/nao_sim_speech_front.cpp), which forwards
+every call here; speech itself is done by nao_sim_speech_core (tts container + host audio output)."""
 import json
 import sys
 import time
 
 from naoqi import ALModule, ALProxy
 
-import nao_sim_tts_core as core
+import nao_sim_speech_core as core
 
-LOG = "/home/nao/tts_almodule.jsonl"
+NAME = "_NaoSimTextToSpeech"
+LOG = "/home/nao/speech_almodule.jsonl"
 _t0 = time.time()
 
 
@@ -19,28 +21,30 @@ def _log(**f):
         fh.write(json.dumps(f, default=repr) + "\n")
 
 
-class ALTextToSpeech(ALModule):
+class NaoSimTextToSpeech(ALModule):
     def __init__(self, name):
         ALModule.__init__(self, name)
         self.memory = ALProxy("ALMemory")
         self.speaker = core.Speaker(self.memory.raiseEvent, log=_log)
-        try:
-            self.BIND_PYTHON(name, "say", 1)   # autobind registered the 2-arg form only
-        except Exception as e:  # noqa: BLE001
-            _log(method="bind-say-1", error=repr(e))
 
-    def say(self, text, lang=None):
-        """Says the text, optionally in the given language."""
-        if lang:
-            old = self.speaker.language
-            self.speaker.set_language(lang)
-            try:
-                self.speaker.say(text)
-            finally:
-                self.speaker.set_language(old)
-        else:
-            self.speaker.say(text)
+    # -- what the front's long calls use ---------------------------------------
+    def start(self, sid, text, lang):
+        """Starts speaking text as call sid (in lang if not empty), returns at once."""
+        self.speaker.start(int(sid), text, lang or None)
 
+    def waitDone(self, sid, timeoutMs):
+        """True once call sid is over, waiting at most timeoutMs."""
+        return self.speaker.wait_done(int(sid), timeoutMs / 1000.0)
+
+    def stopCall(self, sid):
+        """Stops call sid: the speaking one ends, a waiting one is dropped."""
+        self.speaker.stop_call(int(sid))
+
+    def newId(self):
+        """An id for a blocking call, which has no task id."""
+        return self.speaker.new_id()
+
+    # -- forwarded as they are ---------------------------------------------------
     def sayToFile(self, text, path):
         """Not supported on nao-sim."""
         _log(method="sayToFile", text=text, path=path)
@@ -122,6 +126,10 @@ class ALTextToSpeech(ALModule):
         return "nao-sim ALModule replacement (engine %s)" % core.TTS_URL
 
 
-ALTextToSpeech = ALTextToSpeech("ALTextToSpeech")
-_log(method="registered", tts_url=core.TTS_URL)
-sys.stderr.write("[nao_sim_tts_almodule] registered ALTextToSpeech through the broker, engine %s\n" % core.TTS_URL)
+# The instance must be a global named like the module: the broker finds it by that name, in the
+# namespace launchPythonModule's `from <module> import *` fills, which skips underscore names
+# unless __all__ lists them.
+__all__ = [NAME]
+_NaoSimTextToSpeech = NaoSimTextToSpeech(NAME)
+_log(method="registered", name=NAME, tts_url=core.TTS_URL)
+sys.stderr.write("[nao_sim_speech_almodule] registered %s through the broker, engine %s\n" % (NAME, core.TTS_URL))
