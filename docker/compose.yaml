@@ -34,6 +34,8 @@ services:
     container_name: nao-sim-naoqi21
     environment:
       NAO_SIM_TTS_URL: http://tts:8080
+      # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
+      NAO_SIM_HOST_LINK: host.docker.internal:9563
     depends_on: [tts]
     ports:
       - "127.0.0.1:9559:9559"
@@ -60,6 +62,8 @@ services:
     container_name: nao-sim-naoqi28
     environment:
       NAO_SIM_TTS_URL: http://tts:8080
+      # The host link (specs/host/devices.md): ALAudioDevice connects out to the host's audio input.
+      NAO_SIM_HOST_LINK: host.docker.internal:9563
     depends_on: [tts]
     ports:
       - "127.0.0.1:9559:9559"

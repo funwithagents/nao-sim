@@ -23,6 +23,9 @@ PROJECT = "nao-sim"
 URL = "tcp://127.0.0.1:9559"
 NAOQI_PORT = docker_images.NAOQI_PORT
 AUDIO_OUTPUT_PORT = 9562  # the tts container streams to host.docker.internal:9562
+HOST_LINK_PORT = (
+    9563  # the containers' services connect out to host.docker.internal:9563
+)
 
 
 @dataclass(frozen=True)

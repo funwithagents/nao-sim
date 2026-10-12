@@ -20,8 +20,12 @@ concurrency:
 
 env:
   # Mesa's GL and a virtual X display, for the sim-window test on the 2.1 entry; libegl1 and
-  # libgl1-mesa-dri are what the headless viewer will render through (specs/testing/ci.md).
+  # libgl1-mesa-dri are what the headless viewer renders through (specs/testing/ci.md).
   APT_WINDOW: xvfb xauth libgl1 libglx-mesa0 libegl1 libgl1-mesa-dri
+  # A virtual audio loopback for the tests that use real sound devices: PulseAudio and its tools,
+  # PortAudio (sounddevice takes it from the system on Linux) and the ALSA plugin that routes
+  # ALSA's default device, the one PortAudio opens, to PulseAudio.
+  APT_AUDIO: pulseaudio pulseaudio-utils libportaudio2 libasound2-plugins
 
 jobs:
   check:
@@ -124,14 +128,31 @@ jobs:
       - name: Drop the saved archive
         if: steps.images.outputs.cache-hit != 'true'
         run: rm -f "$RUNNER_TEMP/images.tar"
-      - name: System packages (Mesa GL, virtual display)
+      - name: System packages (Mesa GL, virtual display, audio)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends -o Acquire::http::Timeout=30 -o Acquire::Retries=3 $APT_WINDOW
+          sudo apt-get install -y --no-install-recommends -o Acquire::http::Timeout=30 -o Acquire::Retries=3 $APT_WINDOW $APT_AUDIO
+      # A null sink as the default output and its monitor as the default input: a virtual
+      # microphone wired to a virtual loudspeaker (as reachy-mini-bridge's live job).
+      - name: Audio loopback (PulseAudio null sink)
+        run: |
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=ci sink_properties=device.description=ci
+          pactl set-default-sink ci
+          pactl set-default-source ci.monitor
+          # A null sink renders at the latency its clients ask for, up to about 1.5 s when none
+          # asks for less (measured): a silent client at 10 ms for the whole job keeps it awake
+          # and low, so what is played is heard within a few ms, as from a real loudspeaker.
+          nohup pacat --playback --raw --format=s16le --rate=48000 --channels=1 \
+            --latency-msec=10 -d ci < /dev/zero > /dev/null 2>&1 &
+          pactl info
+          uv run python -c "import sounddevice as sd; print(sd.query_devices()); print('default:', sd.default.device)"
       - name: Live tier
         env:
           # This version only, and a missing image or Docker fails instead of skipping.
           NAO_SIM_E2E_VERSION: ${{ matrix.version }}
+          # The default sound devices are the loopback above: the audio device tests run.
+          NAO_SIM_E2E_AUDIO: loopback
         # Warnings and errors print live. xvfb-run gives the sim window an X display.
         run: >-
           xvfb-run -a -s "-screen 0 1280x1024x24"

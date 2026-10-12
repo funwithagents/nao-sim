@@ -11,6 +11,7 @@ code:
   - docker/Dockerfile.naoqi-2.8.dockerignore
   - src/nao_sim/suite.py
   - src/nao_sim/docker_images.py
+  - docker/relay/naosim_audiorelay.cpp
 tests:
   - tests/test_suite.py
   - tests/test_docker_images.py
@@ -47,6 +48,21 @@ Each image is built from two Aldebaran files per version, kept in the image data
 - Neither suite has the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs): the robot image is its only public source. Both versions' packages are behaviours (`.xar`) and `.ogg` only, no native code, with the same 224 `Stand/Gestures` behaviours. The robot images have no sound set: that stays the user's to install (see "Package store").
 - The download fetches Aldebaran's own public files to the user's machine, as the user would by hand; nothing is redistributed.
 
+#### Build files: the relay's headers
+
+The native relay ([service-replacement.md](service-replacement.md), "Binary arguments: the native relay") is compiled in the image build from headers that come from these files, kept in the same `<version>/` folder and fetched by the same step. None of them reaches the final image: only the compiled relay does.
+
+| Version | File | Source | SHA-256 | Used for |
+| --- | --- | --- | --- | --- |
+| 2.1 | `naoqi-sdk-2.1.4.13-linux64.tar.gz` (334 MB) | Aldebaran's public C++ SDK, `https://community-static.aldebaran.com/resources/2.1.4.13/sdk-c%2B%2B/` | `a1669524819088b7aac82e04450e2c5dce6ffdd11c968444db89b6831955683b` | The NAOqi module API (`alcommon`, `alvalue`, `alerror`), libqi (`qi`, `qitype`, `qimessaging`) and boost 1.55 headers: the same release as the suite |
+| 2.8 | `naoqi-sdk-2.8.5.10-linux64.tar.gz` (1.1 GB) | Aldebaran's public C++ SDK, `https://community-static.aldebaran.com/resources/2.8.5/` (no 2.8.7 SDK is public) | `9af3591de63b1062e36ec0aa6740592cb4de8db1ff6b355e188daff42012d303` | The module API headers only |
+| 2.8 | `libqi-7f3e1394cb26126b26fa7ff54d2de1371a1c9f96.tar.gz` (1 MB) | `https://github.com/funwithagents/libqi/archive/<commit>.tar.gz`, our fork of `aldebaran/libqi` (BSD-3-Clause), at the commit of tag `qi-framework-v1.8.7` (June 2021) | `ef0566920cb76eb6dac5affd4ca978a959b66b54e86219407d8e029cd81aea48` | libqi headers matching the 2.8.7.4 suite's `libqi.so`; the SDK's 2.8.5 headers do not (measured: undefined symbols) |
+| 2.8 | `boost_1_64_0.tar.bz2` (80 MB) | `https://archives.boost.io/release/1.64.0/source/` (Boost Software License) | `7bcc5caace97baa948931d712ea5f37038dbb1c5d89b43ad4def4ed7cb683332` | boost headers matching the suite's boost 1.64 (the SDK has 1.59) |
+
+- These are plain HTTPS downloads, not Git LFS; the pins live in `src/nao_sim/suite.py` with the others, and they follow the same rules (kept when the hash matches, `.part` and hash check, `FetchError`).
+- The 2.1 SDK's own libqi and boost headers are exactly the suite's, and there is no public source for 2.1's `qitype` and `qimessaging`; the 2.8 overrides exist only because the public 2.8 SDK is older than the suite. With a 2.8.7 SDK, 2.8 would use the SDK alone, as 2.1 does.
+- Like the suite, the SDKs are Aldebaran's public files downloaded to the user's machine; nothing is redistributed, and an image that contains the relay is local, as every nao-sim image is.
+
 #### Fetching the image data
 
 The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--image-data DIR]` ([api.md](../runtime/api.md), "Images"; default: both versions into the image data folder, `docker/image-data/` in a checkout, see api.md's "Files on disk"), which then builds and verifies the images. `suite.fetch` (`src/nao_sim/suite.py`) makes `<image-data>/<version>/` hold the pinned suite and `animations.pkg`.
@@ -65,7 +81,24 @@ The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--image-data DIR]
 
 - The Dockerfile copies `animations.pkg` from the `image-data` build context (`COPY --from=image-data`) to `/opt/naoqi/share/naoqi/apps/animations.pkg`. At boot, NAOqi's `PackageManager` installs every `.pkg` in that directory as a *system* package, as a robot does with its factory packages (the 2.8 suite installs its own `core`, `dialog`, `expressivity`, `life` and `semantic` this way). Measured on both versions: `Successfully installed system package` in the log, `PackageManager.hasPackage("animations")` and `ALBehaviorManager.isBehaviorInstalled("animations/Stand/Gestures/Hey_1")` are true once the entrypoint is ready.
 - Copying the unzipped package into the package store does not work: `PackageManager` only knows the packages in its registry (`~/.local/share/PackageManager/pm.db`, SQLite, table `packages(uuid, path, installer)`).
-- Once built, the image needs neither the suite nor the package. A rebuild (after changing the modules or the entrypoint) still needs both in the image data folder: Docker checks every file a `COPY` uses, even for a cached step.
+- Once built, the image needs neither the suite nor the package. A rebuild (after changing the modules or the entrypoint) still needs both in the image data folder: Docker checks every file a `COPY` uses, even for a cached step. The same holds for the build files.
+
+### The relay's build
+
+Each Dockerfile has three stages, so the compiler and the headers never reach the image:
+
+1. **`naoqi`**: the image as it was (suite, packages, modules, entrypoint, healthcheck).
+2. **`relay`**, `FROM naoqi`: installs `g++` from the base's own Ubuntu (the suite's compiler generation), extracts the version's headers from the build files (`COPY --from=image-data`), compiles `relay/naosim_audiorelay.cpp` into `libnaosim_audiorelay.so`, linked against the suite's libraries in `/opt/naoqi/lib`, and checks that `ldd -r` reports no undefined symbol.
+3. The final stage, `FROM naoqi`, copies only the `.so` to `/opt/naoqi/lib/nao-sim/`.
+
+| | 2.1 | 2.8 |
+| --- | --- | --- |
+| Compiler | g++ 4.8 (Ubuntu 14.04); the suite was built with gcc 4.6.3, same C++ library ABI | g++ 5.4 (Ubuntu 16.04), as the suite |
+| Flags | `-std=gnu++98` | `-std=gnu++14 -D_GLIBCXX_USE_CXX11_ABI=0` (the suite uses the old string ABI) |
+| Include path, in order | The SDK's `include/` | libqi at `7f3e1394`, boost 1.64, then the SDK's `include/` |
+
+- `ALCALL` (the module entry points' export macro) is defined by qibuild, not by the SDK's headers: the source defines it as default visibility when absent.
+- Measured on Oct 10, 2026 (`spike/RESULTS.md`): both relays compile, load with `launchLocal` and deliver correct buffers; the 2.8 relay built against the SDK's own 2.8.5 libqi headers does not load on 2.8.7.4.
 
 ### Package store
 
@@ -111,7 +144,7 @@ Port 9559 is the only port, published on the host as `127.0.0.1:9559`.
 
 Each NAOqi service sits behind its version's profile, with symmetric names (`naoqi21`/`naoqi28`, containers `nao-sim-naoqi21`/`nao-sim-naoqi28`), so a version is always named: `docker compose --profile 2.1 up -d tts naoqi21`. A bare `docker compose up` starts only `tts`.
 
-Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and each mounts its package store volume (`packages-2.1`, `packages-2.8`; see "Package store"). They reach the engine at `http://tts:8080` (`NAO_SIM_TTS_URL`) and the host through `host.docker.internal` (`host-gateway` on Linux).
+Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and each mounts its package store volume (`packages-2.1`, `packages-2.8`; see "Package store"). They reach the engine at `http://tts:8080` (`NAO_SIM_TTS_URL`) and the host through `host.docker.internal` (`host-gateway` on Linux): the host link at `NAO_SIM_HOST_LINK=host.docker.internal:9563` ([devices.md](../host/devices.md), "The host link").
 
 ### Entrypoint
 
@@ -122,7 +155,9 @@ One script per version, each reading top to bottom as that version's procedure: 
 | `naoqi-bin` | `-b 0.0.0.0 -p 9559`: the broker is the public port | `--qi-listen-url tcp://127.0.0.1:9558`, behind the suite's gateway on 9559 |
 | Reached from inside on | `tcp://127.0.0.1:9559` | `tcp://127.0.0.1:9558`, exported as `NAO_SIM_INTERNAL_PORT` for our qi services |
 | `REPLACED` (built-ins whose `exit()` is called) | `ALTextToSpeech` | `ALTextToSpeech` |
-| `MODULES` (ours, loaded with `ALLauncher.launchPythonModule`, in order) | `nao_sim_status_almodule nao_sim_tts_almodule` | `nao_sim_status_qiservice nao_sim_tts_qiservice` |
+| `RELAY` (the native relay, loaded with `ALLauncher.launchLocal` before our modules) | `/opt/naoqi/lib/nao-sim/libnaosim_audiorelay.so` | Same |
+| `MODULES` (ours, loaded with `ALLauncher.launchPythonModule`, in order) | `nao_sim_status_almodule nao_sim_tts_almodule nao_sim_audiodevice_almodule` | `nao_sim_status_qiservice nao_sim_tts_qiservice nao_sim_audiodevice_qiservice` |
+| `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoSimAudioRelay` | Same |
 | Dependents (hold a proxy to a replaced built-in) | Autoload entries `animatedspeech dialog`, launched late (`LATE`) | `DEPENDENTS`: package service `expressivity.autonomousabilitiesmodules`, `ALServiceManager.stopService` before, `startService` after |
 | Added (built-ins a NAO autoloads that the desktop suite ships but does not; see "Matching a NAO's modules") | `expressiveness basicawareness autonomousblinking autonomousmoves`, launched late (`LATE`) | None |
 | `LATE` (launched with `ALLauncher.launchLocal` after our modules, in a NAO's autoload order; those the desktop autoloads are commented out of a copy of `autoload.ini`) | `expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog`: the dependents, the added built-ins, and `autonomouslife`, which a NAO loads after the added built-ins and may depend on | None |
@@ -136,9 +171,9 @@ Sequence (2.1 / 2.8):
 2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge`, every replaced built-in and the last service are registered **and** the list has not changed for `NAO_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAO_SIM_READY_TRIES` polls fail, exit 1. The settling matters on 2.8: on a slow boot (cold cache, right after an image rebuild) the last service appears while `naoqi-service` is still loading modules, and exiting a built-in or loading a module into that half-started process killed it (measured: `ALServiceManager` restarted it and `launchPythonModule` was cancelled after 50 s).
 3. 2.8: stop the dependent services.
 4. `exit()` the replaced built-ins.
-5. Add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`) and load our modules.
+5. Load the relay (`launchLocal` of `RELAY`; a launch that registers no module exits 1), add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`) and load our modules.
 6. 2.1: launch the `LATE` entries in order; a launch that registers no module (`launchLocal` returns an empty list) exits 1. 2.8: start the dependent services.
-7. Check that every replaced name answers again (up to 10 s each; `launchPythonModule` does not report an import failure). If one does not, exit 1.
+7. Check that every replaced and every added name answers (up to 10 s each; `launchPythonModule` does not report an import failure). If one does not, exit 1.
 8. Call `NaoSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] nao-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
 
 Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited container, never as a running one without its overrides. The healthcheck ([status-service.md](status-service.md)) reports `healthy` only after step 8.
@@ -160,7 +195,7 @@ Each image matches a real NAO **on the same NAOqi version**, not the other versi
 ### Desktop NAOqi facts the rest of nao-sim relies on
 
 - No `ALSystem` service and no version key in ALMemory; `RobotConfig/Body/Type` is absent (2.1 and 2.8). The version (and the fact that the target is nao-sim) must come from a nao-sim service.
-- No `ALAudioDevice` on either version; `ALAudioPlayer` is a stub that spawns `/opt/naoqi/bin/sndfile-play`, which fails in Docker.
+- No `ALAudioDevice` on either version (nao-sim adds one, [audio-device.md](../services/audio-device.md)); `ALAudioPlayer` is a stub that spawns `/opt/naoqi/bin/sndfile-play`, which fails in Docker.
 - 2.1 has `Device/SubDeviceList/*` keys in ALMemory; the 2.8 virtual robot has none.
 
 ### Platforms

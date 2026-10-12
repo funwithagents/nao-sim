@@ -236,6 +236,45 @@ def test_a_stop_ends_the_playing_period_at_once(memory):
     assert memory.output.playing_until == pytest.approx(t_stop, abs=0.1)
 
 
+def test_listeners_hear_every_chunk_when_it_is_due(memory):
+    heard: list[tuple[int, int, int, float]] = []
+    memory.output.listeners.append(
+        lambda chunk, rate, channels, at: heard.append((len(chunk), rate, channels, at))
+    )
+    t0 = time.monotonic()
+    memory.play(0.35)
+    assert sum(n for n, *_ in heard) == len(tone(0.35))  # every byte, in order
+    assert {(rate, channels) for _, rate, channels, _ in heard} == {(RATE, 1)}
+    dues = [at for *_, at in heard]
+    assert dues[0] == pytest.approx(t0, abs=0.1)
+    # Back to back: each chunk is due when the one before has played.
+    for (n, *_, at), next_at in zip(heard, dues[1:], strict=False):
+        assert next_at == pytest.approx(at + n / (2 * RATE), abs=0.005)
+
+
+def test_a_cut_tells_the_listeners(memory):
+    heard: list[tuple[int, float]] = []
+    memory.output.listeners.append(
+        lambda chunk, rate, channels, at: heard.append((len(chunk), at))
+    )
+    memory.play_async(2.0)
+    time.sleep(0.4)
+    t_stop = time.monotonic()
+    memory.send({"cmd": "stop"})
+    wait_for(lambda: heard and heard[-1][0] == 0)
+    assert heard[-1][1] == pytest.approx(t_stop, abs=0.15)  # silent from the stop
+
+
+def test_a_failing_listener_does_not_end_the_stream(memory):
+    def broken(chunk, rate, channels, at):
+        raise RuntimeError("deaf")
+
+    memory.output.listeners.append(broken)
+    memory.play(0.3)
+    assert playbacks(memory)[-1].duration_s == pytest.approx(0.3, abs=0.01)
+    assert not playbacks(memory)[-1].interrupted
+
+
 # --- Sinks --------------------------------------------------------------------------
 
 
@@ -344,6 +383,9 @@ def test_device_player_plays_each_stream_and_cuts_on_interruption(fake_sounddevi
     finished, cut = fake_sounddevice
     assert finished.kwargs["samplerate"] == RATE and finished.kwargs["channels"] == 2
     assert finished.kwargs["device"] == 3 and finished.kwargs["dtype"] == "int16"
+    assert (
+        finished.kwargs["latency"] == "low"
+    )  # heard about when it is due, as on a NAO
     assert finished.written == b"abcd"
     assert finished.calls == ["start", "stop", "close"]  # drained
     assert cut.calls == ["start", "abort", "close"]  # cut at once

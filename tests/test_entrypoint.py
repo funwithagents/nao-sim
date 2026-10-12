@@ -3,8 +3,9 @@
 The fakes sit first on PATH. `qicli` logs every invocation, lists `FAKE_QICLI_SERVICES` (minus
 the names that are "down", plus names that appear late) on `info` without a name, answers `info
 NAME` with failure while NAME is down, takes a name down on `call NAME.exit`, brings one back when
-the module that registers it is loaded (`FAKE_QICLI_REGISTERS`), and serves `NaoSim.setReady` and
-`NaoSim.isReady` in either suite's output style.
+the module (or the library, by file name) that registers it is loaded (`FAKE_QICLI_REGISTERS`),
+keeps the names our modules add down until then (`FAKE_QICLI_ABSENT`), and serves
+`NaoSim.setReady` and `NaoSim.isReady` in either suite's output style.
 """
 
 import os
@@ -29,11 +30,19 @@ FAKE_QICLI = textwrap.dedent(
         f.write(" ".join(args) + "\\n")
     down_file = os.path.join(fake, "down")
     down = set(open(down_file).read().split()) if os.path.exists(down_file) else set()
+    registered_file = os.path.join(fake, "registered")
+    registered = set(open(registered_file).read().split()) if os.path.exists(registered_file) else set()
+    down |= set(os.environ.get("FAKE_QICLI_ABSENT", "").split()) - registered
     registers = dict(
         item.split("=") for item in os.environ.get("FAKE_QICLI_REGISTERS", "").split(",") if item
     )
     def save():
         open(down_file, "w").write(" ".join(sorted(down)))
+        open(registered_file, "w").write(" ".join(sorted(registered)))
+    def register(name):
+        if name:
+            down.discard(name); registered.add(name)
+        save()
     counter = os.path.join(fake, "info.count")
     if args[0] == "info":
         n = int(open(counter).read()) + 1 if os.path.exists(counter) else 1
@@ -53,11 +62,15 @@ FAKE_QICLI = textwrap.dedent(
     if target.endswith(".exit"):
         down.add(target[: -len(".exit")]); save(); sys.exit(0)
     if target == "ALLauncher.launchPythonModule":
-        down.discard(registers.get(args[2], "")); save(); sys.exit(0)
+        register(registers.get(args[2], "")); sys.exit(0)
     if target == "ALLauncher.launchLocal":  # the modules the library registered, as 2.1 prints them
         empty = os.environ.get("FAKE_QICLI_EMPTY_LAUNCH", "").split()
-        print("ALLauncher.launchLocal: [  ]" if args[2] in empty else
-              'ALLauncher.launchLocal: [ "%s" ]' % args[2])
+        name = os.path.basename(args[2])
+        if name in empty:
+            print("ALLauncher.launchLocal: [  ]")
+        else:
+            register(registers.get(name, ""))
+            print('ALLauncher.launchLocal: [ "%s" ]' % registers.get(name, name))
         sys.exit(0)
     if target.startswith("NaoSim."):
         if "NaoSim" in down:
@@ -91,8 +104,16 @@ SERVICES = (
     "ALServiceManager ALAutonomousLife ALPanoramaCompass"
 )
 
-REGISTERS_21 = "nao_sim_status_almodule=NaoSim,nao_sim_tts_almodule=ALTextToSpeech"
-REGISTERS_28 = "nao_sim_status_qiservice=NaoSim,nao_sim_tts_qiservice=ALTextToSpeech"
+RELAY = "libnaosim_audiorelay.so"
+ADDED = "ALAudioDevice _NaoSimAudioRelay"
+REGISTERS_21 = (
+    "nao_sim_status_almodule=NaoSim,nao_sim_tts_almodule=ALTextToSpeech,"
+    f"nao_sim_audiodevice_almodule=ALAudioDevice,{RELAY}=_NaoSimAudioRelay"
+)
+REGISTERS_28 = (
+    "nao_sim_status_qiservice=NaoSim,nao_sim_tts_qiservice=ALTextToSpeech,"
+    f"nao_sim_audiodevice_qiservice=ALAudioDevice,{RELAY}=_NaoSimAudioRelay"
+)
 
 
 class Fakes:
@@ -119,6 +140,7 @@ class Fakes:
             "TMPDIR": str(self.tmp),
             "NAO_SIM_POLL_INTERVAL": "0.05",
             "FAKE_QICLI_SERVICES": SERVICES,
+            "FAKE_QICLI_ABSENT": ADDED,
             **extra,
         }
 
@@ -190,9 +212,11 @@ def test_sequence_on_2_1(fakes):
     url = "--qi-url tcp://127.0.0.1:9559"
     assert calls_only(fakes) == [
         f"call ALTextToSpeech.exit {url}",
+        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/nao-sim/{RELAY} {url}",
         f"call ALPythonBridge.eval import sys; sys.path.insert(0, '{fakes.naoqi_home}/modules') {url}",
         f"call ALLauncher.launchPythonModule nao_sim_status_almodule {url}",
         f"call ALLauncher.launchPythonModule nao_sim_tts_almodule {url}",
+        f"call ALLauncher.launchPythonModule nao_sim_audiodevice_almodule {url}",
         # Late, in a NAO's autoload order: the TTS dependents, the built-ins a NAO autoloads and
         # the desktop does not, and autonomouslife after those.
         f"call ALLauncher.launchLocal expressiveness {url}",
@@ -204,10 +228,14 @@ def test_sequence_on_2_1(fakes):
         f"call ALLauncher.launchLocal dialog {url}",
         f"call NaoSim.setReady {url}",
     ]
-    # The service list is polled until stable (1 + 3 polls), then the replaced name is checked
-    # again after loading, right before setReady.
+    # The service list is polled until stable (1 + 3 polls), then the replaced name and the added
+    # ones are checked after loading, right before setReady.
     assert "NAOqi ready after 4 polls, 9 services" in ep.output()
-    assert fakes.calls()[-2] == f"info ALTextToSpeech {url}"
+    assert fakes.calls()[-4:-1] == [
+        f"info ALTextToSpeech {url}",
+        f"info ALAudioDevice {url}",
+        f"info _NaoSimAudioRelay {url}",
+    ]
     # naoqi-bin got the broker arguments and the autoload copy with the late entries it lists
     # deferred; the others were never in it.
     args = fakes.naoqi_bin_args()
@@ -228,9 +256,11 @@ def test_sequence_on_2_8(fakes):
     assert calls_only(fakes) == [
         f"call ALServiceManager.stopService expressivity.autonomousabilitiesmodules {url}",
         f"call ALTextToSpeech.exit {url}",
+        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/nao-sim/{RELAY} {url}",
         f"call ALPythonBridge.eval import sys; sys.path.insert(0, '{fakes.naoqi_home}/modules') {url}",
         f"call ALLauncher.launchPythonModule nao_sim_status_qiservice {url}",
         f"call ALLauncher.launchPythonModule nao_sim_tts_qiservice {url}",
+        f"call ALLauncher.launchPythonModule nao_sim_audiodevice_qiservice {url}",
         f"call ALServiceManager.startService expressivity.autonomousabilitiesmodules {url}",
         f"call NaoSim.setReady {url}",
     ]
@@ -299,10 +329,43 @@ def test_gives_up_when_a_required_service_never_appears(fakes):
 def test_fails_when_a_replacement_did_not_register(fakes):
     # The tts module is loaded but registers nothing: ALTextToSpeech stays gone.
     ep = Entrypoint(
-        fakes, "2.1", {"FAKE_QICLI_REGISTERS": "nao_sim_status_almodule=NaoSim"}
+        fakes,
+        "2.1",
+        {"FAKE_QICLI_REGISTERS": REGISTERS_21.replace("=ALTextToSpeech", "=")},
     )
     assert ep.wait_exit() == 1
     assert "replaced service ALTextToSpeech does not answer" in ep.output()
+    assert "nao-sim ready" not in ep.output()
+    assert not [c for c in fakes.calls() if "setReady" in c]
+
+
+@pytest.mark.parametrize("version", ["2.1", "2.8"])
+def test_fails_when_the_relay_registers_nothing(fakes, version):
+    registers = REGISTERS_21 if version == "2.1" else REGISTERS_28
+    ep = Entrypoint(
+        fakes,
+        version,
+        {"FAKE_QICLI_REGISTERS": registers, "FAKE_QICLI_EMPTY_LAUNCH": RELAY},
+    )
+    assert ep.wait_exit() == 1
+    assert f"the relay {fakes.naoqi_home}/lib/nao-sim/{RELAY} registered no module" in (
+        ep.output()
+    )
+    # Nothing is loaded after it, and the robot is never marked ready.
+    assert not [c for c in fakes.calls() if "launchPythonModule" in c]
+    assert not [c for c in fakes.calls() if "setReady" in c]
+
+
+@pytest.mark.parametrize("version", ["2.1", "2.8"])
+def test_fails_when_the_audio_device_does_not_register(fakes, version):
+    registers = REGISTERS_21 if version == "2.1" else REGISTERS_28
+    ep = Entrypoint(
+        fakes,
+        version,
+        {"FAKE_QICLI_REGISTERS": registers.replace("=ALAudioDevice", "=")},
+    )
+    assert ep.wait_exit() == 1
+    assert "added service ALAudioDevice does not answer" in ep.output()
     assert "nao-sim ready" not in ep.output()
     assert not [c for c in fakes.calls() if "setReady" in c]
 
@@ -320,7 +383,9 @@ def test_fails_when_a_late_built_in_registers_nothing(fakes):
     assert "launching basicawareness registered no module" in ep.output()
     assert "nao-sim ready" not in ep.output()
     # Nothing after the failed launch: no later built-in, no ready mark.
-    launched = [c.split()[2] for c in calls_only(fakes) if "launchLocal" in c]
+    launched = [
+        c.split()[2] for c in calls_only(fakes) if "launchLocal" in c and RELAY not in c
+    ]
     assert launched == ["expressiveness", "animatedspeech", "basicawareness"]
     assert not [c for c in fakes.calls() if "setReady" in c]
 
@@ -328,7 +393,7 @@ def test_fails_when_a_late_built_in_registers_nothing(fakes):
 def test_fails_when_the_status_module_is_missing(fakes):
     (fakes.dir / "down").write_text("NaoSim")
     ep = Entrypoint(
-        fakes, "2.1", {"FAKE_QICLI_REGISTERS": "nao_sim_tts_almodule=ALTextToSpeech"}
+        fakes, "2.1", {"FAKE_QICLI_REGISTERS": REGISTERS_21.replace("=NaoSim", "=")}
     )
     assert ep.wait_exit() == 1
     assert "NaoSim.setReady failed" in ep.output()

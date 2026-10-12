@@ -5,6 +5,7 @@ import json
 import re
 import threading
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -133,11 +134,20 @@ def echo_cat(rootfs: Iterable[bytes], path: str) -> Iterable[bytes]:
 
 PKG = ROOTFS  # what echo_cat yields for a robot image made from ROOTFS
 OPN = make_opn(ROOTFS, bz2.compress)
+SDK = b"an sdk\n" * 1000
+LIBQI = b"libqi sources\n" * 1000
 
 
 @pytest.fixture
 def origin():
-    o = Origin({"/suite.tar.gz": SUITE, "/nao%20image.opn": OPN})
+    o = Origin(
+        {
+            "/suite.tar.gz": SUITE,
+            "/nao%20image.opn": OPN,
+            "/sdk.tar.gz": SDK,
+            "/archive/abc123.tar.gz": LIBQI,
+        }
+    )
     yield o
     o.close()
 
@@ -152,6 +162,43 @@ def version(
         "/usr/share/naoqi/apps/animations.pkg",
         package_sha256,
     )
+
+
+def with_build_files(origin: Origin, sdk_body: bytes = SDK) -> Version:
+    return replace(
+        version(origin),
+        build_files=(
+            PinnedFile(f"{origin.base}/sdk.tar.gz", sha(sdk_body)),
+            PinnedFile(
+                f"{origin.base}/archive/abc123.tar.gz",
+                sha(LIBQI),
+                "libqi-abc123.tar.gz",
+            ),
+        ),
+    )
+
+
+def test_fetches_the_build_files_under_their_pinned_names(origin, tmp_path):
+    folder = fetch(with_build_files(origin), tmp_path, echo_cat)
+    assert (folder / "sdk.tar.gz").read_bytes() == SDK
+    assert (folder / "libqi-abc123.tar.gz").read_bytes() == LIBQI
+    assert sorted(p.name for p in folder.iterdir()) == [
+        PACKAGE,
+        "libqi-abc123.tar.gz",
+        "sdk.tar.gz",
+        "suite.tar.gz",
+    ]
+
+    fetch(with_build_files(origin), tmp_path, echo_cat)
+    assert sorted(origin.requests) == sorted(
+        ["/suite.tar.gz", "/nao%20image.opn", "/sdk.tar.gz", "/archive/abc123.tar.gz"]
+    )  # each once: a second fetch keeps them
+
+
+def test_rejects_a_build_file_with_the_wrong_hash(origin, tmp_path):
+    with pytest.raises(FetchError, match="sdk.tar.gz.*SHA-256"):
+        fetch(with_build_files(origin, sdk_body=b"another sdk"), tmp_path, echo_cat)
+    assert not (tmp_path / "2.1" / "sdk.tar.gz").exists()
 
 
 def test_fills_the_version_folder(origin, tmp_path):
@@ -252,3 +299,12 @@ def test_the_dockerfile_builds_from_the_fetched_files(name):
     for f in (v.suite, v.image):
         assert f.url.startswith("https://media.githubusercontent.com/media/aldebaran/")
         assert re.fullmatch(r"[0-9a-f]{64}", f.sha256)
+    # The relay's build files come from the same context, each by its pinned name.
+    assert v.build_files
+    for f in v.build_files:
+        assert f.url.startswith("https://") and re.fullmatch(r"[0-9a-f]{64}", f.sha256)
+        arg = re.search(
+            rf"^ARG (\w+)={re.escape(f.filename)}$", dockerfile, re.MULTILINE
+        )
+        assert arg, f.filename
+        assert f"COPY --from=image-data ${{{arg.group(1)}}} " in dockerfile

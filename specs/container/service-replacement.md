@@ -5,6 +5,9 @@ code:
   - docker/entrypoint-lib.sh
   - docker/modules/nao_sim_tts_almodule.py
   - docker/modules/nao_sim_tts_qiservice.py
+  - docker/Dockerfile.naoqi-2.1
+  - docker/Dockerfile.naoqi-2.8
+  - docker/relay/naosim_audiorelay.cpp
 tests:
   - tests-e2e/test_speech_live.py
   - tests/test_entrypoint.py
@@ -16,7 +19,7 @@ tests:
 
 ## Purpose
 
-nao-sim makes the container look like a real NAO by replacing or adding NAOqi services *inside* NAOqi, so any qi client on the host reaches them on 9559 exactly like built-ins and in-process modules (`ALAnimatedSpeech`, `ALDialog`...) call them instead of the originals. This spec is the reusable mechanism: how an override module is loaded, which object model it uses on each version, how a built-in is taken out first, and how an override reaches services that live on the host. The `ALTextToSpeech` replacement ([speech.md](../services/speech.md)) is its first user; the planned `ALAudioDevice` and `ALAudioPlayer` replacements reuse it.
+nao-sim makes the container look like a real NAO by replacing or adding NAOqi services *inside* NAOqi, so any qi client on the host reaches them on 9559 exactly like built-ins and in-process modules (`ALAnimatedSpeech`, `ALDialog`...) call them instead of the originals. This spec is the reusable mechanism: how an override module is loaded, which object model it uses on each version, how a built-in is taken out first, how an override reaches services that live on the host, and the native relay for the one thing Python 2.7 cannot do (send a binary). The `ALTextToSpeech` replacement ([speech.md](../services/speech.md)) is its first user; the `ALAudioDevice` replacement ([audio-device.md](../services/audio-device.md)) and the planned `ALAudioPlayer` replacement reuse it.
 
 ## Decided
 
@@ -25,7 +28,7 @@ nao-sim makes the container look like a real NAO by replacing or adding NAOqi se
 - Override modules are Python 2.7 files in `docker/modules/`, copied to `/opt/naoqi/modules/` and importable by name.
 - The desktop `naoqi-bin` ignores the `[python]` section of `autoload.ini` (main file, user file, with or without `--writable-path`: measured). The entrypoint instead calls `ALLauncher.launchPythonModule(<module>)`, which runs `from <module> import *` in `ALPythonBridge`'s embedded interpreter. On 2.1 that is the `naoqi-bin` process itself (same pid, verified); on 2.8 it is `naoqi-service`.
 - A module registers its service at import time, at module level.
-- `launchPythonModule` does not report an import failure, so the entrypoint checks afterwards that every replaced name (`REPLACED` in each version's script) answers again, and exits non-zero otherwise rather than printing "ready" with the built-in gone ([container.md](container.md), "Entrypoint"). A module that adds a new name (`NaoSim`, the planned `ALAudioDevice`) is not covered by that check; the `NaoSim` module is, indirectly, since the entrypoint's last step calls it.
+- `launchPythonModule` does not report an import failure, so the entrypoint checks afterwards that every replaced name (`REPLACED` in each version's script) and every added name (`ADDED`: `ALAudioDevice`, `_NaoSimAudioRelay`) answers, and exits non-zero otherwise rather than printing "ready" with a service missing ([container.md](container.md), "Entrypoint"). The `NaoSim` module is checked too, since the entrypoint's last step calls it.
 - Exact autoload ordering would need a small C++ loader module compiled against the suite's SDK, listed right after `pythonbridge`; kept as an option, not needed so far.
 
 ### Object model per version
@@ -62,9 +65,18 @@ Some overrides must call a service that a host client registered: for example, `
 
 - Go through the broker with `naoqi.ALProxy(<name>)`. NAOqi calls the host back over the socket the host already opened (libqi 2.1 `ClientServerSocket` capability), the mechanism NAOqi uses for any service a connected client registers.
 - Never go through a module's own `qi.Session`. That opens a new connection to the host's advertised endpoints, and fails for two reasons: the host auto-listens on loopback only ("No endpoint available"), and the libqi 3 fork's server binds objects only after a service-0 capability message that 2.1 clients never send.
-- Measured on 2.1 (C++ `ALMemory.subscribeToEvent` callback and an in-process `ALProxy`: pass; own `qi.Session` and `qicli` from the container: fail). 2.8 is not re-measured.
+- On 2.8, a module's own `qi.Session` (on `NAO_SIM_INTERNAL_PORT`) reaches a host-registered service through the gateway, as `naoqi.ALProxy` does.
+- Measured on 2.1 (C++ `ALMemory.subscribeToEvent` callback and an in-process `ALProxy`: pass; own `qi.Session` and `qicli` from the container: fail) and, on Oct 10, 2026, on both versions with a host `processRemote` (2.1 through the broker, 2.8 through a module's own session: pass; `spike/RESULTS.md`).
+
+### Binary arguments: the native relay
+
+Python 2.7 inside NAOqi cannot send a binary value to another service, on either version (measured Oct 10, 2026, `spike/RESULTS.md`): py2 `qi` sends `str` and `bytearray` as a qi string, `naoqi.ALProxy` turns a `bytearray` into `None`, and `buffer`/`memoryview` are refused. A libqi 3 client then receives a `str` (mangled when the bytes are not UTF-8) where a NAO's C++ module sends an `ALValue` binary, which it receives as a `bytearray`. Where the bytes matter (a subscriber's `processRemote`), an override goes through a native relay:
+
+- **A small C++ NAOqi module**, an `ALModule` built from one source for both versions (`docker/relay/naosim_audiorelay.cpp`), named with a leading underscore so it stays out of NAOqi's service listings as NAO's own internal modules do (`_NaoSimAudioRelay`). Its methods take the bytes as a string, which Python 2.7 sends intact, and make the call with an `ALValue` binary through an `ALProxy`, exactly as the C++ module of a NAO does. It holds no logic: the Python 2.7 module decides what is sent, to whom and when.
+- **Loaded** by the entrypoint with `ALLauncher.launchLocal(<path of the .so>)` before the Python modules, into the process that hosts them (`naoqi-bin` on 2.1, `naoqi-service` on 2.8); a launch that registers nothing fails the boot.
+- **Built in the image**, in a builder stage of each version's Dockerfile, never on the host and never committed ([container.md](container.md), "The relay's build"). One recipe for both versions: the NAOqi module API's headers (`alcommon`, `alvalue`, `alerror`) from the version's public C++ SDK, linked against the suite's own libraries, with the suite's compiler and C++ ABI. Where the public SDK is older than the suite (2.8), the libqi and boost headers are taken at the suite's versions instead, first on the include path.
+- Each call costs under 1.5 ms (measured with 64 KB buffers).
 
 ## Open questions
 
-1. **Host callbacks on 2.8** are not measured. They are expected to work through the gateway with the same socket mechanism; to confirm when `ALAudioDevice` is built.
-2. **Restarting a replacement** (re-running the procedure without restarting the container, e.g. while developing a module) is not supported.
+1. **Restarting a replacement** (re-running the procedure without restarting the container, e.g. while developing a module) is not supported.

@@ -26,7 +26,7 @@ def test_status_reads_the_naosim_service(nao):
     assert status.version == nao_sim_version()
     assert status.naoqi_version == nao.version.naoqi_version
     assert status.ready
-    assert (status.camera_source, status.audio_source) == ("render", "none")
+    assert (status.camera_source, status.audio_source) == ("render", "fake")
 
 
 def test_another_terminal_sees_the_running_robot(nao):

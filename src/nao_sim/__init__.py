@@ -1,5 +1,6 @@
 """nao-sim: a NAO in a box. The front door re-exports what a caller needs (specs/runtime/api.md)."""
 
+from nao_sim.audio_input import FakeAudioSource, Take
 from nao_sim.audio_output import (
     AudioSink,
     DevicePlayer,
@@ -29,6 +30,7 @@ from nao_sim.docker_images import check_images, fetch_and_build_images
 from nao_sim.errors import (
     BootError,
     DeviceNotBuiltError,
+    DeviceUnavailableError,
     DockerUnavailableError,
     FetchError,
     ImageBuildError,
@@ -59,7 +61,9 @@ __all__ = [
     "ContainerState",
     "DeviceNotBuiltError",
     "DevicePlayer",
+    "DeviceUnavailableError",
     "DockerUnavailableError",
+    "FakeAudioSource",
     "FetchError",
     "ImageBuildError",
     "ImagesMissingError",
@@ -80,6 +84,7 @@ __all__ = [
     "SpeechEngine",
     "SpeechSettings",
     "StackStatus",
+    "Take",
     "VideoInputSettings",
     "VideoInputSource",
     "ViewerSettings",

@@ -18,6 +18,7 @@ from support import (
     VERSIONS,
     Container,
     Version,
+    check_audio_setting,
     connect,
     e2e_versions,
     ensure_images,
@@ -25,8 +26,9 @@ from support import (
     require_free_ports,
 )
 
-from nao_sim import MemorySink, NaoSim
+from nao_sim import FakeAudioSource, MemorySink, NaoSim
 from nao_sim.config import (
+    AudioInputSettings,
     AudioOutputSettings,
     NaoqiSettings,
     NaoSimConfig,
@@ -37,9 +39,14 @@ from nao_sim.config import (
 SCENE = Path(__file__).resolve().parent / "scenes" / "camera-target.xml"
 
 
+def pytest_configure(config):
+    check_audio_setting()
+
+
 def live_config(version: str, **blocks) -> NaoSimConfig:
     """Headless and silent, with the render camera looking at the camera-target scene (a
-    red pillar straight ahead): what the live tier runs, unless a test asks for something else."""
+    red pillar straight ahead) and the fake audio source: what the live tier runs, unless a test
+    asks for something else."""
     settings = {
         "naoqi": NaoqiSettings(version=version),  # type: ignore[arg-type]
         "audio_output": AudioOutputSettings(mode="silent"),
@@ -47,6 +54,7 @@ def live_config(version: str, **blocks) -> NaoSimConfig:
             headless=True, scene=str(SCENE), variant="placeholder"
         ),
         "video_input": VideoInputSettings(source="render"),
+        "audio_input": AudioInputSettings(source="fake"),
         **blocks,
     }
     return NaoSimConfig(**settings)
@@ -84,6 +92,11 @@ class Nao:
 
     def service(self, name: str):
         return self.session.service(name)
+
+    @property
+    def audio(self) -> FakeAudioSource:
+        """The fake audio source: what the robot's microphones hear."""
+        return self.sim.fake_audio
 
     def played(self, after: float, timeout: float = 10.0) -> float:
         """Seconds of audio in the first stream that started after `after` (time.monotonic())."""

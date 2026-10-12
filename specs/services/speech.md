@@ -82,6 +82,6 @@ Only one request and one reply cross from the NAOqi container per sentence, and 
 ## Open questions
 
 1. **Missing methods.** `getLanguageEncoding` and `sayToFileAndPlay` are not implemented, and the box library's `stop` is not a method of either replacement: 2.1 maps `stop` to the `ALModule` generic. Check what the Say box's `stop` does against the replacement.
-2. **Microphone gate and subtitles** are not built: the gate belongs to the audio input, on the host ([audio-input.md](../host/audio-input.md), "Microphone gate"), the subtitles to the viewer ([viewer.md](../host/viewer.md), open questions).
+2. **Subtitles** are not built: they belong to the viewer ([viewer.md](../host/viewer.md), open questions). The robot hears its own speech, as a NAO does; no microphone gate ([audio-input.md](../host/audio-input.md), "The robot hears itself").
 3. **Duration tolerance** against a NAO's own `say()` (proposed ±20% per sentence) is not agreed, and no reference durations are available yet.
 4. **Word events**: `CurrentWord` and `PositionOfCurrentWord` are not raised in v1 (see [tts-engine.md](../container/tts-engine.md)).

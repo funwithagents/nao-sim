@@ -10,7 +10,9 @@
 . "$(dirname "$0")/entrypoint-lib.sh"
 
 REPLACED="ALTextToSpeech"                              # built-ins our modules take over
-MODULES="nao_sim_status_almodule nao_sim_tts_almodule" # ours, in load order
+RELAY="$NAOQI_HOME/lib/nao-sim/libnaosim_audiorelay.so" # the native relay, loaded before our modules
+MODULES="nao_sim_status_almodule nao_sim_tts_almodule nao_sim_audiodevice_almodule" # ours, in load order
+ADDED="ALAudioDevice _NaoSimAudioRelay"                # names no built-in holds, which we register
 LATE="expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog"
 # LATE, launched after our modules in a NAO's autoload order:
 #   animatedspeech, dialog       hold a proxy to ALTextToSpeech (deferred from the autoload file)
@@ -23,7 +25,9 @@ start_naoqi tcp://127.0.0.1:9559 \
   -b 0.0.0.0 -p 9559 --autoload-file "$(autoload_without $LATE)" "$@"
 wait_for_naoqi ALLauncher ALPythonBridge $REPLACED $LAST_SERVICE
 exit_builtins $REPLACED
+load_relay "$RELAY"
 load_modules $MODULES
 launch_local $LATE
-check_answer $REPLACED
+check_answer replaced $REPLACED
+check_answer added $ADDED
 mark_ready

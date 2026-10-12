@@ -1,9 +1,12 @@
 """Fetch what the NAOqi images are built from into the image data folder's <version>/ (`files.IMAGE_DATA`:
 docker/image-data/ in a checkout, the user data directory when installed): the pinned Choregraphe
-suite, and the robot's `animations` package extracted from the public robot image.
+suite, the robot's `animations` package extracted from the public robot image, and the build files
+whose headers the native relay is compiled against (the version's C++ SDK; for 2.8 also libqi from
+our fork and boost, since the public 2.8 SDK is older than the suite: specs/container/container.md,
+"Build files").
 
-These are Aldebaran's files, downloaded from Aldebaran's own GitHub repositories (Git LFS) to
-this machine only: they stay in the image data folder (gitignored in a checkout, never in the wheel)
+These are Aldebaran's files, downloaded from Aldebaran's own public sources (GitHub with Git LFS,
+its download site for the SDKs) to this machine only: they stay in the image data folder (gitignored in a checkout, never in the wheel)
 and in locally built images, never in the repository or a pushed image.
 
 A file already there with the pinned hash is kept, so the command is cheap to re-run. A file with
@@ -43,16 +46,20 @@ PACKAGE = "animations.pkg"
 # Git LFS files are served from media.githubusercontent.com; the raw URL returns the pointer.
 _V5 = "https://media.githubusercontent.com/media/aldebaran/NAO-V5-ressources/main/"
 _V6 = "https://media.githubusercontent.com/media/aldebaran/nao6-binaries/master/"
+_SDK = "https://community-static.aldebaran.com/resources/"
+# libqi at tag qi-framework-v1.8.7, the headers matching the 2.8.7.4 suite's libqi.so
+_LIBQI = "7f3e1394cb26126b26fa7ff54d2de1371a1c9f96"
 
 
 @dataclass(frozen=True)
 class PinnedFile:
     url: str
     sha256: str
+    name: str | None = None  # saved under this name instead of the URL's last part
 
     @property
     def filename(self) -> str:
-        return urllib.parse.unquote(self.url.rsplit("/", 1)[1])
+        return self.name or urllib.parse.unquote(self.url.rsplit("/", 1)[1])
 
 
 @dataclass(frozen=True)
@@ -62,6 +69,8 @@ class Version:
     image: PinnedFile  # the robot system image the package is extracted from
     package_path: str  # animations.pkg inside the image's root filesystem
     package_sha256: str
+    # Headers the native relay is compiled against in the image build (Dockerfile stage `relay`)
+    build_files: tuple[PinnedFile, ...] = ()
 
 
 VERSIONS = {
@@ -79,6 +88,12 @@ VERSIONS = {
         ),
         "/usr/share/naoqi/apps/animations.pkg",  # version 5.0.9
         "a1d46221f5f28b91c8e7564ade4532f390e5911f14210787b3352a84c2b507e1",
+        (
+            PinnedFile(
+                _SDK + "2.1.4.13/sdk-c%2B%2B/naoqi-sdk-2.1.4.13-linux64.tar.gz",
+                "a1669524819088b7aac82e04450e2c5dce6ffdd11c968444db89b6831955683b",
+            ),
+        ),
     ),
     "2.8": Version(
         "2.8",
@@ -92,6 +107,22 @@ VERSIONS = {
         ),
         "/opt/aldebaran/share/naoqi/apps/animations.pkg",  # version 7.0.3
         "8866ddf4bb45eab79068cfe5746c66f3b8f507356fd93affed204bc834002f2c",
+        (
+            # The only public 2.8 SDK: its module API headers only.
+            PinnedFile(
+                _SDK + "2.8.5/naoqi-sdk-2.8.5.10-linux64.tar.gz",
+                "9af3591de63b1062e36ec0aa6740592cb4de8db1ff6b355e188daff42012d303",
+            ),
+            PinnedFile(
+                f"https://github.com/funwithagents/libqi/archive/{_LIBQI}.tar.gz",
+                "ef0566920cb76eb6dac5affd4ca978a959b66b54e86219407d8e029cd81aea48",
+                f"libqi-{_LIBQI}.tar.gz",
+            ),
+            PinnedFile(
+                "https://archives.boost.io/release/1.64.0/source/boost_1_64_0.tar.bz2",
+                "7bcc5caace97baa948931d712ea5f37038dbb1c5d89b43ad4def4ed7cb683332",
+            ),
+        ),
     ),
 }
 
@@ -334,10 +365,13 @@ Cat = Callable[[Iterable[bytes], str], Iterable[bytes]]
 def fetch(
     version: Version, image_data: Path = IMAGE_DATA, cat: Cat = docker_cat
 ) -> Path:
-    """Make sure `<image-data>/<version>/` holds the suite and `animations.pkg`. Returns the folder."""
+    """Make sure `<image-data>/<version>/` holds the suite, `animations.pkg` and the build files.
+    Returns the folder."""
     folder = image_data / version.name
     _log(f"NAOqi {version.name}")
     fetch_file(version.suite, folder)
+    for f in version.build_files:
+        fetch_file(f, folder)
     package = folder / PACKAGE
     if not _present(package, version.package_sha256):
         opn = folder / version.image.filename
