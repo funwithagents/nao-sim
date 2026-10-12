@@ -444,7 +444,8 @@ def test_record_mode_writes_the_audio_to_a_wav_file(env, tmp_path):
     asyncio.run(naosim.stop())
 
     with wave.open(str(path)) as w:
-        assert (w.getframerate(), w.getnframes()) == (8000, 2400)
+        # The mix, as the robot's loudspeakers play it: 48 kHz stereo.
+        assert (w.getframerate(), w.getnchannels(), w.getnframes()) == (48000, 2, 14400)
 
 
 def test_constructing_does_nothing(env):

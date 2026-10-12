@@ -22,6 +22,7 @@
 #include <boost/shared_ptr.hpp>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
+#include "nao_sim_front_core.h"
 #ifdef NAOSIM_NAOQI_28
 #include <qi/anyobject.hpp>
 #include <qi/anyvalue.hpp>
@@ -36,88 +37,15 @@
 
 namespace {
 const char* const kCore = "_NaoSimTextToSpeech";
-const int kPollMs = 20;  // how long each waitDone may block in the core
+using nao_sim::Core;
+using nao_sim::kPollMs;
 
-// The core, reached through ALProxy on 2.1 and through the module's own qi session on 2.8: there,
-// ALProxy calls from C++ to a Python qi service crashed naoqi-service (measured Oct 12, 2026, with
-// and without ALValue arguments), and a qi::AnyObject call does not.
-class Core {
- public:
-  explicit Core(AL::ALModule* module) : module_(module) {}
-
-#ifdef NAOSIM_NAOQI_28
-  template <typename R> R call(const std::string& m) { return object().call<R>(m); }
-  template <typename R, typename A> R call(const std::string& m, const A& a) {
-    return object().call<R>(m, a);
-  }
-  template <typename R, typename A, typename B>
-  R call(const std::string& m, const A& a, const B& b) {
-    return object().call<R>(m, a, b);
-  }
-  template <typename R, typename A, typename B, typename C>
-  R call(const std::string& m, const A& a, const B& b, const C& c) {
-    return object().call<R>(m, a, b, c);
-  }
-  void callVoid(const std::string& m) { object().call<void>(m); }
-  template <typename A> void callVoid(const std::string& m, const A& a) {
-    object().call<void>(m, a);
-  }
-  template <typename A, typename B> void callVoid(const std::string& m, const A& a, const B& b) {
-    object().call<void>(m, a, b);
-  }
-  template <typename A, typename B, typename C>
-  void callVoid(const std::string& m, const A& a, const B& b, const C& c) {
-    object().call<void>(m, a, b, c);
-  }
-#else
-  template <typename R> R call(const std::string& m) { return proxy()->call<R>(m); }
-  template <typename R, typename A> R call(const std::string& m, const A& a) {
-    return proxy()->call<R>(m, a);
-  }
-  template <typename R, typename A, typename B>
-  R call(const std::string& m, const A& a, const B& b) {
-    return proxy()->call<R>(m, a, b);
-  }
-  template <typename R, typename A, typename B, typename C>
-  R call(const std::string& m, const A& a, const B& b, const C& c) {
-    return proxy()->call<R>(m, a, b, c);
-  }
-  void callVoid(const std::string& m) { proxy()->callVoid(m); }
-  template <typename A> void callVoid(const std::string& m, const A& a) { proxy()->callVoid(m, a); }
-  template <typename A, typename B> void callVoid(const std::string& m, const A& a, const B& b) {
-    proxy()->callVoid(m, a, b);
-  }
-  template <typename A, typename B, typename C>
-  void callVoid(const std::string& m, const A& a, const B& b, const C& c) {
-    proxy()->callVoid(m, a, b, c);
-  }
-#endif
-
- private:
-#ifdef NAOSIM_NAOQI_28
-  qi::AnyObject object() {
-    boost::mutex::scoped_lock lock(mutex_);
-    if (!object_) object_ = module_->getParentBroker()->session()->service(kCore).value();
-    return object_;
-  }
-  qi::AnyObject object_;
-#else
-  boost::shared_ptr<AL::ALProxy> proxy() {
-    boost::mutex::scoped_lock lock(mutex_);
-    if (!proxy_) proxy_.reset(new AL::ALProxy(module_->getParentBroker(), kCore));
-    return proxy_;
-  }
-  boost::shared_ptr<AL::ALProxy> proxy_;
-#endif
-  AL::ALModule* module_;
-  boost::mutex mutex_;
-};
 }  // namespace
 
 class NaoSimTextToSpeech : public AL::ALModule {
  public:
   NaoSimTextToSpeech(boost::shared_ptr<AL::ALBroker> broker, const std::string& name)
-      : AL::ALModule(broker, name), core_(this) {
+      : AL::ALModule(broker, name), core_(this, kCore) {
     setModuleDescription("nao-sim: ALTextToSpeech, a C++ front over the _NaoSimTextToSpeech core");
 
     functionName("say", getName(), "Says the text, blocking until it is spoken or stopped");

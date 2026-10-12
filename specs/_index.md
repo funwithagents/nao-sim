@@ -6,7 +6,7 @@ nao-sim is a NAO in a box: NAOqi (`naoqi-bin` from the user's own Choregraphe su
 - **Host**: dumb devices named after their role (the audio output today; audio, video and touch inputs planned), Python 3.12–3.13 with libqi. Perception and speech recognition are the clients' job, not nao-sim's.
 - **Simulated world** (planned, optional): the `nao-sim[viewer]` extra pulls nao-viewer, whose sim mode poses the NAO model from nao-sim's NAOqi in a scene and renders the head cameras that nao-sim injects into `ALVideoDevice`.
 
-Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement, `tts` engine, audio output) the `NaoSim` status service with the Docker healthcheck, and `nao-sim run`: the `NaoSim` object with its config, the sim window and the CLI; the render camera (the headless viewer's top-camera frames injected into `ALVideoDevice`); the audio input (`ALAudioDevice` with its native relay, the host link, the fake source and the host microphone, the robot hearing its own voice); CI runs both test tiers on both versions, with a virtual audio loopback; another project depends on nao-sim from git with uv. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
+Built and tested on both versions: the container, the service-replacement mechanism, the speech path (`ALTextToSpeech` replacement as a C++ front over a Python core, so the boxes stop a sentence as on a NAO; the `tts` engine), the audio output mixing named streams as a NAO's sound server, the `ALAudioPlayer` replacement (sound files through the suite's libsndfile, mixed with speech), the `NaoSim` status service with the Docker healthcheck, and `nao-sim run`: the `NaoSim` object with its config, the sim window and the CLI; the render camera (the headless viewer's top-camera frames injected into `ALVideoDevice`); the audio input (`ALAudioDevice` with its native relay, the host link, the fake source and the host microphone, the robot hearing its own voice); CI runs both test tiers on both versions, with a virtual audio loopback; another project depends on nao-sim from git with uv. Everything else is planned in [_overview.md](_overview.md), the map of the whole project.
 
 ## Specs
 
@@ -39,7 +39,7 @@ The Docker images and what makes them a NAO: the NAOqi image, how override modul
 | [container.md](container/container.md) | NAOqi 2.1 and 2.8 images, suite and `animations` package download, package store volume, single-port network layout, compose, the entrypoint's configuration interface, the `io.nao-sim.version` image label; matching a NAO's modules per version (autonomous abilities added on 2.1, `autonomouslife` after them); the build files (C++ SDKs, libqi, boost) and the native native build stage | Implemented |
 | [service-replacement.md](container/service-replacement.md) | Loading override modules into NAOqi, `ALModule` vs qi service per version, replacing a built-in, calling host-registered services (measured on both versions), the native relay for binary arguments, a C++ front for callers that stop by task id (`post`/`pCall`/`wait`/`stop(id)`, qi signals on it, measured on both versions) | Implemented |
 | [status-service.md](container/status-service.md) | `NaoSim` status service: identity of a nao-sim target (versions, device sources, readiness) as a service and ALMemory keys, the entrypoint's readiness guarantees, the Docker healthcheck | Implemented |
-| [tts-engine.md](container/tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the audio output | Implemented |
+| [tts-engine.md](container/tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the audio output as its `speech` stream | Implemented |
 
 ### NAOqi services: `services/`
 
@@ -49,7 +49,7 @@ The NAOqi services nao-sim replaces or adds, as Python 2.7 modules inside NAOqi.
 |---|---|---|
 | [speech.md](services/speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock; a C++ front over the Python core so the Say and Animated Say boxes and `ALAnimatedSpeech` stop by task id, with 2.8's hidden signals on the front | Implemented |
 | [audio-device.md](services/audio-device.md) | `ALAudioDevice` replacement: registered directly, NAO's formats and methods, energy, per-subscriber delivery to `processRemote` through the native relay, as a binary | Implemented |
-| [audio-player.md](services/audio-player.md) | `ALAudioPlayer`: the `sndfile-play` shim streaming sound files to the audio output, then a full replacement with mixing and sound sets | Draft |
+| [audio-player.md](services/audio-player.md) | `ALAudioPlayer` replacement with a NAO's API (files, loaded files, task volume and pan, `stop(id)`, loops, sound sets, `playSine`), decoding WAV/OGG with the suite's libsndfile as a virtual robot does, one audio output stream per task mixed with speech; no shim; a C++ front for `post`/`wait`/`stop(id)` over a Python core | Implemented |
 
 ### Host: `host/`
 
@@ -58,7 +58,7 @@ The simulated robot's inputs and outputs on the host, owned by a running `NaoSim
 | Spec | Description | Status |
 |---|---|---|
 | [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Implemented |
-| [audio-output.md](host/audio-output.md) | The robot's loudspeaker: TCP PCM protocol, newest stream wins, stop, the `AudioSink` seam (device, null, WAV, memory), playing state, listeners (the fake room hears the robot) | Implemented |
+| [audio-output.md](host/audio-output.md) | The robot's loudspeakers, as a NAO's sound server: TCP PCM protocol with named streams (newest wins within a name; `stop`, `set`, `pause`/`resume`), a mixer at 48 kHz stereo with volume and pan, the `AudioSink` seam receiving the mix (device, null, WAV, memory with each stream kept), playing state, listeners (the fake room hears the mix) | Implemented |
 | [audio-input.md](host/audio-input.md) | The robot's microphones: the fake source tests play sounds into and the host microphone, every format produced on the host, mono policy, 85 ms chunks (provisional), the robot hearing itself (no gate), messages on the host link, loopback tests | Implemented |
 | [video-input.md](host/video-input.md) | The robot's head cameras: nao-viewer render then webcam, VGA `CameraTop` frames injected with `putImage` at a fixed `fps` whoever subscribes, NAOqi converting per subscriber; measured on both versions | Implemented |
 | [touch-input.md](host/touch-input.md) | The robot's touch sensors: clicks in the sim window and an API for tests, written to ALMemory | Draft |

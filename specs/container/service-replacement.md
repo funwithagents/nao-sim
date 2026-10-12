@@ -9,6 +9,8 @@ code:
   - docker/naoqi/Dockerfile.naoqi-2.8
   - docker/naoqi/services/audio-device/nao_sim_audio_device_relay.cpp
   - docker/naoqi/services/speech/nao_sim_speech_front.cpp
+  - docker/naoqi/services/audio-player/nao_sim_audio_player_front.cpp
+  - docker/naoqi/services/nao_sim_front_core.h
 tests:
   - tests-e2e/test_speech_live.py
   - tests/test_entrypoint.py

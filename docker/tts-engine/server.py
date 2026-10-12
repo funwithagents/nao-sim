@@ -134,6 +134,11 @@ def render(req):
     return pcm, sr, marks, used
 
 
+# The audio output mixes named streams; speech is one, so stopping it leaves the sounds
+# ALAudioPlayer plays (specs/host/audio-output.md, "Streams").
+STREAM = "speech"
+
+
 def soundcard_connect():
     host, port = SOUNDCARD.rsplit(":", 1)
     s = socket.create_connection((host, int(port)), timeout=5)
@@ -149,7 +154,13 @@ def stream_to_soundcard(pcm, sr):
         s.sendall(
             (
                 json.dumps(
-                    {"cmd": "play", "rate": sr, "channels": 1, "format": "s16le"}
+                    {
+                        "cmd": "play",
+                        "stream": STREAM,
+                        "rate": sr,
+                        "channels": 1,
+                        "format": "s16le",
+                    }
                 )
                 + "\n"
             ).encode()
@@ -172,7 +183,7 @@ def stream_to_soundcard(pcm, sr):
 def soundcard_stop():
     try:
         s = soundcard_connect()
-        s.sendall((json.dumps({"cmd": "stop"}) + "\n").encode())
+        s.sendall((json.dumps({"cmd": "stop", "stream": STREAM}) + "\n").encode())
         s.close()
     except OSError as e:
         print("stop: sound card unreachable:", e)

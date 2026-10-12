@@ -37,7 +37,7 @@ It is its own container because:
   - `{"type": "pause", "ms": N}`
 
   The reply is `{"duration": s, "marks": {"N": offset_s}, "rate": sample_rate, "engine": name, "synth_time": s}`. On a synthesis error: 500 `{"error": ...}`.
-- `POST /stop`: stops the stream in progress and sends a stop to the audio output. Returns `{"stopped": true}`.
+- `POST /stop`: stops the stream in progress and sends a stop of the `speech` stream to the audio output, so the sounds `ALAudioPlayer` plays go on. Returns `{"stopped": true}`.
 - `GET /health`: `{"ok": true, "engine", "voices", "soundcard"}`.
 
 ### Rendering
@@ -49,13 +49,13 @@ It is its own container because:
   - eSpeak NG: `-s 175 * rate / 100` words per minute.
 - `pitch` (percent) is passed to eSpeak NG as `-p pitch/2`; Piper ignores it.
 - The output is mono s16le at the first text item's sample rate (22050 Hz for both Piper voices; 22050 when there is no text). Other parts are resampled by linear interpolation.
-- The reply is sent as soon as synthesis is done. The PCM is streamed to the audio output in a background thread, in 100 ms chunks, so the caller's clock starts with the audio.
+- The reply is sent as soon as synthesis is done. The PCM is streamed to the audio output in a background thread, in 100 ms chunks, as its `speech` stream (`"stream": "speech"` in the `play` header, [audio-output.md](../host/audio-output.md), "Protocol"), so the caller's clock starts with the audio and sounds mix with it.
 - Synthesis takes 0.1–0.2 s per sentence with Piper once the voices are loaded.
 
 ### Failure behaviour
 
 - If the audio output is unreachable, the audio is dropped (logged) and `/say` still returns the timings, so callers keep their clock.
-- A new `/say` while one is still streaming starts a new stream. The audio output plays only the newest one (see [audio-output.md](../host/audio-output.md)).
+- A new `/say` while one is still streaming starts a new play of the `speech` stream. The audio output plays only the newest play of a stream (see [audio-output.md](../host/audio-output.md), "Streams").
 
 ## Open questions
 

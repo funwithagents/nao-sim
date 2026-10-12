@@ -1,3 +1,8 @@
+import json
+import socket
+import threading
+import time
+
 import numpy as np
 import pytest
 import server
@@ -90,3 +95,54 @@ def test_the_request_selects_the_engine(synth):
 
     assert used == "espeak"
     assert synth == [("espeak", "0.1@22050")]
+
+
+@pytest.fixture
+def audio_output(monkeypatch):
+    """A stand-in audio output on a free port: the header line of every connection it gets."""
+    listener = socket.create_server(("127.0.0.1", 0))
+    monkeypatch.setattr(server, "SOUNDCARD", f"127.0.0.1:{listener.getsockname()[1]}")
+    headers: list[dict] = []
+
+    def serve():
+        while True:
+            try:
+                conn, _ = listener.accept()
+            except OSError:
+                return
+            with conn, conn.makefile("rb") as f:
+                headers.append(json.loads(f.readline()))
+                f.read()
+
+    threading.Thread(target=serve, daemon=True).start()
+    yield headers
+    listener.close()
+
+
+def wait_for(cond, timeout=2.0):
+    end = time.monotonic() + timeout
+    while not cond():
+        assert time.monotonic() < end, "condition not met in time"
+        time.sleep(0.01)
+
+
+def test_speech_plays_as_the_speech_stream(audio_output):
+    server.stream_to_soundcard(np.zeros(2205, dtype=np.int16), 22050)
+    wait_for(lambda: audio_output)
+
+    assert audio_output == [
+        {
+            "cmd": "play",
+            "stream": "speech",
+            "rate": 22050,
+            "channels": 1,
+            "format": "s16le",
+        }
+    ]
+
+
+def test_stop_stops_the_speech_stream_only(audio_output):
+    server.soundcard_stop()
+    wait_for(lambda: audio_output)
+
+    assert audio_output == [{"cmd": "stop", "stream": "speech"}]

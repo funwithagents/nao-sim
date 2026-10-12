@@ -81,6 +81,7 @@ pythonVersion = "3.12"
 extraPaths = [
     "docker/naoqi/services/speech",
     "docker/naoqi/services/audio-device",
+    "docker/naoqi/services/audio-player",
     "docker/naoqi/services/status-service",
     "docker/tts-engine",
 ]

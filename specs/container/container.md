@@ -13,6 +13,8 @@ code:
   - src/nao_sim/docker_images.py
   - docker/naoqi/services/audio-device/nao_sim_audio_device_relay.cpp
   - docker/naoqi/services/speech/nao_sim_speech_front.cpp
+  - docker/naoqi/services/audio-player/nao_sim_audio_player_front.cpp
+  - docker/naoqi/services/nao_sim_front_core.h
 tests:
   - tests/test_suite.py
   - tests/test_docker_images.py
@@ -87,7 +89,7 @@ The first step of `nao-sim fetch-and-build-images [2.1] [2.8] [--image-data DIR]
 Each Dockerfile has three stages, so the compiler and the headers never reach the image:
 
 1. **`suite`**: the suite extracted to `/opt/naoqi`.
-2. **`native`**, `FROM suite`: installs `g++` from the base's own Ubuntu (the suite's compiler generation), extracts the version's headers from the C++ SDK (`COPY --from=image-data`), and compiles every `services/*/*.cpp` of `docker/naoqi/` into `lib<name>.so`: today `nao_sim_audio_device_relay.cpp`, the native relay, and `nao_sim_speech_front.cpp`, `ALTextToSpeech`'s C++ front ([speech.md](../services/speech.md), "Architecture"); 2.8 compiles with `-DNAOSIM_NAOQI_28`, which switches on the fronts' 2.8 parts. Each is linked against the suite's libraries in `/opt/naoqi/lib`, and `ldd -r` must report no undefined symbol.
+2. **`native`**, `FROM suite`: installs `g++` from the base's own Ubuntu (the suite's compiler generation), extracts the version's headers from the C++ SDK (`COPY --from=image-data`), and compiles every `services/*/*.cpp` of `docker/naoqi/` into `lib<name>.so`: today `nao_sim_audio_device_relay.cpp`, the native relay, and the C++ fronts `nao_sim_speech_front.cpp` (`ALTextToSpeech`, [speech.md](../services/speech.md), "Architecture") and `nao_sim_audio_player_front.cpp` (`ALAudioPlayer`, [audio-player.md](../services/audio-player.md)), with `services/nao_sim_front_core.h` beside them; 2.8 compiles with `-DNAOSIM_NAOQI_28`, which switches on the fronts' 2.8 parts. Each is linked against the suite's libraries in `/opt/naoqi/lib`, and `ldd -r` must report no undefined symbol.
 3. The final stage, `FROM suite`: our files, the Python of `services/*/` copied flat to `/opt/naoqi/modules/`, and only the `.so` files from `native`, in `/opt/naoqi/lib/nao-sim/`.
 
 | | 2.1 | 2.8 |
@@ -153,11 +155,11 @@ One script per version, each reading top to bottom as that version's procedure: 
 | --- | --- | --- |
 | `naoqi-bin` | `-b 0.0.0.0 -p 9559`: the broker is the public port | `--qi-listen-url tcp://127.0.0.1:9558`, behind the suite's gateway on 9559 |
 | Reached from inside on | `tcp://127.0.0.1:9559` | `tcp://127.0.0.1:9558`, exported as `NAO_SIM_INTERNAL_PORT` for our qi services |
-| `REPLACED` (built-ins whose `exit()` is called) | `ALTextToSpeech` | `ALTextToSpeech` |
+| `REPLACED` (built-ins whose `exit()` is called) | `ALTextToSpeech ALAudioPlayer` | Same |
 | `RELAY` (the native relay, loaded with `ALLauncher.launchLocal` before our modules) | `/opt/naoqi/lib/nao-sim/libnao_sim_audio_device_relay.so` | Same |
 | `MODULES` (ours, loaded with `ALLauncher.launchPythonModule`, in order) | `nao_sim_status_almodule nao_sim_speech_almodule nao_sim_audio_device_almodule` | `nao_sim_status_qiservice nao_sim_speech_qiservice nao_sim_audio_device_qiservice` |
-| `FRONTS` (C++ fronts taking a replaced name, loaded with `ALLauncher.launchLocal` after our modules) | `/opt/naoqi/lib/nao-sim/libnao_sim_speech_front.so` (`ALTextToSpeech`) | Same |
-| `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech` | Same |
+| `FRONTS` (C++ fronts taking a replaced name, loaded with `ALLauncher.launchLocal` after our modules) | `/opt/naoqi/lib/nao-sim/libnao_sim_speech_front.so` (`ALTextToSpeech`), `libnao_sim_audio_player_front.so` (`ALAudioPlayer`) | Same |
+| `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech _NaoSimAudioPlayer` | Same |
 | Dependents (hold a proxy to a replaced built-in) | Autoload entries `animatedspeech dialog`, launched late (`LATE`) | `DEPENDENTS`: package service `expressivity.autonomousabilitiesmodules`, `ALServiceManager.stopService` before, `startService` after |
 | Added (built-ins a NAO autoloads that the desktop suite ships but does not; see "Matching a NAO's modules") | `expressiveness basicawareness autonomousblinking autonomousmoves`, launched late (`LATE`) | None |
 | `LATE` (launched with `ALLauncher.launchLocal` after our modules, in a NAO's autoload order; those the desktop autoloads are commented out of a copy of `autoload.ini`) | `expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog`: the dependents, the added built-ins, and `autonomouslife`, which a NAO loads after the added built-ins and may depend on | None |

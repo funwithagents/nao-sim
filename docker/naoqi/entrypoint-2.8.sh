@@ -10,11 +10,11 @@
 # (specs/container/service-replacement.md, "Replacing a built-in").
 . "$(dirname "$0")/entrypoint-lib.sh"
 
-REPLACED="ALTextToSpeech"                                   # built-ins our modules take over
+REPLACED="ALTextToSpeech ALAudioPlayer"                                   # built-ins our modules take over
 RELAY="$NAOQI_HOME/lib/nao-sim/libnao_sim_audio_device_relay.so"     # the native relay, loaded before our modules
-MODULES="nao_sim_status_qiservice nao_sim_speech_qiservice nao_sim_audio_device_qiservice" # ours, in load order
-FRONTS="$NAOQI_HOME/lib/nao-sim/libnao_sim_speech_front.so"           # C++ fronts taking the replaced names, after them
-ADDED="ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech" # names no built-in holds, which we register
+MODULES="nao_sim_status_qiservice nao_sim_speech_qiservice nao_sim_audio_device_qiservice nao_sim_audio_player_qiservice" # ours, in load order
+FRONTS="$NAOQI_HOME/lib/nao-sim/libnao_sim_speech_front.so $NAOQI_HOME/lib/nao-sim/libnao_sim_audio_player_front.so"           # C++ fronts taking the replaced names, after them
+ADDED="ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech _NaoSimAudioPlayer" # names no built-in holds, which we register
 DEPENDENTS="expressivity.autonomousabilitiesmodules"        # package services holding a proxy to it (ALAnimatedSpeech)
 LAST_SERVICE="ALPanoramaCompass"                            # registered last at boot
 

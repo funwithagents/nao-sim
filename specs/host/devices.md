@@ -25,8 +25,8 @@ Each device is named after its role on the robot, not after what implements it: 
 
 | Device | Spec | Direction | Talks to NAOqi through | State |
 | --- | --- | --- | --- | --- |
-| Audio output | [audio-output.md](audio-output.md) | The robot's voice and sounds, out | Its own TCP protocol, fed by the `tts` engine and later [`ALAudioPlayer`](../services/audio-player.md) | Built, with its audio sinks |
-| Audio input | [audio-input.md](audio-input.md) | Microphone, or sounds played from code, in | The host link, into the [`ALAudioDevice`](../services/audio-device.md) replacement | Specified |
+| Audio output | [audio-output.md](audio-output.md) | The robot's voice and sounds, out | Its own TCP protocol, fed by the `tts` engine and later [`ALAudioPlayer`](../services/audio-player.md) | Built, with its audio sinks; mixing specified |
+| Audio input | [audio-input.md](audio-input.md) | Microphone, or sounds played from code, in | The host link, into the [`ALAudioDevice`](../services/audio-device.md) replacement | Built, with the fake source and the host microphone |
 | Video input | [video-input.md](video-input.md) | Head cameras (nao-viewer render or webcam), in | qi: `ALVideoDevice.putImage` | Built, with the render source |
 | Touch input | [touch-input.md](touch-input.md) | Head, hand, foot and chest sensors, in | qi: ALMemory | Planned |
 
@@ -58,6 +58,6 @@ The containers and the host devices exchange what qi cannot carry over one TCP p
 
 ## Open questions
 
-1. **The audio output on the link.** Whether the audio output moves onto the host link is for [audio-player.md](../services/audio-player.md) to decide: mixing speech and sound files may need one connection that carries several streams, which the per-stream protocol does not.
+1. ~~**The audio output on the link.**~~ Decided Oct 12, 2026 with [audio-player.md](../services/audio-player.md): the audio output keeps its own protocol. Mixing names each stream in its `play` header, so several streams are several connections ([audio-output.md](audio-output.md), "Streams").
 2. **Ports.** 9559, 9562 and 9563 are fixed, so one nao-sim runs per machine. Configurable ports come with several instances ([config.md](../runtime/config.md), open questions).
 3. **Link latency.** How long a chunk takes from the host to a subscriber's `processRemote`, under the amd64 emulation of Apple Silicon included, is to measure when the audio input is built.

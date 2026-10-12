@@ -79,7 +79,7 @@ Captured with `sounddevice` (`RawInputStream`, int16, mono, 48 kHz, blocks of 10
 A NAO's microphones hear its loudspeaker, so nao-sim's do too; nothing is muted while the robot speaks.
 
 - **The host microphone** hears the host's loudspeaker through the room, as it is. The `DevicePlayer` and the microphone open their streams at low latency (`latency="low"`), so the robot's voice comes back about when a NAO's would.
-- **The fake source** hears the audio output: every chunk the audio output plays ([audio-output.md](audio-output.md), "Listeners") is added to the fake room from the moment it is due to play, resampled to 48 kHz, on all four microphones, at **half its level** (provisional, open question 3). A stopped or cut stream stops being heard with it, up to the chunk already handed over (100 ms at most).
+- **The fake source** hears the audio output: every chunk the audio output plays ([audio-output.md](audio-output.md), "Listeners"), the mix of speech and sounds, is added to the fake room from the moment it is due to play, resampled to 48 kHz, on all four microphones, at **half its level** (provisional, open question 3). A stopped or cut stream stops being heard with it, up to the chunk already handed over (one tick of the mix at most).
 - So a client tested against nao-sim has to cope with hearing the robot, exactly as on a NAO (for example by not listening between `ALTextToSpeech`'s `TextStarted` and `TextDone`). nao-sim keeps nothing from the client that a NAO would give it.
 - A **microphone gate** (zeros while the robot plays, plus a tail) was designed and built, then removed on October 11, 2026, because it made nao-sim differ from a NAO: open question 4.
 

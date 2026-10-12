@@ -13,7 +13,9 @@ tests:
 
 ## Purpose
 
-The robot's loudspeaker as a host device ([devices.md](devices.md)) the containers stream into. It plays PCM as it arrives and stops on request. Today the `tts` engine ([tts-engine.md](../container/tts-engine.md)) is its only client; the `ALAudioPlayer` shim and replacement ([audio-player.md](../services/audio-player.md)) will stream into it too.
+The robot's loudspeakers as a host device ([devices.md](devices.md)) the containers stream into. It plays PCM as it arrives, mixes the streams that play at once, and stops a stream on request. Its clients are the `tts` engine ([tts-engine.md](../container/tts-engine.md)) and the `ALAudioPlayer` replacement ([audio-player.md](../services/audio-player.md)).
+
+On a NAO, the speech engine and the audio player are clients of the robot's sound server, which mixes every stream into the one stereo output of the ear loudspeakers; the microphones hear that mix. The audio output plays the sound server's part: one mixer, at the loudspeakers' format, and everything downstream (the device, a WAV file, memory, the fake microphone) gets what the loudspeakers would play.
 
 It is named after its role, not after a loudspeaker: where the audio ends up is a seam, the audio sink, and a test's sink is memory.
 
@@ -27,48 +29,57 @@ It is named after its role, not after a loudspeaker: where the audio ends up is 
 
 ### Run by `NaoSim`
 
-The audio output has no command of its own: a running `NaoSim` ([api.md](../runtime/api.md)) starts it in-process, listening on `0.0.0.0:9562`, before the containers, and stops it after them. The containers reach it at `host.docker.internal:9562`. Its events (`start`, `interrupted`, `end`, `stop-request`) go to the debug log.
+The audio output has no command of its own: a running `NaoSim` ([api.md](../runtime/api.md)) starts it in-process, listening on `0.0.0.0:9562`, before the containers, and stops it after them. The containers reach it at `host.docker.internal:9562`. Its events (`start`, `interrupted`, `end`, `stop-request`, per stream) go to the debug log.
 
 ### Protocol (TCP)
 
-Each connection carries one command: a JSON header line, then a body.
+Each connection carries one command: a JSON header line, then a body. It stays its own protocol, off the host link ([devices.md](devices.md)): several streams are several connections.
 
-- `{"cmd": "play", "rate": 22050, "channels": 1, "format": "s16le"}`, then raw interleaved s16le PCM until the sender closes its side. Playback starts with the first 100 ms of data; `play` returns when the data ends, the stream is stopped, or a newer stream starts.
-- `{"cmd": "stop"}`, no body: interrupts the current playback.
-- An unparsable header closes the connection without effect.
+- `{"cmd": "play", "stream": "speech", "rate": 22050, "channels": 1, "format": "s16le", "volume": 1.0, "pan": 0.0}`, then raw interleaved s16le PCM until the sender closes its side. `stream` defaults to `"default"`, `volume` (≥ 0.0) to 1.0, `pan` ([-1.0 left, 1.0 right]) to 0.0. The stream joins the mix with its first 100 ms of data; `play` returns when the data has played, the stream is stopped, or a newer stream of the same name starts.
+- `{"cmd": "stop", "stream": "speech"}`, no body: stops that stream. Without `stream`, stops every stream.
+- `{"cmd": "set", "stream": "player:3", "volume": 0.5, "pan": -1.0}`: changes a playing stream's volume or pan (either key may be left out), from its next tick.
+- `{"cmd": "pause", "stream": ...}` and `{"cmd": "resume", "stream": ...}`: a paused stream stops being read and mixed, and goes on where it was.
+- A command naming a stream that is not playing has no effect. An unparsable header closes the connection without effect.
 
-### Semantics
+### Streams
 
-- **One stream at a time, the newest wins.** Each `play` gets a generation number. An older stream that is still receiving stops at its next 100 ms chunk and logs `interrupted`.
-- **Stop latency** is at most one chunk (100 ms) plus the device buffer.
-- With a `DevicePlayer` (see "Audio sinks"), audio goes to the default output device through `sounddevice` (`RawOutputStream`, int16), opened per stream.
+- **Named streams, the newest wins within a name.** Each `play` gets a generation number in its stream; an older play of the same name that is still receiving stops at its next tick and logs `interrupted`. The `tts` engine plays `speech`, so a new `say` still cuts the previous one as before; the audio player plays one `player:<id>` per task.
+- **Different names play together**, mixed (below). Stopping one stream leaves the others playing.
+- **Stop latency** is at most one tick plus the device buffer.
+
+### Mixing
+
+- **Output format: 48 kHz, stereo, s16le**, as a NAO's two ear loudspeakers.
+- Each stream is converted to it as it is read: resampled to 48 kHz, mono spread to both channels, its volume applied, and its pan applied as a balance (pan p scales the left channel by min(1, 1 − p) and the right by min(1, 1 + p)).
+- **One clock.** The mixer runs in ticks of 20 ms: at each tick it takes each playing stream's next 20 ms, sums them, clips to 16 bits and feeds the sum to the sink and the listeners. The output paces in real time whatever the sink ([devices.md](devices.md), "Real time").
+- **Active while something plays.** The mix starts when a stream joins after silence and ends when the last stream ends or is stopped; the sink and the listeners see nothing between two such runs.
 
 ### Audio sinks
 
-Where the played audio goes is a seam, as tts-engine's `AudioSink` (its `specs/audio-sink.md`), adapted to an output that receives several streams with their own format and that can cut one off. The audio output owns the protocol, the generations and the pacing; the sink only receives audio.
+Where the played audio goes is a seam, as tts-engine's `AudioSink` (its `specs/audio-sink.md`). The audio output owns the protocol, the streams, the mixer and the pacing; the sink receives the mix.
 
 ```python
 class AudioSink(Protocol):
     def begin(self, rate: int, channels: int) -> None:
-        """A new stream starts."""
+        """The mix starts: a stream joined after silence (always 48000, 2)."""
 
     def feed(self, chunk: bytes) -> None:
-        """Interleaved s16le PCM, at most 100 ms."""
+        """The mix, interleaved s16le, one tick."""
 
     def end(self, interrupted: bool) -> None:
-        """The stream finished, or was cut by a stop or a newer stream."""
+        """The mix went quiet: the last stream ended, or a stop of every stream cut it."""
 ```
 
-- **Call discipline:** for each stream, `begin` once, `feed` any number of times, `end` exactly once, also when the stream fails. Calls come from the audio output's connection threads, never overlapping: it ends the current stream before it begins a newer one.
-- **The audio output paces, the sink does not.** Chunks are fed in real time whatever the sink ([devices.md](devices.md), "Real time").
+- **Call discipline:** for each run of the mix, `begin` once, `feed` any number of times, `end` exactly once, also when the output fails. All calls come from the mixer's thread, so they never overlap.
+- **Streams as received.** A sink that also has `stream_begin(stream, rate, channels)`, `stream_feed(stream, chunk)` and `stream_end(stream, interrupted)` receives each stream's own PCM before conversion, from the same thread. The `MemorySink` does, so tests can assert on one stream while others play.
 - **Shipped sinks:**
 
   | Sink | Does | Chosen by |
   | --- | --- | --- |
-  | `DevicePlayer(device=None)` | Plays on the output device (`sounddevice`, imported lazily at the first `begin`, so a host without PortAudio can use the other sinks) | `audio_output.mode = "play"`, the default |
+  | `DevicePlayer(device=None)` | Plays the mix on the output device (`sounddevice`, imported lazily at the first `begin`, so a host without PortAudio can use the other sinks), one device stream per run of the mix | `audio_output.mode = "play"`, the default |
   | `NullSink()` | Discards | `"silent"` |
-  | `WavSink(path)` | Writes mono 16-bit WAV, reopened when the rate changes; `close()` finishes the file (`NaoSim.stop()` calls it) | `"record"` |
-  | `MemorySink()` | Keeps each stream as a `Playback(rate, channels, pcm, started_at, ended_at, interrupted)`; `playbacks`, `wait_for(predicate, timeout)` | Tests, passed as `NaoSim(config, sink=MemorySink())` |
+  | `WavSink(path)` | Writes the mix as 48 kHz stereo 16-bit WAV, the runs one after the other; `close()` finishes the file (`NaoSim.stop()` calls it) | `"record"` |
+  | `MemorySink()` | Keeps each stream as a `Playback(stream, rate, channels, pcm, started_at, ended_at, interrupted)` and each run of the mix as a `Playback` with `stream="mix"`; `playbacks` (the streams), `mixes`, `wait_for(predicate, timeout)` over the streams | Tests, passed as `NaoSim(config, sink=MemorySink())` |
 
 - `AudioOutput(sink)` takes one sink. A `NaoSim` builds it from its `sink=` argument or the config's `audio_output` block ([api.md](../runtime/api.md), "Construction").
 - The live tier runs its `NaoSim` with a `MemorySink` and asserts on the playbacks.
@@ -77,19 +88,19 @@ class AudioSink(Protocol):
 
 Whether audio is playing belongs to the audio output, not the sink:
 
-- `playing_until: float`, in `time.monotonic()` seconds: when the audio fed so far finishes playing (the last chunk's pacing deadline). In the past when idle.
-- It is updated at every chunk and set to now on a stop or an interruption.
+- `playing_until: float`, in `time.monotonic()` seconds: when the mix fed so far finishes playing (the last tick's pacing deadline). In the past when idle.
+- It is updated at every tick and set to now when the mix goes quiet.
 - Read from another thread without a lock: a float assignment is atomic in CPython.
 
 ### Listeners
 
-What the robot plays can be heard by something else than the sink: the audio input's fake source, so the robot hears its own voice ([audio-input.md](audio-input.md), "The robot hears itself").
+What the robot plays can be heard by something else than the sink: the audio input's fake source, so the robot hears its own voice and its sounds ([audio-input.md](audio-input.md), "The robot hears itself").
 
-- `AudioOutput.listeners`: callables `listener(chunk, rate, channels, at)`, called with each chunk as it is fed to the sink, `at` being when the chunk is due to play (`time.monotonic()`, the start of its pacing slot). A `NaoSim` whose audio input is `fake` registers the fake source.
-- Called on the stream's thread, after the sink's `feed`; a listener that raises is logged and does not end the stream.
+- `AudioOutput.listeners`: callables `listener(chunk, rate, channels, at)`, called with each tick of the mix as it is fed to the sink (always 48000 Hz, 2 channels), `at` being when the tick is due to play (`time.monotonic()`, the start of its pacing slot); an empty chunk says a stop of every stream cut the mix at `at`. A `NaoSim` whose audio input is `fake` registers the fake source.
+- Called on the mixer's thread, after the sink's `feed`; a listener that raises is logged and does not stop the mix.
 - The device sink opens its stream at low latency (`latency="low"`), so the sound leaves the loudspeaker about when `at` says.
 
 ## Open questions
 
-1. **Device selection and volume.** The audio output has no output device option, and `ALTextToSpeech.setVolume` (or `ALAudioDevice.setOutputVolume`, [audio-device.md](../services/audio-device.md)) is not applied to the audio.
-2. **Mixing.** Sound files and speech cannot play at once (the newest stream wins), whereas a real NAO mixes them. Decided with [audio-player.md](../services/audio-player.md), together with whether the audio output moves onto the host link ([devices.md](devices.md), open question 1).
+1. **Device selection and volume.** The audio output has no output device option, and the system volume (`ALAudioDevice.setOutputVolume`, [audio-device.md](../services/audio-device.md), and `ALTextToSpeech.setVolume` for the speech stream) is not applied to the mix. On a NAO, the system volume scales the whole output; it would become a `set` without a stream once the services forward it.
+2. **Tick length.** 20 ms is provisional: short enough for a stop and for a sound joining a sentence to land where a NAO's would, long enough for Python to keep up under emulation. To confirm when built.

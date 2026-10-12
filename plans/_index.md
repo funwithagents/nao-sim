@@ -28,6 +28,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 | [202610121143_naoqi-2-8-sdk.md](202610121143_naoqi-2-8-sdk.md) | NAOqi 2.8's C++ (the native relay) compiled against the suite's own 2.8.7.4 SDK from `aldebaran/nao6-doc-sdk`, replacing the 2.8.5 SDK, our libqi fork and boost | Done |
 | [202610121149_speech-cpp-front.md](202610121149_speech-cpp-front.md) | `ALTextToSpeech` as a C++ front (task ids, `post`/`pCall`/`wait`/`stop(id)`, 2.8's hidden signals) over the Python speech core, so the Say and Animated Say boxes and `ALAnimatedSpeech` stop by task id on 2.1 and 2.8; `load_native`; before the audio player plan | Done |
 | [202610121237_container-code-by-service.md](202610121237_container-code-by-service.md) | `docker/` with one folder per container (`naoqi/`, `tts-engine/`), and the code that runs inside NAOqi in one folder per service (`naoqi/services/speech/`, `audio-device/`, `status-service/`), its Python and C++ together, named by role (`speech`, not `tts`); the `relay` build stage becomes `native`; nothing a client sees changes | Done |
+| [202610121302_audio-player-and-mixing.md](202610121302_audio-player-and-mixing.md) | The `ALAudioPlayer` replacement on 2.1 and 2.8 (a C++ front honouring `post`/`wait`/`stop(id)` over a Python core, WAV/OGG through the suite's libsndfile) and mixing in the audio output (named streams, `set`/`pause`/`resume`, 48 kHz stereo mixer, sinks receiving the mix, `MemorySink` per stream); speech as the `speech` stream | Done |
 
 ## Status legend
 

@@ -338,3 +338,47 @@ class Container:
         return [
             json.loads(line) for line in res.stdout.splitlines() if line.startswith("{")
         ]
+
+
+# -- the boxes' pattern ------------------------------------------------------------------------
+#
+# Code run inside NAOqi as Choregraphe's boxes run theirs: on 2.1 `ALProxy.post` / `wait(id, 0)` /
+# `stop(id)` from a second proxy; on 2.8 `pCall` / `wait(id)` / `stop(id)` on qi service objects.
+# A test's body defines `run()`; `box(nao, body)` returns what it returned.
+
+BOX = """
+import json, os, threading, time
+V28 = %(v28)r
+if V28:
+    import qi
+    _s = qi.Session()
+    _s.connect("tcp://127.0.0.1:%%s" %% os.environ.get("NAO_SIM_INTERNAL_PORT", "9559"))
+    def proxies(name):
+        return _s.service(name), _s.service(name)
+    def start(p, method, *args):
+        return p.pCall(method, *args)
+    def wait(p, tid):
+        p.wait(tid)
+    def memory():
+        return _s.service("ALMemory")
+else:
+    from naoqi import ALProxy
+    def proxies(name):
+        return ALProxy(name), ALProxy(name, True)
+    def start(p, method, *args):
+        return getattr(p.post, method)(*args)
+    def wait(p, tid):
+        p.wait(tid, 0)
+    def memory():
+        return ALProxy("ALMemory")
+def stop_later(p, tid, after):
+    def go():
+        time.sleep(after)
+        p.stop(tid)
+    threading.Thread(target=go).start()
+"""
+
+
+def box(nao, body: str):
+    """Runs `body` (Python 2.7 defining `run()`) inside NAOqi after the box helpers."""
+    return nao.run_in_naoqi(BOX % {"v28": nao.version.name == "2.8"} + body)

@@ -9,11 +9,11 @@
 # (specs/container/container.md, "Matching a NAO's modules").
 . "$(dirname "$0")/entrypoint-lib.sh"
 
-REPLACED="ALTextToSpeech"                              # built-ins our modules take over
+REPLACED="ALTextToSpeech ALAudioPlayer"                              # built-ins our modules take over
 RELAY="$NAOQI_HOME/lib/nao-sim/libnao_sim_audio_device_relay.so" # the native relay, loaded before our modules
-MODULES="nao_sim_status_almodule nao_sim_speech_almodule nao_sim_audio_device_almodule" # ours, in load order
-FRONTS="$NAOQI_HOME/lib/nao-sim/libnao_sim_speech_front.so"      # C++ fronts taking the replaced names, after them
-ADDED="ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech" # names no built-in holds, which we register
+MODULES="nao_sim_status_almodule nao_sim_speech_almodule nao_sim_audio_device_almodule nao_sim_audio_player_almodule" # ours, in load order
+FRONTS="$NAOQI_HOME/lib/nao-sim/libnao_sim_speech_front.so $NAOQI_HOME/lib/nao-sim/libnao_sim_audio_player_front.so"      # C++ fronts taking the replaced names, after them
+ADDED="ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech _NaoSimAudioPlayer" # names no built-in holds, which we register
 LATE="expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog"
 # LATE, launched after our modules in a NAO's autoload order:
 #   animatedspeech, dialog       hold a proxy to ALTextToSpeech (deferred from the autoload file)

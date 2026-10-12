@@ -106,16 +106,19 @@ SERVICES = (
 
 RELAY = "libnao_sim_audio_device_relay.so"
 SPEECH_FRONT = "libnao_sim_speech_front.so"  # ALTextToSpeech's C++ front, over its core
-ADDED = "ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech"
+PLAYER_FRONT = "libnao_sim_audio_player_front.so"  # ALAudioPlayer's
+ADDED = "ALAudioDevice _NaoSimAudioRelay _NaoSimTextToSpeech _NaoSimAudioPlayer"
 REGISTERS_21 = (
     "nao_sim_status_almodule=NaoSim,nao_sim_speech_almodule=_NaoSimTextToSpeech,"
     f"nao_sim_audio_device_almodule=ALAudioDevice,{RELAY}=_NaoSimAudioRelay,"
-    f"{SPEECH_FRONT}=ALTextToSpeech"
+    "nao_sim_audio_player_almodule=_NaoSimAudioPlayer,"
+    f"{SPEECH_FRONT}=ALTextToSpeech,{PLAYER_FRONT}=ALAudioPlayer"
 )
 REGISTERS_28 = (
     "nao_sim_status_qiservice=NaoSim,nao_sim_speech_qiservice=_NaoSimTextToSpeech,"
     f"nao_sim_audio_device_qiservice=ALAudioDevice,{RELAY}=_NaoSimAudioRelay,"
-    f"{SPEECH_FRONT}=ALTextToSpeech"
+    "nao_sim_audio_player_qiservice=_NaoSimAudioPlayer,"
+    f"{SPEECH_FRONT}=ALTextToSpeech,{PLAYER_FRONT}=ALAudioPlayer"
 )
 
 
@@ -215,13 +218,16 @@ def test_sequence_on_2_1(fakes):
     url = "--qi-url tcp://127.0.0.1:9559"
     assert calls_only(fakes) == [
         f"call ALTextToSpeech.exit {url}",
+        f"call ALAudioPlayer.exit {url}",
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/nao-sim/{RELAY} {url}",
         f"call ALPythonBridge.eval import sys; sys.path.insert(0, '{fakes.naoqi_home}/modules') {url}",
         f"call ALLauncher.launchPythonModule nao_sim_status_almodule {url}",
         f"call ALLauncher.launchPythonModule nao_sim_speech_almodule {url}",
         f"call ALLauncher.launchPythonModule nao_sim_audio_device_almodule {url}",
+        f"call ALLauncher.launchPythonModule nao_sim_audio_player_almodule {url}",
         # The front takes ALTextToSpeech once its core is loaded, before the modules that call it.
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/nao-sim/{SPEECH_FRONT} {url}",
+        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/nao-sim/{PLAYER_FRONT} {url}",
         # Late, in a NAO's autoload order: the TTS dependents, the built-ins a NAO autoloads and
         # the desktop does not, and autonomouslife after those.
         f"call ALLauncher.launchLocal expressiveness {url}",
@@ -236,11 +242,13 @@ def test_sequence_on_2_1(fakes):
     # The service list is polled until stable (1 + 3 polls), then the replaced name and the added
     # ones are checked after loading, right before setReady.
     assert "NAOqi ready after 4 polls, 9 services" in ep.output()
-    assert fakes.calls()[-5:-1] == [
+    assert fakes.calls()[-7:-1] == [
         f"info ALTextToSpeech {url}",
+        f"info ALAudioPlayer {url}",
         f"info ALAudioDevice {url}",
         f"info _NaoSimAudioRelay {url}",
         f"info _NaoSimTextToSpeech {url}",
+        f"info _NaoSimAudioPlayer {url}",
     ]
     # naoqi-bin got the broker arguments and the autoload copy with the late entries it lists
     # deferred; the others were never in it.
@@ -262,13 +270,16 @@ def test_sequence_on_2_8(fakes):
     assert calls_only(fakes) == [
         f"call ALServiceManager.stopService expressivity.autonomousabilitiesmodules {url}",
         f"call ALTextToSpeech.exit {url}",
+        f"call ALAudioPlayer.exit {url}",
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/nao-sim/{RELAY} {url}",
         f"call ALPythonBridge.eval import sys; sys.path.insert(0, '{fakes.naoqi_home}/modules') {url}",
         f"call ALLauncher.launchPythonModule nao_sim_status_qiservice {url}",
         f"call ALLauncher.launchPythonModule nao_sim_speech_qiservice {url}",
         f"call ALLauncher.launchPythonModule nao_sim_audio_device_qiservice {url}",
+        f"call ALLauncher.launchPythonModule nao_sim_audio_player_qiservice {url}",
         # The front, with the signals ALAnimatedSpeech connects to, before its service restarts.
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/nao-sim/{SPEECH_FRONT} {url}",
+        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/nao-sim/{PLAYER_FRONT} {url}",
         f"call ALServiceManager.startService expressivity.autonomousabilitiesmodules {url}",
         f"call NaoSim.setReady {url}",
     ]
@@ -462,3 +473,26 @@ def test_healthcheck_follows_the_ready_flag(fakes, style):
     (fakes.dir / "down").write_text("NaoSim")
     assert run() == 1  # the service is gone
     assert all("tcp://127.0.0.1:9559" in c for c in fakes.calls())
+
+
+@pytest.mark.parametrize("version", ["2.1", "2.8"])
+def test_fails_when_the_audio_player_core_does_not_register(fakes, version):
+    registers = REGISTERS_21 if version == "2.1" else REGISTERS_28
+    ep = Entrypoint(
+        fakes,
+        version,
+        {"FAKE_QICLI_REGISTERS": registers.replace("=_NaoSimAudioPlayer", "=")},
+    )
+    assert ep.wait_exit() == 1
+    assert "added service _NaoSimAudioPlayer does not answer" in ep.output()
+    assert not [c for c in fakes.calls() if "setReady" in c]
+
+
+def test_fails_when_the_audio_player_front_does_not_take_its_name(fakes):
+    ep = Entrypoint(
+        fakes,
+        "2.8",
+        {"FAKE_QICLI_REGISTERS": REGISTERS_28.replace("=ALAudioPlayer", "=")},
+    )
+    assert ep.wait_exit() == 1
+    assert "replaced service ALAudioPlayer does not answer" in ep.output()

@@ -39,7 +39,7 @@ RUN apt-get update \
 COPY --from=image-data ${SDK} /tmp/sdk.tar.gz
 RUN mkdir -p /tmp/sdk && tar -xzf /tmp/sdk.tar.gz -C /tmp/sdk --strip-components=1 --wildcards '*/include' \
  && rm /tmp/sdk.tar.gz
-COPY services/*/*.cpp /tmp/native/
+COPY services/*.h services/*/*.cpp /tmp/native/
 RUN cd /tmp/native \
  && for src in *.cpp; do \
       m=${src%.cpp}; \

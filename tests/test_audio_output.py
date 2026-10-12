@@ -11,6 +11,10 @@ import numpy as np
 import pytest
 
 from nao_sim.audio_output import (
+    RATE as MIX_RATE,
+)
+from nao_sim.audio_output import (
+    TICK_S,
     AudioOutput,
     AudioSink,
     DevicePlayer,
@@ -20,7 +24,7 @@ from nao_sim.audio_output import (
     WavSink,
 )
 
-RATE = 8000  # small streams, same code path as 22050
+RATE = 8000  # small streams; the mixer resamples every rate the same way
 
 
 class RunningOutput:
@@ -35,7 +39,8 @@ class RunningOutput:
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def send(self, header: bytes | dict, pcm: bytes = b"") -> float:
-        """One connection: header line, body, then wait for the output to close it. Returns its duration."""
+        """One connection: header line, body, then wait for the output to close it. Returns
+        how long that took."""
         line = (
             header if isinstance(header, bytes) else json.dumps(header).encode() + b"\n"
         )
@@ -51,16 +56,29 @@ class RunningOutput:
                 pass
         return time.monotonic() - t0
 
-    def play(self, seconds: float, rate: int = RATE, channels: int = 1) -> float:
+    def play(
+        self,
+        seconds: float = 0.0,
+        rate: int = RATE,
+        channels: int = 1,
+        pcm: bytes | None = None,
+        **header,
+    ) -> float:
         return self.send(
-            {"cmd": "play", "rate": rate, "channels": channels, "format": "s16le"},
-            tone(seconds, rate, channels),
+            {
+                "cmd": "play",
+                "rate": rate,
+                "channels": channels,
+                "format": "s16le",
+                **header,
+            },
+            tone(seconds, rate, channels) if pcm is None else pcm,
         )
 
-    def play_async(self, seconds: float) -> list[float]:
+    def play_async(self, *args, **kwargs) -> list[float]:
         out: list[float] = []
         threading.Thread(
-            target=lambda: out.append(self.play(seconds)), daemon=True
+            target=lambda: out.append(self.play(*args, **kwargs)), daemon=True
         ).start()
         return out
 
@@ -69,8 +87,17 @@ class RunningOutput:
         self.server.server_close()
 
 
-def tone(seconds: float, rate: int = RATE, channels: int = 1) -> bytes:
-    return b"\x10\x00" * int(seconds * rate) * channels
+def tone(seconds: float, rate: int = RATE, channels: int = 1, level: int = 16) -> bytes:
+    return np.full(int(seconds * rate) * channels, level, dtype="<i2").tobytes()
+
+
+def sine(freq: float, seconds: float, rate: int = 16000, level: float = 8000) -> bytes:
+    t = np.arange(int(seconds * rate)) / rate
+    return (level * np.sin(2 * np.pi * freq * t)).astype("<i2").tobytes()
+
+
+def frames(pcm: bytes, channels: int = 2) -> np.ndarray:
+    return np.frombuffer(pcm, dtype="<i2").reshape(-1, channels).astype(np.float64)
 
 
 def wait_for(cond, timeout=3.0):
@@ -93,17 +120,37 @@ def playbacks(c: RunningOutput):
     return c.sink.playbacks
 
 
-# --- The protocol and its semantics -------------------------------------------------
+def mixes(c: RunningOutput):
+    assert isinstance(c.sink, MemorySink)
+    return c.sink.mixes
 
 
-def test_play_feeds_every_sample_paced_in_real_time(memory):
-    took = memory.play(0.5)
+# --- One stream: the protocol, pacing, stop -------------------------------------------
+
+
+def test_play_records_the_stream_as_received_paced_in_real_time(memory):
+    took = memory.play(0.5, stream="speech")
 
     [p] = playbacks(memory)
-    assert (p.rate, p.channels, p.interrupted) == (RATE, 1, False)
+    assert (p.stream, p.rate, p.channels, p.interrupted) == ("speech", RATE, 1, False)
     assert p.pcm == tone(0.5)
     assert 0.45 <= took <= 0.8
-    assert p.ended_at is not None and p.ended_at - p.started_at >= 0.45
+    assert p.ended_at is not None and p.ended_at - p.started_at >= 0.4
+
+
+def test_a_play_without_a_stream_name_is_the_default_stream(memory):
+    memory.play(0.1)
+    assert playbacks(memory)[0].stream == "default"
+
+
+def test_the_mix_is_48k_stereo_with_the_stream_s_duration(memory):
+    memory.play(0.5, rate=22050)
+
+    [mix] = mixes(memory)
+    assert (mix.rate, mix.channels, mix.interrupted) == (MIX_RATE, 2, False)
+    assert mix.duration_s == pytest.approx(0.5, abs=TICK_S)
+    left, right = frames(mix.pcm)[len(frames(mix.pcm)) // 2]
+    assert left == right == 16  # mono spread to both loudspeakers, at its level
 
 
 def test_null_sink_is_paced_too():
@@ -114,30 +161,29 @@ def test_null_sink_is_paced_too():
         c.shutdown()
 
 
-def test_stop_ends_playback_within_one_chunk(memory):
-    done = memory.play_async(2.0)
+def test_stop_ends_a_stream_within_a_tick(memory):
+    done = memory.play_async(2.0, stream="speech")
     time.sleep(0.5)
     t_stop = time.monotonic()
-    memory.send({"cmd": "stop"})
+    memory.send({"cmd": "stop", "stream": "speech"})
     wait_for(lambda: done)
 
-    # At most one 100 ms chunk, plus slack for the scheduler.
-    assert time.monotonic() - t_stop < 0.25
+    assert time.monotonic() - t_stop < 0.15
     [p] = playbacks(memory)
     assert p.interrupted
     assert 0.3 < p.duration_s < 0.8
 
 
-def test_newest_stream_wins(memory):
-    first = memory.play_async(2.0)
+def test_the_newest_play_of_a_name_replaces_the_older(memory):
+    first = memory.play_async(2.0, stream="speech")
     time.sleep(0.3)
-    second_took = memory.play(0.5)
+    second_took = memory.play(0.5, stream="speech")
     wait_for(lambda: first)
 
     cut, full = playbacks(memory)
     assert cut.interrupted and cut.duration_s < 0.6
     assert not full.interrupted and full.duration_s == pytest.approx(0.5)
-    assert first[0] < 1.5 and second_took >= 0.45
+    assert first[0] < 1.0 and second_took >= 0.45
 
 
 def test_bad_header_is_ignored(memory):
@@ -156,15 +202,122 @@ def test_a_stop_does_not_cut_the_next_stream(memory):
     assert not p.interrupted and p.pcm == tone(0.2)
 
 
+# --- Several streams: mixing --------------------------------------------------------------
+
+
+def test_two_streams_play_together_and_the_mix_holds_both(memory):
+    a = memory.play_async(rate=16000, pcm=sine(440, 0.6), stream="speech")
+    b = memory.play_async(rate=16000, pcm=sine(1000, 0.6), stream="player:1")
+    wait_for(lambda: a and b)
+
+    speech, player = sorted(playbacks(memory), key=lambda p: p.stream != "speech")
+    assert not speech.interrupted and not player.interrupted
+    assert speech.ended_at is not None and player.ended_at is not None
+    assert speech.started_at < player.ended_at and player.started_at < speech.ended_at
+    [mix] = mixes(memory)
+    left = frames(mix.pcm)[:, 0]
+    middle = left[int(0.15 * MIX_RATE) : int(0.45 * MIX_RATE)]
+    spectrum = np.abs(np.fft.rfft(middle))
+    freqs = np.fft.rfftfreq(len(middle), 1 / MIX_RATE)
+
+    def peak(f):
+        return spectrum[np.argmin(np.abs(freqs - f))]
+
+    noise = np.median(spectrum)
+    assert peak(440) > 100 * noise and peak(1000) > 100 * noise
+
+
+def test_stopping_one_stream_leaves_the_others(memory):
+    a = memory.play_async(1.0, stream="speech")
+    b = memory.play_async(1.0, stream="player:1")
+    time.sleep(0.3)
+    memory.send({"cmd": "stop", "stream": "player:1"})
+    wait_for(lambda: a and b)
+
+    by_name = {p.stream: p for p in playbacks(memory)}
+    assert by_name["player:1"].interrupted
+    assert not by_name["speech"].interrupted
+    assert by_name["speech"].duration_s == pytest.approx(1.0)
+    assert not mixes(memory)[-1].interrupted  # the speech went on to its end
+
+
+def test_a_stop_without_a_name_stops_every_stream_and_tells_the_listeners(memory):
+    heard: list[tuple[int, float]] = []
+    memory.output.listeners.append(
+        lambda chunk, rate, channels, at: heard.append((len(chunk), at))
+    )
+    a = memory.play_async(2.0, stream="speech")
+    b = memory.play_async(2.0, stream="player:1")
+    time.sleep(0.4)
+    t_stop = time.monotonic()
+    memory.send({"cmd": "stop"})
+    wait_for(lambda: a and b)
+
+    assert all(p.interrupted for p in playbacks(memory))
+    assert mixes(memory)[-1].interrupted
+    wait_for(lambda: heard and heard[-1][0] == 0)
+    assert heard[-1][1] == pytest.approx(t_stop, abs=0.1)  # silent from the stop
+
+
+def test_set_changes_volume_and_pan_from_the_next_tick(memory):
+    done = memory.play_async(pcm=tone(1.0, level=1000), stream="player:1")
+    time.sleep(0.3)
+    memory.send({"cmd": "set", "stream": "player:1", "volume": 0.5, "pan": -1.0})
+    wait_for(lambda: done)
+
+    mix = frames(mixes(memory)[-1].pcm)
+    before, after = mix[int(0.1 * MIX_RATE)], mix[-int(0.1 * MIX_RATE)]
+    assert before.tolist() == [1000, 1000]
+    assert after.tolist() == [500, 0]  # half as loud, all on the left
+
+
+def test_volume_and_pan_from_the_play_header(memory):
+    memory.play(pcm=tone(0.3, level=1000), volume=0.25, pan=0.5)
+
+    left, right = frames(mixes(memory)[-1].pcm)[int(0.15 * MIX_RATE)]
+    assert (left, right) == (125, 250)  # balance: the left at 1 - pan, the right whole
+
+
+def test_pause_holds_a_stream_and_resume_lets_it_go_on(memory):
+    t0 = time.monotonic()
+    done = memory.play_async(0.5, stream="player:2")
+    time.sleep(0.15)
+    memory.send({"cmd": "pause", "stream": "player:2"})
+    time.sleep(0.4)
+    memory.send({"cmd": "resume", "stream": "player:2"})
+    wait_for(lambda: done)
+
+    [p] = playbacks(memory)
+    assert not p.interrupted and p.pcm == tone(0.5)  # nothing lost
+    assert time.monotonic() - t0 == pytest.approx(0.5 + 0.4, abs=0.2)
+
+
+def test_streams_mix_into_one_run_and_quiet_ends_it(memory):
+    a = memory.play_async(0.4, stream="speech")
+    time.sleep(0.2)
+    memory.play(0.4, stream="player:1")  # joins the running mix
+    wait_for(lambda: a)
+    time.sleep(0.1)
+    memory.play(0.2, stream="speech")  # after silence: a new run
+
+    first, second = mixes(memory)
+    assert first.duration_s == pytest.approx(0.6, abs=0.1)
+    assert second.duration_s == pytest.approx(0.2, abs=TICK_S)
+
+
+# --- The sink's call discipline -------------------------------------------------------------
+
+
 class CallLog:
-    """A sink that records its calls, and fails if two streams overlap."""
+    """A sink that records its calls, and fails if two runs overlap."""
 
     def __init__(self):
         self.calls: list[str] = []
         self._open = False
 
     def begin(self, rate, channels):
-        assert not self._open, "begin while a stream is open"
+        assert not self._open, "begin while a run is open"
+        assert (rate, channels) == (MIX_RATE, 2)
         self._open = True
         self.calls.append("begin")
 
@@ -179,21 +332,21 @@ class CallLog:
         self.calls.append(f"end({interrupted})")
 
 
-def test_sink_calls_never_overlap_when_a_newer_stream_cuts_in():
+def test_overlapping_streams_make_one_run_of_sink_calls():
     sink = CallLog()
     c = RunningOutput(sink)
     try:
-        first = c.play_async(2.0)
-        time.sleep(0.3)
-        c.play(0.3)
+        first = c.play_async(0.6, stream="speech")
+        time.sleep(0.2)
+        c.play(0.2, stream="player:1")
         wait_for(lambda: first)
     finally:
         c.shutdown()
 
-    assert sink.calls == ["begin", "feed", "end(True)", "begin", "feed", "end(False)"]
+    assert sink.calls == ["begin", "feed", "end(False)"]
 
 
-def test_a_failing_sink_still_gets_its_end():
+def test_a_failing_sink_still_gets_its_end_and_the_plays_return():
     class Failing(CallLog):
         def feed(self, chunk):
             raise OSError("device gone")
@@ -201,18 +354,18 @@ def test_a_failing_sink_still_gets_its_end():
     sink = Failing()
     c = RunningOutput(sink)
     try:
-        c.play(0.3)
-        c.play(0.3)
+        assert c.play(0.3) < 1.0
+        assert c.play(0.3) < 1.0
     finally:
         c.shutdown()
 
     assert sink.calls == ["begin", "end(True)", "begin", "end(True)"]
 
 
-# --- Playing state ------------------------------------------------------------------
+# --- Playing state and listeners --------------------------------------------------------------
 
 
-def test_playing_until_follows_the_audio(memory):
+def test_playing_until_follows_the_mix(memory):
     output = memory.output
     assert output.playing_until < time.monotonic()  # idle
 
@@ -220,52 +373,40 @@ def test_playing_until_follows_the_audio(memory):
     done = memory.play_async(1.0)
     time.sleep(0.4)
     assert output.playing_until > time.monotonic()
-    assert output.playing_until == pytest.approx(t0 + 0.5, abs=0.15)  # one chunk ahead
+    assert output.playing_until == pytest.approx(t0 + 0.4, abs=0.15)  # a tick ahead
     wait_for(lambda: done)
     assert output.playing_until == pytest.approx(t0 + 1.0, abs=0.15)
     assert output.playing_until <= time.monotonic()
 
 
 def test_a_stop_ends_the_playing_period_at_once(memory):
-    memory.play_async(2.0)
+    done = memory.play_async(2.0)
     time.sleep(0.4)
     t_stop = time.monotonic()
     memory.send({"cmd": "stop"})
+    wait_for(lambda: done)
 
     assert memory.output.playing_until <= time.monotonic()
     assert memory.output.playing_until == pytest.approx(t_stop, abs=0.1)
 
 
-def test_listeners_hear_every_chunk_when_it_is_due(memory):
+def test_listeners_hear_every_tick_of_the_mix_when_it_is_due(memory):
     heard: list[tuple[int, int, int, float]] = []
     memory.output.listeners.append(
         lambda chunk, rate, channels, at: heard.append((len(chunk), rate, channels, at))
     )
     t0 = time.monotonic()
     memory.play(0.35)
-    assert sum(n for n, *_ in heard) == len(tone(0.35))  # every byte, in order
-    assert {(rate, channels) for _, rate, channels, _ in heard} == {(RATE, 1)}
+    assert sum(n for n, *_ in heard) == len(mixes(memory)[-1].pcm)  # all of the mix
+    assert {(rate, channels) for _, rate, channels, _ in heard} == {(MIX_RATE, 2)}
     dues = [at for *_, at in heard]
-    assert dues[0] == pytest.approx(t0, abs=0.1)
-    # Back to back: each chunk is due when the one before has played.
+    assert dues[0] == pytest.approx(t0, abs=0.15)
+    # Back to back: each tick is due when the one before has played.
     for (n, *_, at), next_at in zip(heard, dues[1:], strict=False):
-        assert next_at == pytest.approx(at + n / (2 * RATE), abs=0.005)
+        assert next_at == pytest.approx(at + n / (4 * MIX_RATE), abs=0.005)
 
 
-def test_a_cut_tells_the_listeners(memory):
-    heard: list[tuple[int, float]] = []
-    memory.output.listeners.append(
-        lambda chunk, rate, channels, at: heard.append((len(chunk), at))
-    )
-    memory.play_async(2.0)
-    time.sleep(0.4)
-    t_stop = time.monotonic()
-    memory.send({"cmd": "stop"})
-    wait_for(lambda: heard and heard[-1][0] == 0)
-    assert heard[-1][1] == pytest.approx(t_stop, abs=0.15)  # silent from the stop
-
-
-def test_a_failing_listener_does_not_end_the_stream(memory):
+def test_a_failing_listener_does_not_stop_the_mix(memory):
     def broken(chunk, rate, channels, at):
         raise RuntimeError("deaf")
 
@@ -283,54 +424,47 @@ def wav_contents(path: Path) -> tuple[int, int, int, bytes]:
         return w.getnchannels(), w.getframerate(), w.getnframes(), w.readframes(-1)
 
 
-def test_wav_sink_appends_streams_and_restarts_on_a_new_rate(tmp_path):
+def test_wav_sink_writes_the_runs_one_after_the_other(tmp_path):
     path = tmp_path / "played.wav"
     sink = WavSink(path)
-    for chunk in (tone(0.1), tone(0.2)):
-        sink.begin(RATE, 1)
-        sink.feed(chunk)
+    for seconds in (0.1, 0.2):
+        sink.begin(MIX_RATE, 2)
+        sink.feed(tone(seconds, MIX_RATE, 2))
         sink.end(False)
-    assert wav_contents(path)[:3] == (
-        1,
-        RATE,
-        int(0.3 * RATE),
-    )  # readable between streams
-
-    sink.begin(16000, 1)
-    sink.feed(tone(0.1, 16000))
-    sink.end(False)
+        # Readable between runs.
+    assert wav_contents(path)[:3] == (2, MIX_RATE, int(0.3 * MIX_RATE))
     sink.close()
-    assert wav_contents(path)[:3] == (1, 16000, 1600)
 
 
-def test_wav_sink_downmixes_to_mono(tmp_path):
+def test_wav_sink_records_what_the_output_mixes(tmp_path):
     path = tmp_path / "played.wav"
-    sink = WavSink(path)
-    stereo = np.array([[100, 300], [-50, -150]] * 400, dtype="<i2")
-    sink.begin(RATE, 2)
-    sink.feed(stereo.tobytes())
-    sink.end(False)
-    sink.close()
+    c = RunningOutput(WavSink(path))
+    try:
+        c.play(0.3, rate=22050)
+    finally:
+        c.shutdown()
+    assert isinstance(c.sink, WavSink)
+    c.sink.close()
 
-    channels, _, frames, pcm = wav_contents(path)
-    assert (channels, frames) == (1, 800)
-    assert np.frombuffer(pcm, dtype="<i2")[:2].tolist() == [200, -100]
+    channels, rate, nframes, _ = wav_contents(path)
+    assert (channels, rate) == (2, MIX_RATE)
+    assert nframes / MIX_RATE == pytest.approx(0.3, abs=TICK_S)
 
 
-def test_memory_sink_wait_for_returns_an_ended_playback():
+def test_memory_sink_wait_for_returns_an_ended_stream():
     sink = MemorySink()
-    sink.begin(RATE, 1)
-    sink.feed(tone(0.1))
+    sink.stream_begin("speech", RATE, 1)
+    sink.stream_feed("speech", tone(0.1))
 
     def finish():
         time.sleep(0.1)
-        sink.end(False)
+        sink.stream_end("speech", False)
 
     threading.Thread(target=finish).start()
-    p = sink.wait_for(lambda p: p.rate == RATE, timeout=2)
+    p = sink.wait_for(lambda p: p.stream == "speech", timeout=2)
     assert p.ended_at is not None and p.pcm == tone(0.1)
     with pytest.raises(TimeoutError):
-        sink.wait_for(lambda p: p.rate == 16000, timeout=0.1)
+        sink.wait_for(lambda p: p.stream == "player:1", timeout=0.1)
 
 
 class FakeStream:
@@ -369,19 +503,21 @@ def fake_sounddevice(monkeypatch):
     return streams
 
 
-def test_device_player_plays_each_stream_and_cuts_on_interruption(fake_sounddevice):
+def test_device_player_plays_each_run_and_cuts_on_interruption(fake_sounddevice):
     player = DevicePlayer(device=3)
-    assert fake_sounddevice == []  # nothing opened before a stream
+    assert fake_sounddevice == []  # nothing opened before a run
 
-    player.begin(RATE, 2)
+    player.begin(MIX_RATE, 2)
     player.feed(b"ab")
     player.feed(b"cd")
     player.end(False)
-    player.begin(RATE, 1)
+    player.begin(MIX_RATE, 2)
     player.end(True)
 
     finished, cut = fake_sounddevice
-    assert finished.kwargs["samplerate"] == RATE and finished.kwargs["channels"] == 2
+    assert (
+        finished.kwargs["samplerate"] == MIX_RATE and finished.kwargs["channels"] == 2
+    )
     assert finished.kwargs["device"] == 3 and finished.kwargs["dtype"] == "int16"
     assert (
         finished.kwargs["latency"] == "low"
