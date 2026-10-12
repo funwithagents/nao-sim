@@ -48,19 +48,17 @@ Each image is built from two Aldebaran files per version, kept in the image data
 - Neither suite has the `animations` package (the `animations/Stand/Gestures/*` behaviours that `ALAnimatedSpeech` runs): the robot image is its only public source. Both versions' packages are behaviours (`.xar`) and `.ogg` only, no native code, with the same 224 `Stand/Gestures` behaviours. The robot images have no sound set: that stays the user's to install (see "Package store").
 - The download fetches Aldebaran's own public files to the user's machine, as the user would by hand; nothing is redistributed.
 
-#### Build files: the relay's headers
+#### Build files: the C++ SDK
 
-The native relay ([service-replacement.md](service-replacement.md), "Binary arguments: the native relay") is compiled in the image build from headers that come from these files, kept in the same `<version>/` folder and fetched by the same step. None of them reaches the final image: only the compiled relay does.
+The native relay ([service-replacement.md](service-replacement.md), "Binary arguments: the native relay") is compiled in the image build against the version's own C++ SDK, kept in the same `<version>/` folder and fetched by the same step. It never reaches the final image: only the compiled relay does.
 
 | Version | File | Source | SHA-256 | Used for |
 | --- | --- | --- | --- | --- |
 | 2.1 | `naoqi-sdk-2.1.4.13-linux64.tar.gz` (334 MB) | Aldebaran's public C++ SDK, `https://community-static.aldebaran.com/resources/2.1.4.13/sdk-c%2B%2B/` | `a1669524819088b7aac82e04450e2c5dce6ffdd11c968444db89b6831955683b` | The NAOqi module API (`alcommon`, `alvalue`, `alerror`), libqi (`qi`, `qitype`, `qimessaging`) and boost 1.55 headers: the same release as the suite |
-| 2.8 | `naoqi-sdk-2.8.5.10-linux64.tar.gz` (1.1 GB) | Aldebaran's public C++ SDK, `https://community-static.aldebaran.com/resources/2.8.5/` (no 2.8.7 SDK is public) | `9af3591de63b1062e36ec0aa6740592cb4de8db1ff6b355e188daff42012d303` | The module API headers only |
-| 2.8 | `libqi-7f3e1394cb26126b26fa7ff54d2de1371a1c9f96.tar.gz` (1 MB) | `https://github.com/funwithagents/libqi/archive/<commit>.tar.gz`, our fork of `aldebaran/libqi` (BSD-3-Clause), at the commit of tag `qi-framework-v1.8.7` (June 2021) | `ef0566920cb76eb6dac5affd4ca978a959b66b54e86219407d8e029cd81aea48` | libqi headers matching the 2.8.7.4 suite's `libqi.so`; the SDK's 2.8.5 headers do not (measured: undefined symbols) |
-| 2.8 | `boost_1_64_0.tar.bz2` (80 MB) | `https://archives.boost.io/release/1.64.0/source/` (Boost Software License) | `7bcc5caace97baa948931d712ea5f37038dbb1c5d89b43ad4def4ed7cb683332` | boost headers matching the suite's boost 1.64 (the SDK has 1.59) |
+| 2.8 | `naoqi-sdk-2.8.7.4-linux64.tar.gz` (1.3 GB) | Aldebaran's GitHub repository `aldebaran/nao6-doc-sdk` (Git LFS, `https://media.githubusercontent.com/media/aldebaran/nao6-doc-sdk/master/`) | `e42c8b95e6e3de349cf76100d006a9f5b48bd625f0236b0a0fe094fc29970967` | The NAOqi module API, libqi (`qi`, `ka`) and boost 1.64 headers: the same release as the suite |
 
-- These are plain HTTPS downloads, not Git LFS; the pins live in `src/nao_sim/suite.py` with the others, and they follow the same rules (kept when the hash matches, `.part` and hash check, `FetchError`).
-- The 2.1 SDK's own libqi and boost headers are exactly the suite's, and there is no public source for 2.1's `qitype` and `qimessaging`; the 2.8 overrides exist only because the public 2.8 SDK is older than the suite. With a 2.8.7 SDK, 2.8 would use the SDK alone, as 2.1 does.
+- The pins live in `src/nao_sim/suite.py` with the others, and follow the same rules (kept when the hash matches, `.part` and hash check, `FetchError`). 2.8's SDK comes from GitHub like its suite and robot image (`aldebaran/nao6-binaries`); 2.1's from Aldebaran's download site, since no repository holds it (`aldebaran/NAO-V5-ressources` has the suite and image only).
+- Each SDK is its suite's own release, so the header code compiled into our C++ (the `ALProxy` and `qi::AnyObject` call templates) matches the suite's libraries. Until Oct 12, 2026 the 2.8 build used the 2.8.5.10 SDK's module API headers with libqi `qi-framework-v1.8.7` (our fork) and boost 1.64 first on the include path: it linked and the relay worked, but those libqi headers differ from 2.8.7.4's in 57 files, and typed calls from C++ to Python services sent "Invalid" values that crashed `naoqi-service` (measured while building a C++ front for `ALTextToSpeech`, `spike/RESULTS.md`).
 - Like the suite, the SDKs are Aldebaran's public files downloaded to the user's machine; nothing is redistributed, and an image that contains the relay is local, as every nao-sim image is.
 
 #### Fetching the image data
@@ -95,10 +93,10 @@ Each Dockerfile has three stages, so the compiler and the headers never reach th
 | --- | --- | --- |
 | Compiler | g++ 4.8 (Ubuntu 14.04); the suite was built with gcc 4.6.3, same C++ library ABI | g++ 5.4 (Ubuntu 16.04), as the suite |
 | Flags | `-std=gnu++98` | `-std=gnu++14 -D_GLIBCXX_USE_CXX11_ABI=0` (the suite uses the old string ABI) |
-| Include path, in order | The SDK's `include/` | libqi at `7f3e1394`, boost 1.64, then the SDK's `include/` |
+| Include path | The SDK's `include/` | The SDK's `include/` |
 
 - `ALCALL` (the module entry points' export macro) is defined by qibuild, not by the SDK's headers: the source defines it as default visibility when absent.
-- Measured on Oct 10, 2026 (`spike/RESULTS.md`): both relays compile, load with `launchLocal` and deliver correct buffers; the 2.8 relay built against the SDK's own 2.8.5 libqi headers does not load on 2.8.7.4.
+- Measured on Oct 10, 2026 (`spike/RESULTS.md`): both relays compile, load with `launchLocal` and deliver correct buffers; a 2.8 relay built against the 2.8.5 SDK's own libqi headers does not load on 2.8.7.4.
 
 ### Package store
 

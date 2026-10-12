@@ -25,6 +25,7 @@ Implementation plans for nao-sim — each plan turns a settled part of a spec (s
 | [202610092201_image-data-rename.md](202610092201_image-data-rename.md) | The vendor folder becomes the image data everywhere: `NAO_SIM_IMAGE_DATA`, `--image-data`, `docker/image-data/`, `<user data>/nao-sim/image-data/`, the `image-data` build context, `PinnedFile` | Done |
 | [202610092343_video-input-render.md](202610092343_video-input-render.md) | The render camera: `video_input.py` injecting VGA `CameraTop` frames from nao-viewer at `video_input.fps` (new config field), world started before the host devices, headless viewer with the render source in the live tier and a camera-loop live test on 2.1 and 2.8; webcam and bottom camera left out | Done |
 | [202610101006_audio-input.md](202610101006_audio-input.md) | The audio input: host link, `ALAudioDevice` on 2.1 and 2.8 delivering through a native C++ relay (built in the image from the C++ SDKs, libqi from our fork and boost for 2.8), the fake source tests play sounds into and the host microphone, every format produced on the host, a PulseAudio loopback on CI testing the mic and the `DevicePlayer`; amended Oct 11: no microphone gate, the robot hears itself | Done |
+| [202610121143_naoqi-2-8-sdk.md](202610121143_naoqi-2-8-sdk.md) | NAOqi 2.8's C++ (the native relay) compiled against the suite's own 2.8.7.4 SDK from `aldebaran/nao6-doc-sdk`, replacing the 2.8.5 SDK, our libqi fork and boost | Done |
 
 ## Status legend
 

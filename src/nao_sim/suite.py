@@ -1,12 +1,12 @@
 """Fetch what the NAOqi images are built from into the image data folder's <version>/ (`files.IMAGE_DATA`:
 docker/image-data/ in a checkout, the user data directory when installed): the pinned Choregraphe
 suite, the robot's `animations` package extracted from the public robot image, and the build files
-whose headers the native relay is compiled against (the version's C++ SDK; for 2.8 also libqi from
-our fork and boost, since the public 2.8 SDK is older than the suite: specs/container/container.md,
-"Build files").
+whose headers our C++ NAOqi modules are compiled against (the version's own C++ SDK:
+specs/container/container.md, "Build files").
 
-These are Aldebaran's files, downloaded from Aldebaran's own public sources (GitHub with Git LFS,
-its download site for the SDKs) to this machine only: they stay in the image data folder (gitignored in a checkout, never in the wheel)
+These are Aldebaran's files, downloaded from Aldebaran's own public sources (its GitHub
+repositories with Git LFS; its download site for the 2.1 SDK, which no repository holds) to this
+machine only: they stay in the image data folder (gitignored in a checkout, never in the wheel)
 and in locally built images, never in the repository or a pushed image.
 
 A file already there with the pinned hash is kept, so the command is cheap to re-run. A file with
@@ -46,9 +46,8 @@ PACKAGE = "animations.pkg"
 # Git LFS files are served from media.githubusercontent.com; the raw URL returns the pointer.
 _V5 = "https://media.githubusercontent.com/media/aldebaran/NAO-V5-ressources/main/"
 _V6 = "https://media.githubusercontent.com/media/aldebaran/nao6-binaries/master/"
-_SDK = "https://community-static.aldebaran.com/resources/"
-# libqi at tag qi-framework-v1.8.7, the headers matching the 2.8.7.4 suite's libqi.so
-_LIBQI = "7f3e1394cb26126b26fa7ff54d2de1371a1c9f96"
+_V6_SDK = "https://media.githubusercontent.com/media/aldebaran/nao6-doc-sdk/master/"
+_SDK = "https://community-static.aldebaran.com/resources/"  # 2.1's SDK: on no GitHub repository
 
 
 @dataclass(frozen=True)
@@ -108,19 +107,10 @@ VERSIONS = {
         "/opt/aldebaran/share/naoqi/apps/animations.pkg",  # version 7.0.3
         "8866ddf4bb45eab79068cfe5746c66f3b8f507356fd93affed204bc834002f2c",
         (
-            # The only public 2.8 SDK: its module API headers only.
+            # The suite's own release: module API, libqi and boost 1.64 headers.
             PinnedFile(
-                _SDK + "2.8.5/naoqi-sdk-2.8.5.10-linux64.tar.gz",
-                "9af3591de63b1062e36ec0aa6740592cb4de8db1ff6b355e188daff42012d303",
-            ),
-            PinnedFile(
-                f"https://github.com/funwithagents/libqi/archive/{_LIBQI}.tar.gz",
-                "ef0566920cb76eb6dac5affd4ca978a959b66b54e86219407d8e029cd81aea48",
-                f"libqi-{_LIBQI}.tar.gz",
-            ),
-            PinnedFile(
-                "https://archives.boost.io/release/1.64.0/source/boost_1_64_0.tar.bz2",
-                "7bcc5caace97baa948931d712ea5f37038dbb1c5d89b43ad4def4ed7cb683332",
+                _V6_SDK + "naoqi-sdk-2.8.7.4-linux64.tar.gz",
+                "e42c8b95e6e3de349cf76100d006a9f5b48bd625f0236b0a0fe094fc29970967",
             ),
         ),
     ),
