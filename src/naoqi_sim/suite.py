@@ -139,7 +139,7 @@ def _record_path(path: Path) -> tuple[Path, str]:
 
 def _load_record(record: Path) -> dict[str, dict]:
     try:
-        data = json.loads(record.read_text())
+        data = json.loads(record.read_text(encoding="utf-8"))
     except (OSError, ValueError):  # absent or unreadable: hash everything again
         return {}
     return data if isinstance(data, dict) else {}
@@ -155,7 +155,9 @@ def _remember(path: Path, sha256: str) -> None:
     record, key = _record_path(path)
     entries = _load_record(record)
     entries[key] = {**_stamp(path), "sha256": sha256}
-    record.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
+    record.write_text(
+        json.dumps(entries, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _unchanged(path: Path, sha256: str) -> bool:

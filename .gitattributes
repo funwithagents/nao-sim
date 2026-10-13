@@ -1,0 +1,4 @@
+# Every text file is checked out with LF, Windows included (git there defaults to CRLF): the
+# containers run the shell scripts and Python under docker/ as they are, and a CRLF entrypoint
+# does not start. The wheel a git install builds from a Windows checkout carries the same files.
+* text=auto eol=lf

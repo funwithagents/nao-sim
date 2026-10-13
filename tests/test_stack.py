@@ -4,6 +4,8 @@ replaced; the live tier covers it."""
 
 import asyncio
 import socket
+import threading
+import time
 
 import pytest
 
@@ -89,3 +91,29 @@ def test_both_need_docker(docker):
         asyncio.run(stack.read_status())
     with pytest.raises(DockerUnavailableError):
         asyncio.run(stack.cleanup())
+
+
+def test_a_failed_connect_is_not_retried():
+    # A server that hangs up at once, as NAOqi 2.1 seemed to for libqi 3.1.6 (an instant
+    # `disconnected`): one attempt, then NaoqiSimError naming the URL.
+    accepted: list[socket.socket] = []
+    with socket.create_server(("127.0.0.1", 0)) as server:
+        server.settimeout(0.1)
+
+        def hang_up() -> None:
+            while server.fileno() != -1:
+                try:
+                    peer, _ = server.accept()
+                except TimeoutError:
+                    continue
+                except OSError:  # the server closed
+                    return
+                accepted.append(peer)
+                peer.close()
+
+        threading.Thread(target=hang_up, daemon=True).start()
+        url = f"tcp://127.0.0.1:{server.getsockname()[1]}"
+        with pytest.raises(NaoqiSimError, match=url):
+            stack.connect(url)
+        time.sleep(1.0)  # room for a retry (the old one came after 0.5 s)
+    assert len(accepted) == 1

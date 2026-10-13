@@ -10,6 +10,7 @@ import asyncio
 import logging
 import signal
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from naoqi_sim import docker_images, stack
@@ -63,6 +64,45 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
+def _route_signals(
+    loop: asyncio.AbstractEventLoop, handler: Callable[[], None]
+) -> Callable[[], None]:
+    """Call `handler` on the loop for Ctrl-C and SIGTERM; returns what undoes it.
+
+    Windows' event loops have no `add_signal_handler`: there, a plain handler for Ctrl-C (SIGTERM
+    is never delivered on Windows) hands over to the loop. Python runs that handler only when the
+    main thread runs Python code, which a loop waiting for I/O may not do for a long time: a tick
+    every 0.1 s makes it run promptly on any loop.
+    """
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, handler)
+    except NotImplementedError:
+        previous = signal.signal(
+            signal.SIGINT, lambda *_: loop.call_soon_threadsafe(handler)
+        )
+        tick: asyncio.TimerHandle | None = None
+
+        def ticking() -> None:
+            nonlocal tick
+            tick = loop.call_later(0.1, ticking)
+
+        ticking()
+
+        def restore_plain() -> None:
+            if tick is not None:
+                tick.cancel()
+            signal.signal(signal.SIGINT, previous)
+
+        return restore_plain
+
+    def restore() -> None:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.remove_signal_handler(sig)
+
+    return restore
+
+
 async def _run(sim: NaoqiSim) -> int:
     """Start, wait for Ctrl-C or SIGTERM, stop. A signal during the start cancels it."""
     loop = asyncio.get_running_loop()
@@ -75,8 +115,7 @@ async def _run(sim: NaoqiSim) -> int:
         else:
             starting.cancel()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, on_signal)
+    restore = _route_signals(loop, on_signal)
     try:
         try:
             await starting
@@ -94,8 +133,7 @@ async def _run(sim: NaoqiSim) -> int:
         await sim.stop()
         return 0
     finally:
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.remove_signal_handler(sig)
+        restore()
         await sim.stop()  # a no-op once stopped; covers a failure after the start
 
 

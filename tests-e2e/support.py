@@ -212,18 +212,11 @@ def unavailable(reason: str) -> NoReturn:
     pytest.skip(reason)
 
 
-def connect(url: str = URL, attempts: int = 5) -> qi.Session:
-    """Connect a qi.Session, retrying: libqi 3 fails about one connect in three against 2.1."""
-    error: Exception | None = None
-    for _ in range(attempts):
-        session = qi.Session()
-        try:
-            session.connect(url)
-            return session
-        except RuntimeError as e:
-            error = e
-            time.sleep(0.5)
-    raise RuntimeError(f"could not connect to {url} in {attempts} attempts: {error}")
+def connect(url: str = URL) -> qi.Session:
+    """Connect a qi.Session, in one attempt as any client does since libqi 3.1.8."""
+    session = qi.Session()
+    session.connect(url)
+    return session
 
 
 def _run(

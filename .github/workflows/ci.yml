@@ -3,8 +3,9 @@
 # Three jobs side by side on GitHub's hosted runners, on every pull request and push to main:
 # `check` (lint, format, types), `fast-tier` (tests/) and `e2e-sim` (tests-e2e/ against real
 # NAOqi stacks the runner fetches, builds and verifies itself), once per NAOqi version, each
-# entry on its own runner since both publish 9559. None waits on another. All on Linux: macOS
-# runners have no Docker. No secret is needed.
+# entry on its own runner since both publish 9559. None waits on another. The fast tier runs on
+# Linux, macOS and Windows; the rest on Linux: macOS and Windows runners can't run naoqi-sim's
+# Linux containers. No secret is needed.
 
 name: CI
 
@@ -48,9 +49,18 @@ jobs:
         run: uv run pyright
 
   fast-tier:
-    name: fast tier
-    runs-on: ubuntu-24.04
+    name: fast tier, ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    strategy:
+      # Each platform its own qi wheel and Python behaviour (paths, encodings, signals); one
+      # failing leaves the others running (specs/testing/ci.md).
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7

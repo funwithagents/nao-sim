@@ -90,7 +90,13 @@ def run(
     *args: str, timeout: float = 120, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        args, capture_output=True, text=True, timeout=timeout, check=False, env=env
+        args,
+        capture_output=True,
+        encoding="utf-8",  # docker's own output, whatever the locale (Windows' isn't UTF-8)
+        errors="replace",
+        timeout=timeout,
+        check=False,
+        env=env,
     )
 
 
@@ -136,13 +142,13 @@ def _verified(image_data: Path) -> dict[str, str]:
     path = image_data / RECORD
     if not path.exists():
         return {}
-    return json.loads(path.read_text())["verified"]
+    return json.loads(path.read_text(encoding="utf-8"))["verified"]
 
 
 def _record(image_data: Path, verified: dict[str, str]) -> None:
     image_data.mkdir(parents=True, exist_ok=True)
     (image_data / RECORD).write_text(
-        json.dumps({"verified": verified}, indent=2) + "\n"
+        json.dumps({"verified": verified}, indent=2) + "\n", encoding="utf-8"
     )
 
 
