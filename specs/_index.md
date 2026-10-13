@@ -48,7 +48,7 @@ The NAOqi services naoqi-sim replaces or adds, as Python 2.7 modules inside NAOq
 | Spec | Description | Status |
 |---|---|---|
 | [speech.md](services/speech.md) | `ALTextToSpeech` replacement: the measured contract per caller, tags, event sequence, timing, stop, fallback clock; a C++ front over the Python core so the Say and Animated Say boxes and `ALAnimatedSpeech` stop by task id, with 2.8's hidden signals on the front | Implemented |
-| [audio-device.md](services/audio-device.md) | `ALAudioDevice` replacement: registered directly, NAO's formats and methods, energy, per-subscriber delivery to `processRemote` through the native relay, as a binary | Implemented |
+| [audio-device.md](services/audio-device.md) | `ALAudioDevice` replacement: registered directly, NAO's formats and methods, energy, per-subscriber delivery to `processRemote` through the native relay, as a binary | Updated |
 | [audio-player.md](services/audio-player.md) | `ALAudioPlayer` replacement with a NAO's API (files, loaded files, task volume and pan, `stop(id)`, loops, sound sets, `playSine`), decoding WAV/OGG with the suite's libsndfile as a virtual robot does, one audio output stream per task mixed with speech; no shim; a C++ front for `post`/`wait`/`stop(id)` over a Python core | Implemented |
 
 ### Host: `host/`
@@ -58,7 +58,7 @@ The simulated robot's inputs and outputs on the host, owned by a running `NaoqiS
 | Spec | Description | Status |
 |---|---|---|
 | [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoqiSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Implemented |
-| [audio-output.md](host/audio-output.md) | The robot's loudspeakers, as a NAO's sound server: TCP PCM protocol with named streams (newest wins within a name; `stop`, `set`, `pause`/`resume`), a mixer at 48 kHz stereo with volume and pan, the `AudioSink` seam receiving the mix (device, null, WAV, memory with each stream kept), playing state, listeners (the fake room hears the mix) | Implemented |
+| [audio-output.md](host/audio-output.md) | The robot's loudspeakers, as a NAO's sound server: TCP PCM protocol with named streams (newest wins within a name; `stop`, `set`, `pause`/`resume`), a mixer at 48 kHz stereo with volume and pan, the `AudioSink` seam receiving the mix (device, null, WAV, memory with each stream kept), playing state, listeners (the fake room hears the mix) | Updated |
 | [audio-input.md](host/audio-input.md) | The robot's microphones: the fake source tests play sounds into and the host microphone, every format produced on the host, mono policy, 85 ms chunks (provisional), the robot hearing itself (no gate), messages on the host link, loopback tests | Implemented |
 | [video-input.md](host/video-input.md) | The robot's head cameras: naoqi-viewer render then webcam, VGA `CameraTop` frames injected with `putImage` at a fixed `fps` whoever subscribes, NAOqi converting per subscriber; measured on both versions | Implemented |
 | [touch-input.md](host/touch-input.md) | The robot's touch sensors: clicks in the sim window and an API for tests, written to ALMemory | Draft |

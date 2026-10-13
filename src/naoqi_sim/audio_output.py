@@ -418,6 +418,9 @@ class AudioOutput:
             if now - slot > RESYNC_S:
                 slot = now
             at = slot
+            # When this tick finishes playing: a tick fed while catching up plays no earlier than
+            # now. A stream ending in it ends then, and so does the playing period.
+            ends = max(at, now) + TICK_S
             mix = np.zeros((TICK_FRAMES, CHANNELS), dtype=np.float32)
             with self._changed:
                 for s in active:
@@ -434,14 +437,13 @@ class AudioOutput:
                     if len(used):
                         self._record("stream_feed", s.name, used.tobytes())
                     if finished:
-                        s.ended_at = at + TICK_S
+                        s.ended_at = ends
                         self._finish(s, interrupted=False)
                 self._changed.notify_all()  # room in the streams' buffers
             chunk = np.clip(np.rint(mix), -32768, 32767).astype("<i2").tobytes()
             if not self._sink_call(self.sink.feed, chunk):
                 continue
-            # A tick fed while catching up plays no earlier than now.
-            self.playing_until = max(at, time.monotonic()) + TICK_S
+            self.playing_until = ends
             self._tell(chunk, at)
             slot = at + TICK_S
             _sleep_until(

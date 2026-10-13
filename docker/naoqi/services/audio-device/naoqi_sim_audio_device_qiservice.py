@@ -24,7 +24,7 @@ def _forget(name):
     _session.service(core.RELAY).forget(name)
 
 
-def _exists(name, wait_s=3.0):
+def _exists(name, wait_s=10.0):
     # Asked directly, and again for a while: a service a host client registers through the
     # gateway reaches this session a moment later (a client subscribes right after registering),
     # and services() does not list it at all.

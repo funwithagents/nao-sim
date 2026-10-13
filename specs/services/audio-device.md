@@ -15,7 +15,7 @@ tests:
 
 # ALAudioDevice replacement
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -75,7 +75,7 @@ Oct 10, 2026, both versions, a libqi 3 host client registering a service with `p
 - **Callbacks reach the host on both versions**: 2.1 through the broker, 2.8 through the gateway from the module's own session. A call costs 0.4 to 1.3 ms per chunk.
 - **Python 2.7 cannot send a binary** on either version: `str` and `bytearray` travel as a qi string (the host gets a `str`, mangled when not UTF-8, so `bytes(inputBuffer)` fails), and `ALProxy` turns a `bytearray` into `None`. A C++ `ALValue` binary arrives as a `bytearray`. Hence the relay.
 - **Through the relay**, both versions: the host receives a `bytearray` with the exact bytes and the timestamp sent, from `ALProxy` (2.1) and a qi session (2.8). A 48 kHz four-channel chunk (8192 samples) costs 0.74 ms on 2.1 and 1.28 ms on 2.8.
-- **2.8: a client's service reaches the container a moment late.** A client registers its service and subscribes at once; through the gateway, the module's session may not find the name yet (`session.service` fails for a moment), and `session.services()` never lists it. So on 2.8, `subscribe` asks for the service directly, retrying for up to 3 s (measured with the live tier: intermittent failures without the retry, none with it). 2.1, through the broker, finds it at once.
+- **2.8: a client's service reaches the container a moment late.** A client registers its service and subscribes at once; through the gateway, the module's session may not find the name yet (`session.service` fails for a moment), and `session.services()` never lists it. So on 2.8, `subscribe` asks for the service directly, retrying for up to 10 s (measured with the live tier: intermittent failures without the retry, none with it at first; then one failure after 3 s on a loaded CI runner, the first listener after the stack came up). The wait only delays the error for a name that does not exist. 2.1, through the broker, finds it at once.
 
 ## Open questions
 
