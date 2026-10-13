@@ -264,3 +264,21 @@ def test_sound_sets_when_one_is_installed(nao):
     mark = time.monotonic()
     player.playSoundSetFile("Aldebaran", name)
     assert sound(nao, mark).duration_s > 0
+
+
+def test_an_installed_behavior_plays_its_sound(nao):
+    """A behavior of the animations package, run through ALBehaviorManager as an app runs it: its
+    Play Sound box reaches the replacement (on 2.1 the behaviors are preloaded at boot, their
+    boxes making their ALAudioPlayer proxies as they load)."""
+    motion = nao.service("ALMotion")
+    motion.wakeUp()
+    try:
+        mark = time.monotonic()
+        nao.service("ALBehaviorManager").runBehavior(
+            "animations/Stand/Emotions/Positive/Happy_1"
+        )
+        p = sound(nao, mark)
+    finally:
+        motion.rest()
+
+    assert p.duration_s > 0.3

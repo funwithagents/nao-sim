@@ -55,7 +55,7 @@ A replacement registers under the built-in's name, after the built-in has left b
 
 | Step | 2.1 | 2.8 |
 | --- | --- | --- |
-| 1. Keep dependents off the old object | Remove them from the autoload copy (`DEPENDENTS` in `entrypoint-2.1.sh`: `animatedspeech dialog`) | `ALServiceManager.stopService(<package service>)` (`DEPENDENTS` in `entrypoint-2.8.sh`: `expressivity.autonomousabilitiesmodules`) |
+| 1. Keep dependents off the old object | Remove them from the autoload copy and launch them late (`LATE` in `entrypoint-2.1.sh`: `behaviormanager animatedspeech dialog`; `behaviormanager` because its preloaded behaviors' boxes make their proxies as they load) | `ALServiceManager.stopService(<package service>)` (`DEPENDENTS` in `entrypoint-2.8.sh`: `expressivity.autonomousabilitiesmodules`) |
 | 2. Remove the built-in | `<Built-in>.exit()` (`REPLACED`); it leaves the broker and the ServiceDirectory cleanly | Same |
 | 3. Load the replacement | `launchPythonModule` (`MODULES`) | Same |
 | 4. Bring dependents back | `ALLauncher.launchLocal(<library>)` | `ALServiceManager.startService(<package service>)` |

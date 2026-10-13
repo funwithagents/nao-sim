@@ -14,8 +14,11 @@ RELAY="$NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_audio_device_relay.so" # the nativ
 MODULES="naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule" # ours, in load order
 FRONTS="$NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_speech_front.so $NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_audio_player_front.so"      # C++ fronts taking the replaced names, after them
 ADDED="ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer" # names no built-in holds, which we register
-LATE="expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog"
+LATE="behaviormanager expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog"
 # LATE, launched after our modules in a NAO's autoload order:
+#   behaviormanager              preloads the installed behaviors, whose boxes make their proxies
+#                                (ALAudioPlayer, ALTextToSpeech) as they load (deferred from the
+#                                autoload file)
 #   animatedspeech, dialog       hold a proxy to ALTextToSpeech (deferred from the autoload file)
 #   expressiveness, basicawareness, autonomousblinking, autonomousmoves
 #                                a NAO autoloads them, the desktop suite does not

@@ -233,8 +233,10 @@ def test_sequence_on_2_1(fakes):
         # The front takes ALTextToSpeech once its core is loaded, before the modules that call it.
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{SPEECH_FRONT} {url}",
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{PLAYER_FRONT} {url}",
-        # Late, in a NAO's autoload order: the TTS dependents, the built-ins a NAO autoloads and
+        # Late, in a NAO's autoload order: the behavior manager (its preloaded boxes make their
+        # proxies to the replaced names), the TTS dependents, the built-ins a NAO autoloads and
         # the desktop does not, and autonomouslife after those.
+        f"call ALLauncher.launchLocal behaviormanager {url}",
         f"call ALLauncher.launchLocal expressiveness {url}",
         f"call ALLauncher.launchLocal animatedspeech {url}",
         f"call ALLauncher.launchLocal basicawareness {url}",
@@ -443,7 +445,12 @@ def test_fails_when_a_late_built_in_registers_nothing(fakes):
         for c in calls_only(fakes)
         if "launchLocal" in c and "/lib/naoqi-sim/" not in c
     ]
-    assert launched == ["expressiveness", "animatedspeech", "basicawareness"]
+    assert launched == [
+        "behaviormanager",
+        "expressiveness",
+        "animatedspeech",
+        "basicawareness",
+    ]
     assert not [c for c in fakes.calls() if "setReady" in c]
 
 
