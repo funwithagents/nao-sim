@@ -392,7 +392,9 @@ def test_a_viewer_that_cannot_launch_stops_everything(env):
 
 
 def test_a_cancelled_start_stops_what_was_started(env):
-    env.set(boot="starting")  # never healthy: the start waits
+    # Never healthy: the start waits. `up` takes its time, as a real one does: the cancel comes
+    # while it is in flight, and the teardown must not race it.
+    env.set(boot="starting", up_s=0.5)
 
     async def run():
         naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())

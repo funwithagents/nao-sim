@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import subprocess
+import threading
 from dataclasses import dataclass
 
 from naoqi_sim import docker_images, files
@@ -82,9 +83,9 @@ def up(config: NaoqiSimConfig) -> None:
         )
 
 
-def wait_ready(config: NaoqiSimConfig) -> None:
+def wait_ready(config: NaoqiSimConfig, abort: threading.Event | None = None) -> None:
     docker_images.wait_healthy(
-        IMAGES[config.naoqi.version], timeout=config.naoqi.ready_timeout_s
+        IMAGES[config.naoqi.version], timeout=config.naoqi.ready_timeout_s, abort=abort
     )
 
 

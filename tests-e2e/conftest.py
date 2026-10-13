@@ -147,6 +147,14 @@ class Nao:
         return self.sink.wait_for(lambda p: p.started_at >= after, timeout).duration_s
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_cmdline_main(config: pytest.Config) -> None:
+    """Run this tier serially, overriding the fast tier's parallel `addopts`: every test shares
+    the one naoqi-sim on 9559, which workers would start and stop under one another. This
+    conftest loads only when tests-e2e/ is collected, so the fast tier keeps its workers."""
+    config.option.numprocesses = 0
+
+
 @pytest.fixture(scope="session", params=e2e_versions())
 def nao(request) -> Iterator[Nao]:
     require_docker()

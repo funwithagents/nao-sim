@@ -440,7 +440,8 @@ class AudioOutput:
             chunk = np.clip(np.rint(mix), -32768, 32767).astype("<i2").tobytes()
             if not self._sink_call(self.sink.feed, chunk):
                 continue
-            self.playing_until = at + TICK_S
+            # A tick fed while catching up plays no earlier than now.
+            self.playing_until = max(at, time.monotonic()) + TICK_S
             self._tell(chunk, at)
             slot = at + TICK_S
             _sleep_until(

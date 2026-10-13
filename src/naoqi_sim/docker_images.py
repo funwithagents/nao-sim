@@ -19,6 +19,7 @@ import logging
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -207,9 +208,12 @@ def container_logs(container: str) -> str:
     return (res.stdout + res.stderr).strip()
 
 
-def wait_healthy(images: Images, timeout: float | None = None) -> None:
+def wait_healthy(
+    images: Images, timeout: float | None = None, abort: threading.Event | None = None
+) -> None:
     """Until the version's NAOqi container is healthy; `BootError` if it exits, turns
-    unhealthy or takes longer than `timeout` (default `READY_TIMEOUT`), with the end of its log."""
+    unhealthy or takes longer than `timeout` (default `READY_TIMEOUT`), with the end of its log,
+    or as soon as `abort` is set."""
     timeout = READY_TIMEOUT if timeout is None else timeout
     end = time.monotonic() + timeout
     while True:
@@ -233,7 +237,10 @@ def wait_healthy(images: Images, timeout: float | None = None) -> None:
                 f"NAOqi {images.version} not healthy after {timeout:.0f} s:\n"
                 + container_logs(images.container)
             )
-        time.sleep(POLL)
+        if abort is not None and abort.wait(POLL):
+            raise BootError(f"waiting for NAOqi {images.version} was cancelled")
+        if abort is None:
+            time.sleep(POLL)
 
 
 _TTS_HEALTH = "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"

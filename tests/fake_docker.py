@@ -14,6 +14,7 @@ import os
 import socket
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,7 @@ from naoqi_sim.docker_images import IMAGES, TTS_IMAGE
 
 FAKE_DOCKER = textwrap.dedent(
     """\
-    import hashlib, json, os, sys
+    import hashlib, json, os, sys, time
     path = os.environ["FAKE_DOCKER_STATE"]
     state = json.load(open(path))
     args = sys.argv[1:]
@@ -68,6 +69,13 @@ FAKE_DOCKER = textwrap.dedent(
                     "Labels": labels,
                 }
         elif verb == "up":
+            if state.get("up_s"):
+                # A real `up` takes seconds: it is seen starting, and its containers appear at
+                # its end, whatever ran meanwhile.
+                with open(path, "w") as f:
+                    json.dump(state, f)
+                time.sleep(state["up_s"])
+                state = json.load(open(path))
             state["up_tts_engine"] = os.environ.get("NAOQI_SIM_TTS_ENGINE")
             for s in services:
                 name = state["services"][s]["container"]
@@ -128,6 +136,12 @@ class FakeDocker:
         )
 
     def read(self) -> dict:
+        # A slow `up` rewrites the file while the test polls it: retry a half-written read.
+        for _ in range(50):
+            try:
+                return json.loads(self.path.read_text())
+            except json.JSONDecodeError:
+                time.sleep(0.01)
         return json.loads(self.path.read_text())
 
     def write(self, state: dict) -> None:

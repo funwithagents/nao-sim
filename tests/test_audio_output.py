@@ -133,9 +133,12 @@ def test_late_wake_ups_do_not_drift_the_mix(memory, monkeypatch):
     # Every sleep of the mixer wakes 30 ms late, longer than a tick, as a loaded machine's (or
     # a CI virtual machine's) timers can: the ticks keep their schedule, and the play its length.
     sleep_until = audio_output._sleep_until
-    monkeypatch.setattr(
-        audio_output, "_sleep_until", lambda deadline: sleep_until(deadline + 0.03)
-    )
+
+    def late(deadline: float) -> None:
+        if deadline > time.monotonic():  # a sleep there is wakes 30 ms late
+            sleep_until(deadline + 0.03)
+
+    monkeypatch.setattr(audio_output, "_sleep_until", late)
     dues: list[float] = []
     memory.output.listeners.append(lambda chunk, rate, channels, at: dues.append(at))
 

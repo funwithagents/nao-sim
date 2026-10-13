@@ -41,6 +41,7 @@ dev = [
     "naoqi-sim[viewer]",  # the viewer code type-checks against naoqi-viewer's real API
     "pyright>=1.1.414",
     "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.16.10",
 ]
 
@@ -73,6 +74,12 @@ extend-exclude = ["docker/naoqi/services", "spike"]
 [tool.pytest.ini_options]
 # Only the fast, deterministic tier is collected by default; tests-e2e/ is opt-in.
 testpaths = ["tests"]
+# The fast tier runs in parallel (pytest-xdist), as reachy-mini-bridge's: it is sleep-bound (the
+# audio output, the speech and player cores and the fake docker run in real time) more than
+# compute-bound. Capped at eight: each worker is a whole interpreter. `logical` counts logical
+# cores, as `auto` may count physical ones. `-n 0` runs it serially. tests-e2e/conftest.py forces
+# the live tier serial (one stack on 9559).
+addopts = ["-n", "logical", "--maxprocesses", "8"]
 markers = [
     "container_code: tests code that runs in the Linux containers; CI runs it on Linux only, and Windows skips it (specs/testing/testing.md)",
 ]
