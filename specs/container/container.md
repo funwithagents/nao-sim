@@ -209,8 +209,21 @@ Each image matches a real NAO **on the same NAOqi version**, not the other versi
 | macOS Apple Silicon | Docker Desktop or OrbStack, amd64 emulation (Rosetta) | Measured on OrbStack: boot times above, no visible lag. The `tts` container is native |
 | Windows | Docker Desktop (WSL 2) | The host side installs and its fast tier runs on Windows in CI ([ci.md](../testing/ci.md)); the stack itself has not been run there yet (open question 1) |
 
+### Linux containers on GitHub's Windows runner (measured)
+
+Whether CI could run the live tier on Windows, measured on GitHub's hosted `windows-2025` runner (Windows Server 2025, 4 vCPUs) in October 2026, with a throwaway workflow on a scratch branch:
+
+- **The preinstalled Docker runs Windows containers only** (`OSType=windows`): a Linux image fails with `no matching manifest for linux/amd64`. Docker Desktop is not installed.
+- **WSL 2 works.** The runner exposes virtualization (Hyper-V, Virtual Machine Platform and WSL enabled); `Vampire/setup-wsl` installs Ubuntu 24.04 as a WSL 2 distribution (kernel `6.18.33.2-microsoft-standard-WSL2`) in about a minute.
+- **Docker Engine inside WSL 2 runs Linux containers** (`docker.io` from Ubuntu, `dockerd` started by hand; amd64 images, no emulation).
+- **Windows reaches a container's published port** (`-p 8080:80`, then `127.0.0.1:8080` from Windows): WSL forwards localhost, as clients would reach NAOqi on 9559.
+- **A container reaches a server on Windows only once the firewalls let it**, which naoqi-sim needs (the containers connect out to 9562 and 9563). With WSL's default NAT networking, both WSL and its containers reach Windows at WSL's default gateway (`ip route show default`, a `172.x.y.1` address), after a Windows Firewall rule for the port and WSL's Hyper-V firewall set to inbound `Allow` (`Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow`), then a WSL restart (`wsl --shutdown`): the Hyper-V firewall applies when the VM starts. Before that, ping goes through and TCP does not.
+- **Mirrored networking is not available** on that runner: WSL answers `The specified request is unsupported` (`0x803b0015`) and falls back to no network.
+
+What a Windows live entry would still need, not measured: the containers' `host.docker.internal` must point at Windows, not at the WSL VM (Docker's `host-gateway` inside WSL is the VM's `docker0`; `dockerd --host-gateway-ip=<WSL's gateway>` should do it); naoqi-sim on Windows driving the Docker Engine in WSL (`DOCKER_HOST` on a TCP socket WSL forwards, with a Docker CLI and Compose on Windows); and the images built there (the cache key and `docker save` as on Linux). That is not Docker Desktop, which is what users run, but it would test the Windows host side against real containers across the WSL boundary.
+
 ## Open questions
 
-1. **Docker Desktop.** Everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is still to confirm.
+1. **Docker Desktop.** Everything was measured on OrbStack and Linux's Docker Engine; Docker Desktop on macOS, Linux and Windows is still to confirm. GitHub's Windows runner has no Docker Desktop, but can run Linux containers in WSL 2 ("Linux containers on GitHub's Windows runner", above): a Windows live entry in CI is possible, with the work listed there.
 2. **Starting the stack.** `naoqi-sim run` and `cleanup` ([cli.md](../runtime/cli.md)) are not built; today it is `docker compose` by hand (see [README.md](../../README.md)). `NaoqiSim.start()` waits on the container's health rather than on the log line ([api.md](../runtime/api.md)).
 3. **More added built-ins.** The other shipped-but-not-autoloaded modules (2.1: `aldiagnosis`, `memorywatcher`, `alchestbutton`, `notificationreader`, `facetracker`, `visionrecognition`; 2.8: `aldiagnosis`, `memorywatcher`) are left out until a client needs one.
