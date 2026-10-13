@@ -1,6 +1,7 @@
 ---
 code:
   - .github/workflows/ci.yml
+  - .github/workflows/e2e-windows.yml
   - tests-e2e/support.py
   - tests-e2e/conftest.py
 tests:
@@ -10,7 +11,7 @@ tests:
 
 # Continuous integration
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -64,6 +65,17 @@ In order:
 - **Sizes.** Measured locally: the 2.1 image is 4.5 GB on disk (1.4 GB compressed), the 2.8 image 6.3 GB (2.7 GB), `tts` 0.8 GB (0.27 GB). With zstd, the two archives take about 5 GB of the repository's 10 GB cache budget; an edit under `docker/` adds a new pair, and GitHub evicts the least recently used.
 - **Python 2.7 check.** A live test compiles every module in the image's `/opt/naoqi/modules/` with the image's own interpreter (`/opt/naoqi/bin/python2 -m compileall`), so a module the version does not load is still checked; both entries run it, closing [testing.md](testing.md)'s open question 2.
 - **The headless viewer**: naoqi-viewer renders through EGL (`MUJOCO_GL=egl`, which it sets itself for a headless viewer on Linux, with the job's `libegl1` and `libgl1-mesa-dri`), and the live tier runs a headless viewer with the render camera and the placeholder variant, so the camera loop is tested on every push ([viewer.md](../host/viewer.md), "In the live tier and CI"). A viewer that fails to launch fails the entry. CI never accepts the meshes' license.
+
+### The Windows live tier, by hand
+
+A second workflow, `.github/workflows/e2e-windows.yml`, runs the live tier on Windows: naoqi-sim's host side on `windows-2025` against NAOqi in Docker Engine inside WSL 2 ([container.md](../container/container.md), "Linux containers on GitHub's Windows runner"). It is not Docker Desktop, which Windows users run, but the Windows host side against real containers, which nothing else tests: its first run found that `naoqi-sim run` ignored Ctrl-Break ([cli.md](../runtime/cli.md)).
+
+- **Started by hand only** (`workflow_dispatch`; the Actions tab's "Run workflow", or `gh workflow run e2e-windows.yml`), never on a pull request or a push: about 20 minutes cold per version, and more moving parts (WSL, a systemd-managed Docker Engine, firewalls) than a pull request should wait on. Its own file, so that starting it runs it alone, not the whole of `ci.yml`. Worth starting before a release, and after a change to Windows-sensitive code (`cli.py`, `stack.py`, `docker_images.py`, `files.py`, `docker/compose.yaml`).
+- **One runner per NAOqi version**, side by side (`fail-fast: false`): its `versions` input is `both` (the default), `2.1` or `2.8`.
+- **Steps**: sync; Mesa's OpenGL next to the base `python.exe` (as naoqi-viewer's Windows fast tier) for the headless viewer; Ubuntu 24.04 under WSL 2 with `docker.io`; a Windows Firewall rule for 9562 and 9563 and WSL's Hyper-V firewall letting inbound traffic in, then a WSL restart; systemd's `dockerd` configured with a TCP socket (`"tls": false`) and `host-gateway-ip` at WSL's gateway, so the containers' `host.docker.internal` is Windows; Windows' Docker CLI at the WSL VM's address (`DOCKER_HOST`), with the buildx plugin; `naoqi-sim fetch-and-build-images <version>` from Windows; `uv run pytest tests-e2e -rs` with `NAOQI_SIM_E2E_VERSION`. Free disk is printed before and after the build.
+- **No image cache** yet: each run fetches and builds, as on a user's machine.
+- **Expected skips**: the audio loopback tests (no virtual sound device on Windows), the sim window (no display), and as on Linux the sound set and, on 2.1, the `languageTTS` test. Any other skip is a fault.
+- Not a required check. The macOS live tier has no counterpart: GitHub's macOS runners give a Linux VM no nested virtualization to start in (as far as known, not probed) and have no OpenGL, so it runs on developers' Macs.
 
 ### Expected skips
 
