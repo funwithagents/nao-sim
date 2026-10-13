@@ -26,8 +26,8 @@ Three jobs side by side: a static gate, the fast tier and a live matrix. The ima
 - **Linux is the platform** because it runs the NAOqi images natively (amd64, no emulation as on Apple Silicon) and has a display-less GL backend, Mesa's EGL, for the headless viewer's renders. GitHub's macOS runners have no Docker, and its Windows runners run Windows containers only, so they run the fast tier only. A green run is also the "works on Linux" half of milestone 3's exit ([_overview.md](../_overview.md), "Milestones").
 - **The fast tier on the three platforms.** naoqi-sim installs on Linux x86_64, macOS arm64 and Windows x64 ([project.md](../project.md)), each with its own `qi` wheel, and its host side meets each platform's paths, encodings, signals and process rules. So `fast-tier` is a matrix over `ubuntu-24.04`, `macos-15` and `windows-2025`, which also checks that `uv.lock` installs on each ([testing.md](testing.md), "Platforms"):
   - **Linux** runs the whole fast tier.
-  - **Windows** skips the tests of the code that runs in the Linux containers (`container_code`): 88 of 289.
-  - **macOS** deselects the wall-clock tests (`-m "not realtime"`, 18 of 289): the runner's timers ran 0.05 to 0.5 s late on sleeps, so a mix paced to 0.5 s took 0.87 s and a 0.8 s bound failed at 0.83 (first runs of the matrix). Linux and Windows run them, and so do developers' Macs.
+  - **macOS and Windows** deselect the tests of the code that runs in the Linux containers (`-m "not container_code"`, 88 of 290): Linux tests that code, and another host adds nothing ([testing.md](testing.md), "Platforms").
+  - The tests are the same everywhere, real-time ones included. The macOS runner wakes threads 25 to 50 ms late and the Windows one about 25 ms (the figure is in each job's pytest header); the first runs of the matrix failed a dozen timing tests on macOS, which led to the mixer keeping its schedule and to the measured `lateness` in the bounds of reaction times.
 - **One Python**, 3.12, the floor of `requires-python` and the version `.python-version` names; uv installs it.
 
 ### The workflow
@@ -37,7 +37,7 @@ One file, `.github/workflows/ci.yml`. It triggers on `pull_request`, on `push` t
 | Job | What |
 | --- | --- |
 | `check` | `uv sync --locked`, then `ruff check .`, `ruff format --check src tests tests-e2e docker/tts-engine`, `pyright` |
-| `fast-tier` | Matrix `ubuntu-24.04`, `macos-15`, `windows-2025`, `fail-fast: false`, steps in bash: the same sync; `uv run pytest -rs`, with `-m "not realtime"` on macOS |
+| `fast-tier` | Matrix `ubuntu-24.04`, `macos-15`, `windows-2025`, `fail-fast: false`, steps in bash: the same sync; `uv run pytest -rs` (in parallel, [testing.md](testing.md), "Tooling"), with `-m "not container_code"` off Linux |
 | `e2e-sim` | A matrix over the NAOqi versions (`2.1`, `2.8`), `fail-fast: false`, each entry on its own runner: restore or build the version's images, then `uv run pytest tests-e2e -rs` on that version only |
 
 - The three jobs (seven runners: the fast tier's three entries and the live tier's two) run side by side and none waits on another: a run takes as long as its slowest job, a live entry.
@@ -72,9 +72,8 @@ The tests that skip by design on a runner; any other skip in a CI log is a fault
 | Job | Test | Why |
 | --- | --- | --- |
 | `e2e-sim` (2.8) | `test_naoqisim_live.py::test_the_sim_window` | The window does not depend on the NAOqi version: checked on the 2.1 entry |
-| `fast-tier` (Windows) | every `container_code` test (88) | Code that runs in the Linux containers: checked on Linux and macOS ([testing.md](testing.md), "Platforms") |
 
-On macOS the 18 `realtime` tests are deselected, not skipped: the log counts them as deselected.
+On macOS and Windows the 88 `container_code` tests are deselected, not skipped: the log counts them as deselected, and nothing skips.
 
 ### Licensing
 

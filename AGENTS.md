@@ -111,5 +111,5 @@ uv sync --dev
 uv run ruff check .
 uv run ruff format .
 uv run pyright
-uv run pytest
+uv run pytest            # the fast tier, in parallel (pytest-xdist); `-n 0` runs it serially
 ```

@@ -2,6 +2,7 @@
 code:
   - tests/conftest.py
   - tests/fake_docker.py
+  - tests/ports.py
   - tests-e2e/conftest.py
   - tests-e2e/support.py
 tests:
@@ -46,12 +47,13 @@ The `tests/` tier has one `test_<module>.py` per module under test: the `src/nao
 
 ## Platforms
 
-The fast tier runs on the three platforms naoqi-sim installs on, Linux x86_64, macOS arm64 and Windows x64 ([project.md](../project.md), "Platforms"), each in CI ([ci.md](ci.md)). Two markers (declared in `pyproject.toml`) say what doesn't belong everywhere:
+The fast tier runs on the three platforms naoqi-sim installs on, Linux x86_64, macOS arm64 and Windows x64 ([project.md](../project.md), "Platforms"), each in CI ([ci.md](ci.md)), with the same tests and the same bounds:
 
-- **`container_code`**, on the test modules of code that runs in the Linux containers: the NAOqi modules' Python 2.7 cores (`test_audio_device_core`, `test_audio_player_core`, `test_speech_core`, `test_status_core`), the entrypoints and healthcheck (`test_entrypoint`) and the speech engine (`test_tts_engine`). `tests/conftest.py` skips them on Windows: they test nothing about a Windows host, and need POSIX tools to run there (bash, executable stand-ins with a shebang, and a connect to a closed port that fails at once, where Windows takes about 2 s). They run on Linux and macOS.
-- **`realtime`**, on the tests that assert elapsed wall-clock time to within 0.15 s or less: pacing of the mix, a stop within a tick, the speech clock, a file's playing time, the camera's frame rate. A slow virtual machine's timers fail them without a fault in the code; CI deselects them on its macOS runner only.
+- **`container_code`** (a marker declared in `pyproject.toml`) is on the test modules of code that runs in the Linux containers: the NAOqi modules' Python 2.7 cores (`test_audio_device_core`, `test_audio_player_core`, `test_speech_core`, `test_status_core`), the entrypoints and healthcheck (`test_entrypoint`) and the speech engine (`test_tts_engine`), 88 tests. Another host adds nothing to them, so CI runs them on Linux only (`-m "not container_code"` on macOS and Windows). Locally they run on Linux and on developers' Macs; `tests/conftest.py` skips them on Windows, where they need POSIX tools (bash, executable stand-ins with a shebang, and a connect to a closed port that fails at once, where Windows takes about 2 s).
+- **Real time on a slow machine.** Many tests check real-time behavior: the mix's pacing, a stop within a tick, the speech clock, a file's playing time, the camera's frame rate. GitHub's macOS runner wakes threads up to 30 to 50 ms late (Linux 0.1 ms, Windows about 25 ms). That uncovered a real fault, fixed rather than tolerated: the audio output's mixer restarted its schedule at each late wake-up, so lateness added up in the playback ([audio-output.md](../host/audio-output.md), "The ticks keep their schedule"), which `test_late_wake_ups_do_not_drift_the_mix` now pins on any machine with a mixer whose sleeps wake 30 ms late. What remains is a single wake-up's lateness against a bound that assumed a quiet machine. `tests/conftest.py` measures it once per session (the worst of 200 waits of 5 ms, printed in pytest's header), and a test that bounds a reaction time adds the `lateness` fixture to its bound; it stays the spec's bound on a quiet machine. Bounds are on the behavior, not the machine: the camera's "no burst" is "no two frames back to back", which a frame woken late, still in its slot, does not break.
 - **The fake `docker`** (`tests/fake_docker.py`) is a script with a shebang first on `PATH`, and on Windows a `docker.cmd` running the same script, which naoqi-sim finds because it resolves `docker` with `shutil.which` ([project.md](../project.md), "Platforms"). So `docker_images`, `stack`, `sim` and the CLI are tested on all three.
 - Ctrl-C reaches `naoqi-sim run` both ways on every platform: through the event loop and through the plain handler Windows needs ([cli.md](../runtime/cli.md)).
+- **Ports.** A test that names a port before something binds it (naoqi-sim's fixed ports, moved) takes it from `tests/ports.py`: below every OS's ephemeral range, in a block per xdist worker, so neither another worker nor a client connection gets it between the reservation and the bind.
 
 ## Test isolation
 
