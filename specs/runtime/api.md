@@ -22,7 +22,7 @@ tests:
 
 # API: the simulated NAO (`NaoqiSim`)
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 

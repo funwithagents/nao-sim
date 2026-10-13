@@ -15,7 +15,7 @@ tests:
 
 # Host devices
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 

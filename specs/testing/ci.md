@@ -10,7 +10,7 @@ tests:
 
 # Continuous integration
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
@@ -72,6 +72,8 @@ The tests that skip by design on a runner; any other skip in a CI log is a fault
 | Job | Test | Why |
 | --- | --- | --- |
 | `e2e-sim` (2.8) | `test_naoqisim_live.py::test_the_sim_window` | The window does not depend on the NAOqi version: checked on the 2.1 entry |
+| `e2e-sim` (2.1) | `test_speech_live.py`'s `languageTTS` test | `languageTTS` is a 2.8 signal |
+| `e2e-sim` (both) | `test_audio_player_live.py`'s sound set test | Aldebaran's sound set (`soundsetaldebaran`) is a package the user supplies; CI has none |
 
 On macOS and Windows the 88 `container_code` tests are deselected, not skipped: the log counts them as deselected, and nothing skips.
 
