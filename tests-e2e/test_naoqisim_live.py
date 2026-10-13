@@ -49,11 +49,17 @@ def test_naoqi_sim_run_end_to_end(nao, tmp_path):
     config = tmp_path / "sim.json"
     config.write_text(json.dumps(live_config(nao.version.name).to_dict()))
     nao.stop()
+    # Windows has no SIGINT to send another process: Ctrl-Break, to a process group of its own.
+    if sys.platform == "win32":
+        flags, stop = subprocess.CREATE_NEW_PROCESS_GROUP, signal.CTRL_BREAK_EVENT
+    else:
+        flags, stop = 0, signal.SIGINT
     run = subprocess.Popen(
         [*NAOQI_SIM, "run", "--config", str(config)],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        creationflags=flags,
     )
     try:
         assert run.stdout is not None
@@ -74,7 +80,7 @@ def test_naoqi_sim_run_end_to_end(nao, tmp_path):
         assert status.returncode == 0, status.stdout + status.stderr
         assert "ready: true" in status.stdout
 
-        run.send_signal(signal.SIGINT)
+        run.send_signal(stop)
         assert run.wait(timeout=120) == 0
         stopped = subprocess.run(
             [*NAOQI_SIM, "status"], capture_output=True, text=True, check=False

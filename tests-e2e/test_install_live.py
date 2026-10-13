@@ -92,7 +92,8 @@ def project(tmp_path_factory) -> Project:
     if uv is None:
         unavailable("uv is not installed")
     root = tmp_path_factory.mktemp("scratch")
-    (root / "pyproject.toml").write_text(PYPROJECT.format(repo=REPO))
+    # Forward slashes: a TOML string reads a Windows path's backslashes as escapes.
+    (root / "pyproject.toml").write_text(PYPROJECT.format(repo=REPO.as_posix()))
     project = Project(root)
     res = subprocess.run(
         # A path dependency's wheel is cached by uv: rebuild it from the checkout as it is now.
