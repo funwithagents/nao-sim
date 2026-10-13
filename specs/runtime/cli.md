@@ -11,7 +11,7 @@ tests:
 
 # CLI (`naoqi-sim`)
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -31,7 +31,7 @@ The `naoqi-sim` command is how a person runs a simulated NAO from a terminal. It
 
 - `naoqi-sim probe` (the capability report, [_overview.md](../_overview.md), "Capability probe") is deferred with the probe: it gets its spec when the 2.8 validation milestone needs committed reports.
 - The API is async: each command runs its coroutine with `asyncio.run`; Ctrl-C cancels it, and `run` still awaits `stop()` on the way out.
-- **How `run` hears Ctrl-C.** On Linux and macOS through the event loop (`loop.add_signal_handler`, for `SIGINT` and `SIGTERM`). Windows' event loops have none (`NotImplementedError`), and Windows never delivers `SIGTERM`: there `run` installs a plain `SIGINT` handler that hands over to the loop (`call_soon_threadsafe`), and keeps a 0.1 s tick on the loop so that Python runs the handler promptly even while the loop waits for I/O. The fast tier drives `run` both ways on every platform, with real signals (`signal.raise_signal`; `os.kill` on Windows terminates the process instead).
+- **How `run` hears Ctrl-C.** On Linux and macOS through the event loop (`loop.add_signal_handler`, for `SIGINT` and `SIGTERM`). Windows' event loops have none (`NotImplementedError`), and Windows never delivers `SIGTERM`: there `run` installs plain handlers for `SIGINT` (Ctrl-C) and `SIGBREAK` (Ctrl-Break) that hand over to the loop (`call_soon_threadsafe`), and keeps a 0.1 s tick on the loop so that Python runs them promptly even while the loop waits for I/O. Ctrl-Break matters because it is the console signal another process can send on Windows (`CTRL_BREAK_EVENT` to a process started in its own process group, as the live tier's end-to-end `run` test does there; Windows cannot send a process `SIGINT`). The fast tier drives `run` both ways on every platform, with real signals (`signal.raise_signal`; `os.kill` on Windows terminates the process instead), and Ctrl-Break on Windows.
 - `run` starts nothing itself: every check (Docker, the images, the `viewer` extra, ports) happens in `NaoqiSim.start()` ([api.md](api.md), "Lifecycle"), and the CLI prints the error's message.
 - **Exit codes**, as naoqi-bridge's CLIs: a `ConfigError` exits 2 with its message (it names the key path); any other `NaoqiSimError` exits 1 with its message; Ctrl-C after a successful start exits 0 once `stop()` has run.
 - **`status` answers in its exit code** too, for scripts: 0 when the robot is ready (`NaoqiSim/Ready` read from the service), 1 otherwise, with `naoqi-sim is not running` when no container runs.

@@ -1,0 +1,25 @@
+# Windows: what a live run against real containers found
+
+**Status:** In progress
+
+Implements [cli.md](../specs/runtime/cli.md) ("How `run` hears Ctrl-C": Ctrl-Break on Windows) and records in [container.md](../specs/container/container.md) what running the live tier on GitHub's Windows runner showed. A one-off workflow on a scratch branch ran naoqi-sim's host side on Windows against NAOqi 2.1 in Docker Engine inside WSL 2 (not Docker Desktop); it is not part of CI.
+
+## Scope
+
+- `src/naoqi_sim/cli.py`: on loops without signal handlers (Windows), `run` also stops on `SIGBREAK` (Ctrl-Break)
+- `tests/test_cli.py`: Ctrl-Break stops `run` (Windows only)
+- `tests-e2e/test_naoqisim_live.py`: the end-to-end `run` test sends Ctrl-Break to a process group of its own on Windows, SIGINT elsewhere
+- `tests-e2e/test_install_live.py`: the scratch project's path written with forward slashes (TOML reads backslashes as escapes)
+- `specs/runtime/cli.md`, `specs/testing/ci.md` (the Windows-only test's expected skip), `specs/container/container.md`, `specs/_overview.md`, `specs/_index.md`, this plan, `plans/_index.md`
+
+## Steps
+
+1. The one-off workflow (kept untracked in `spike/`): WSL 2 with Docker Engine under systemd, configured with a TCP socket and `host-gateway-ip` at Windows; firewalls opened for 9562 and 9563; Windows' Docker CLI with buildx; Mesa for the headless viewer; `naoqi-sim fetch-and-build-images 2.1` from Windows; the live tier on Windows.
+2. Its first complete run: 48 passed, 6 skipped, 1 failed, 5 errors, all from the two test-side faults and the Ctrl-Break gap above.
+3. The fixes, then the run again.
+4. Statuses, once the Windows run and the regular CI are green: this plan `Done`, cli.md `Implemented`.
+
+## Verification
+
+- Locally on macOS: lint, format, types, the fast tier (290 passed, the Windows-only test skipped).
+- The one-off Windows run after the fixes, and the regular CI on the pull request.
