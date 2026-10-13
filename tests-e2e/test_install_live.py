@@ -45,7 +45,7 @@ print(json.dumps({
     "image_data": str(files.IMAGE_DATA),
     "digest": docker_images.recipes_digest(),
     "bundled": sorted(
-        os.path.relpath(os.path.join(d, f), package)
+        os.path.relpath(os.path.join(d, f), package).replace(os.sep, "/")
         for d, _, fs in os.walk(os.path.join(package, "docker")) for f in fs
     ),
 }))
