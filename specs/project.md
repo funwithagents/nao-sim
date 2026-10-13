@@ -1,7 +1,9 @@
 ---
 code:
   - pyproject.toml
+  - .gitattributes
   - src/naoqi_sim/files.py
+  - src/naoqi_sim/docker_images.py
 tests:
   - tests/test_project_map.py
   - tests/test_files.py
@@ -24,6 +26,7 @@ Structure and tooling for the naoqi-sim project itself: Python version, dependen
   - `.gitattributes` checks every text file out with LF, so a Windows checkout, and the wheel a git install builds from it, carries the entrypoints and scripts under `docker/` as the containers run them (a CRLF entrypoint does not start);
   - files naoqi-sim reads or writes (configs, the image records) are opened as UTF-8, and docker's output is read as UTF-8 (Windows' default is a legacy code page);
   - `naoqi-sim run` hears Ctrl-C without the event loop's signal handlers, which Windows lacks ([cli.md](runtime/cli.md)).
+  - `docker` is run as `shutil.which` finds it, following `PATHEXT` as a shell does, where `subprocess` looks for `docker.exe` only (`docker_images.resolve`; the fast tier's fake is a `docker.cmd` there).
 - **Package layout:** `src/` layout — `src/naoqi_sim/...` — not flat, to avoid accidentally importing an uninstalled package from the repo root.
 - **Dependency/venv management:** `uv`. Dev tooling lives in the `dev` dependency group (`uv sync --dev`), not in runtime `dependencies`. Build backend: `hatchling` (wheel packages `src/naoqi_sim`).
 - **Linting/formatting:** `ruff`, excluding `docker/naoqi/services/` (Python 2.7) and the local `spike/` scripts.

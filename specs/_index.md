@@ -18,7 +18,7 @@ How the repository is built and laid out.
 
 | Spec | Description | Status |
 |---|---|---|
-| [project.md](project.md) | Project structure and tooling: Python version, packaging with uv, layout conventions; distribution as a uv git dependency (recipes as package data in the wheel, image data in the user data directory, the `viewer` extra, versions) | Implemented |
+| [project.md](project.md) | Project structure and tooling: Python version, packaging with uv, layout conventions; distribution as a uv git dependency (recipes as package data in the wheel, image data in the user data directory, the `viewer` extra, versions); `qi` from the libqi fork's package index; macOS arm64, Linux x86_64, Windows x64 | Updated |
 
 ### Runtime: `runtime/`
 
@@ -27,8 +27,8 @@ The host-side front door: the config, the `NaoqiSim` object and the `naoqi-sim` 
 | Spec | Description | Status |
 |---|---|---|
 | [config.md](runtime/config.md) | `NaoqiSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with its frame rate, viewer with its scene and variant), naoqi-bridge's loader conventions (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embedded as naoqi-bridge's `sim` block, JSON | Implemented |
-| [api.md](runtime/api.md) | The `NaoqiSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and naoqi-bridge's `sim` backend | Implemented |
-| [cli.md](runtime/cli.md) | The `naoqi-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Implemented |
+| [api.md](runtime/api.md) | The `NaoqiSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and naoqi-bridge's `sim` backend | Updated |
+| [cli.md](runtime/cli.md) | The `naoqi-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Updated |
 
 ### Containers: `container/`
 
@@ -57,10 +57,10 @@ The simulated robot's inputs and outputs on the host, owned by a running `NaoqiS
 
 | Spec | Description | Status |
 |---|---|---|
-| [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoqiSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Implemented |
+| [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoqiSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Updated |
 | [audio-output.md](host/audio-output.md) | The robot's loudspeakers, as a NAO's sound server: TCP PCM protocol with named streams (newest wins within a name; `stop`, `set`, `pause`/`resume`), a mixer at 48 kHz stereo with volume and pan, the `AudioSink` seam receiving the mix (device, null, WAV, memory with each stream kept), playing state, listeners (the fake room hears the mix) | Implemented |
 | [audio-input.md](host/audio-input.md) | The robot's microphones: the fake source tests play sounds into and the host microphone, every format produced on the host, mono policy, 85 ms chunks (provisional), the robot hearing itself (no gate), messages on the host link, loopback tests | Implemented |
-| [video-input.md](host/video-input.md) | The robot's head cameras: naoqi-viewer render then webcam, VGA `CameraTop` frames injected with `putImage` at a fixed `fps` whoever subscribes, NAOqi converting per subscriber; measured on both versions | Implemented |
+| [video-input.md](host/video-input.md) | The robot's head cameras: naoqi-viewer render then webcam, VGA `CameraTop` frames injected with `putImage` at a fixed `fps` whoever subscribes, NAOqi converting per subscriber; measured on both versions | Updated |
 | [touch-input.md](host/touch-input.md) | The robot's touch sensors: clicks in the sim window and an API for tests, written to ALMemory | Draft |
 | [viewer.md](host/viewer.md) | The simulated world: naoqi-viewer's sim mode driven through its public API, which viewer runs, the `viewer` extra, the window closed by the user, headless with the render camera in the live tier and CI | Implemented |
 
@@ -70,8 +70,8 @@ How naoqi-sim is verified, locally and in CI.
 
 | Spec | Description | Status |
 |---|---|---|
-| [testing.md](testing/testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, a live tier that drives its own stack per NAOqi version | Implemented |
-| [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAOQI_SIM_E2E_VERSION` turning skips into failures, a headless viewer; a PulseAudio loopback for the audio tests; the Python 2.7 check | Implemented |
+| [testing.md](testing/testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, a live tier that drives its own stack per NAOqi version | Updated |
+| [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAOQI_SIM_E2E_VERSION` turning skips into failures, a headless viewer; a PulseAudio loopback for the audio tests; the Python 2.7 check | Updated |
 
 [_overview.md](_overview.md) is the overview of naoqi-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: the capability probe and the asset guard (both deferred), and the perception measurements kept for clients.
 

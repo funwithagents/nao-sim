@@ -44,6 +44,15 @@ The `tests/` tier has one `test_<module>.py` per module under test: the `src/nao
 - **Drive the public API like a real caller.** Prefer exercising the public surface the way a consumer would over reaching into internals; assert on the observable result.
 - **In the e2e tier, assert on behavior, not exact output.** Timings and synthesized audio vary run to run, so a live test asserts a robust property ("`say()` blocked for about the audio it played", "every bookmark was raised"), never an exact duration or string.
 
+## Platforms
+
+The fast tier runs on the three platforms naoqi-sim installs on, Linux x86_64, macOS arm64 and Windows x64 ([project.md](../project.md), "Platforms"), each in CI ([ci.md](ci.md)). Two markers (declared in `pyproject.toml`) say what doesn't belong everywhere:
+
+- **`container_code`**, on the test modules of code that runs in the Linux containers: the NAOqi modules' Python 2.7 cores (`test_audio_device_core`, `test_audio_player_core`, `test_speech_core`, `test_status_core`), the entrypoints and healthcheck (`test_entrypoint`) and the speech engine (`test_tts_engine`). `tests/conftest.py` skips them on Windows: they test nothing about a Windows host, and need POSIX tools to run there (bash, executable stand-ins with a shebang, and a connect to a closed port that fails at once, where Windows takes about 2 s). They run on Linux and macOS.
+- **`realtime`**, on the tests that assert elapsed wall-clock time to within 0.15 s or less: pacing of the mix, a stop within a tick, the speech clock, a file's playing time, the camera's frame rate. A slow virtual machine's timers fail them without a fault in the code; CI deselects them on its macOS runner only.
+- **The fake `docker`** (`tests/fake_docker.py`) is a script with a shebang first on `PATH`, and on Windows a `docker.cmd` running the same script, which naoqi-sim finds because it resolves `docker` with `shutil.which` ([project.md](../project.md), "Platforms"). So `docker_images`, `stack`, `sim` and the CLI are tested on all three.
+- Ctrl-C reaches `naoqi-sim run` both ways on every platform: through the event loop and through the plain handler Windows needs ([cli.md](../runtime/cli.md)).
+
 ## Test isolation
 
 If the package holds process-global or singleton state, both tiers carry an identical autouse fixture (in each tier's `conftest.py`) that resets it before and after every test, so no state — or background timers/threads — leaks across tests. The fixture is duplicated rather than shared because `tests-e2e/` isn't a package that imports from `tests/`, and it's only a few lines.

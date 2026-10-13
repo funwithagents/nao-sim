@@ -10,7 +10,7 @@ tests:
 
 # Continuous integration
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -22,8 +22,12 @@ Three jobs side by side: a static gate, the fast tier and a live matrix. The ima
 
 ### The runner
 
-- **GitHub-hosted Linux, the free tier.** Every job runs on `ubuntu-24.04` (x86_64), pinned by name rather than `ubuntu-latest`, so Docker, Mesa and the system libraries move only when the pin is bumped on purpose. No self-hosted runner.
-- **Linux is the platform** because it runs the NAOqi images natively (amd64, no emulation as on Apple Silicon) and has a display-less GL backend, Mesa's EGL, for the headless viewer's renders. GitHub's macOS runners have no Docker, so they could run the fast tier only. A green run is also the "works on Linux" half of milestone 3's exit ([_overview.md](../_overview.md), "Milestones").
+- **GitHub-hosted runners, the free tier.** Runners are pinned by name (`ubuntu-24.04`, `macos-15`, `windows-2025`) rather than `*-latest`, so Docker, Mesa and the system libraries move only when a pin is bumped on purpose. No self-hosted runner.
+- **Linux is the platform** because it runs the NAOqi images natively (amd64, no emulation as on Apple Silicon) and has a display-less GL backend, Mesa's EGL, for the headless viewer's renders. GitHub's macOS runners have no Docker, and its Windows runners run Windows containers only, so they run the fast tier only. A green run is also the "works on Linux" half of milestone 3's exit ([_overview.md](../_overview.md), "Milestones").
+- **The fast tier on the three platforms.** naoqi-sim installs on Linux x86_64, macOS arm64 and Windows x64 ([project.md](../project.md)), each with its own `qi` wheel, and its host side meets each platform's paths, encodings, signals and process rules. So `fast-tier` is a matrix over `ubuntu-24.04`, `macos-15` and `windows-2025`, which also checks that `uv.lock` installs on each ([testing.md](testing.md), "Platforms"):
+  - **Linux** runs the whole fast tier.
+  - **Windows** skips the tests of the code that runs in the Linux containers (`container_code`): 88 of 289.
+  - **macOS** deselects the wall-clock tests (`-m "not realtime"`, 18 of 289): the runner's timers ran 0.05 to 0.5 s late on sleeps, so a mix paced to 0.5 s took 0.87 s and a 0.8 s bound failed at 0.83 (first runs of the matrix). Linux and Windows run them, and so do developers' Macs.
 - **One Python**, 3.12, the floor of `requires-python` and the version `.python-version` names; uv installs it.
 
 ### The workflow
@@ -33,10 +37,10 @@ One file, `.github/workflows/ci.yml`. It triggers on `pull_request`, on `push` t
 | Job | What |
 | --- | --- |
 | `check` | `uv sync --locked`, then `ruff check .`, `ruff format --check src tests tests-e2e docker/tts-engine`, `pyright` |
-| `fast-tier` | The same environment; `uv run pytest -rs` |
+| `fast-tier` | Matrix `ubuntu-24.04`, `macos-15`, `windows-2025`, `fail-fast: false`, steps in bash: the same sync; `uv run pytest -rs`, with `-m "not realtime"` on macOS |
 | `e2e-sim` | A matrix over the NAOqi versions (`2.1`, `2.8`), `fail-fast: false`, each entry on its own runner: restore or build the version's images, then `uv run pytest tests-e2e -rs` on that version only |
 
-- The three jobs run side by side and none waits on another: a run takes as long as its slowest job, a live entry.
+- The three jobs (seven runners: the fast tier's three entries and the live tier's two) run side by side and none waits on another: a run takes as long as its slowest job, a live entry.
 - **`--locked`**: the sync fails when `uv.lock` does not match `pyproject.toml`, so a dependency edit lands with its relock. The sync installs the `dev` group, so the `viewer` extra (naoqi-viewer, from its pinned Git commit) is there in every job.
 - **The format check covers the code directories only**, since `ruff format .` would reflow the Python blocks inside Markdown files. The Python in `docker/naoqi/services/` is Python 2.7, outside ruff ([project.md](../project.md)).
 - **Audio only where it is tested.** `sounddevice` is imported at the first stream of the device sink and when the microphone opens ([audio-output.md](../host/audio-output.md), [audio-input.md](../host/audio-input.md)): the `check` and `fast-tier` jobs fake it and need no sound system. The live entries get a **virtual loopback**, a PulseAudio null sink as the default output and its monitor as the default input (a virtual microphone wired to a virtual loudspeaker), so the live tier's loopback tests run on every push: the `mic` source, the robot's own speech coming back into the microphone, and the `DevicePlayer` sink ([testing.md](testing.md), "Live tier"). The `MemorySink` stays the live tier's sink for every other test.
@@ -68,6 +72,9 @@ The tests that skip by design on a runner; any other skip in a CI log is a fault
 | Job | Test | Why |
 | --- | --- | --- |
 | `e2e-sim` (2.8) | `test_naoqisim_live.py::test_the_sim_window` | The window does not depend on the NAOqi version: checked on the 2.1 entry |
+| `fast-tier` (Windows) | every `container_code` test (88) | Code that runs in the Linux containers: checked on Linux and macOS ([testing.md](testing.md), "Platforms") |
+
+On macOS the 18 `realtime` tests are deselected, not skipped: the log counts them as deselected.
 
 ### Licensing
 
@@ -76,7 +83,7 @@ The runner downloads Aldebaran's suites and robot images from their public repos
 ### Secrets and protection
 
 - **No secret is required**: every job is green with none.
-- **The status checks to require on `main`** are `check`, `fast-tier` and both `e2e-sim` entries; requiring them is a repository setting on GitHub, outside the repo.
+- **The status checks to require on `main`** are `check`, the three `fast-tier` entries and both `e2e-sim` entries; requiring them is a repository setting on GitHub, outside the repo.
 
 ### Downstream repositories
 
