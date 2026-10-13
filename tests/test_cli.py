@@ -5,6 +5,7 @@ driven with a stand-in `NaoqiSim` and real signals; `status`, `cleanup` and `log
 import asyncio
 import json
 import signal
+import sys
 import threading
 from typing import ClassVar
 
@@ -111,6 +112,16 @@ def test_ctrl_c_during_the_start_cancels_it(signals, stand_in):
 
     assert cli.main(["run"]) == 130
     assert stand_in.made[0].events == ["start", "start cancelled", "stop"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Ctrl-Break is Windows' signal")
+def test_ctrl_break_stops_the_robot_on_windows(stand_in):
+    # The console signal another process can send on Windows (CTRL_BREAK_EVENT).
+    if sys.platform == "win32":
+        threading.Timer(0.3, signal.raise_signal, (signal.SIGBREAK,)).start()
+
+    assert cli.main(["run"]) == 0
+    assert stand_in.made[0].events == ["start", "ready", "stop"]
 
 
 def test_a_config_error_exits_2_naming_the_key(stand_in, tmp_path, capsys):

@@ -12,6 +12,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 from pathlib import Path
 
 import platformdirs
@@ -44,7 +45,7 @@ print(json.dumps({
     "image_data": str(files.IMAGE_DATA),
     "digest": docker_images.recipes_digest(),
     "bundled": sorted(
-        os.path.relpath(os.path.join(d, f), package)
+        os.path.relpath(os.path.join(d, f), package).replace(os.sep, "/")
         for d, _, fs in os.walk(os.path.join(package, "docker")) for f in fs
     ),
 }))
@@ -56,7 +57,9 @@ class Project:
 
     def __init__(self, root: Path):
         self.root = root
-        self.bin = root / ".venv" / "bin"
+        # A venv's executables: bin/ on Linux and macOS, Scripts\ (python.exe, naoqi-sim.exe) on
+        # Windows.
+        self.bin = root / ".venv" / ("Scripts" if sys.platform == "win32" else "bin")
 
     def env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         # Neither this checkout's venv nor a image data folder set for the test run leaks in.
@@ -92,7 +95,8 @@ def project(tmp_path_factory) -> Project:
     if uv is None:
         unavailable("uv is not installed")
     root = tmp_path_factory.mktemp("scratch")
-    (root / "pyproject.toml").write_text(PYPROJECT.format(repo=REPO))
+    # Forward slashes: a TOML string reads a Windows path's backslashes as escapes.
+    (root / "pyproject.toml").write_text(PYPROJECT.format(repo=REPO.as_posix()))
     project = Project(root)
     res = subprocess.run(
         # A path dependency's wheel is cached by uv: rebuild it from the checkout as it is now.
@@ -166,6 +170,11 @@ def test_naoqi_sim_run_from_the_project(project, nao, tmp_path):
     assert check.returncode == 0, check.stderr
 
     nao.stop()
+    # Windows has no SIGINT to send another process: Ctrl-Break, to a process group of its own.
+    if sys.platform == "win32":
+        flags, stop = subprocess.CREATE_NEW_PROCESS_GROUP, signal.CTRL_BREAK_EVENT
+    else:
+        flags, stop = 0, signal.SIGINT
     run = subprocess.Popen(
         [str(project.bin / "naoqi-sim"), "run", "--config", str(config)],
         cwd=project.root,
@@ -173,6 +182,7 @@ def test_naoqi_sim_run_from_the_project(project, nao, tmp_path):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        creationflags=flags,
     )
     try:
         assert run.stdout is not None
@@ -188,7 +198,7 @@ def test_naoqi_sim_run_from_the_project(project, nao, tmp_path):
         status = project.run("naoqi-sim", "status", env=shared)
         assert status.returncode == 0, status.stdout + status.stderr
         assert "ready: true" in status.stdout
-        run.send_signal(signal.SIGINT)
+        run.send_signal(stop)
         assert run.wait(timeout=120) == 0
     finally:
         if run.poll() is None:

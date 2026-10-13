@@ -1,6 +1,7 @@
 ---
 code:
   - .github/workflows/ci.yml
+  - .github/workflows/e2e-windows.yml
   - tests-e2e/support.py
   - tests-e2e/conftest.py
 tests:
@@ -25,7 +26,7 @@ Three jobs side by side: a static gate, the fast tier and a live matrix. The ima
 - **GitHub-hosted runners, the free tier.** Runners are pinned by name (`ubuntu-24.04`, `macos-15`, `windows-2025`) rather than `*-latest`, so Docker, Mesa and the system libraries move only when a pin is bumped on purpose. No self-hosted runner.
 - **Linux is the platform** because it runs the NAOqi images natively (amd64, no emulation as on Apple Silicon) and has a display-less GL backend, Mesa's EGL, for the headless viewer's renders. GitHub's macOS runners have no Docker, and its Windows runners run Windows containers only, so they run the fast tier only. A green run is also the "works on Linux" half of milestone 3's exit ([_overview.md](../_overview.md), "Milestones").
 - **The fast tier on the three platforms.** naoqi-sim installs on Linux x86_64, macOS arm64 and Windows x64 ([project.md](../project.md)), each with its own `qi` wheel, and its host side meets each platform's paths, encodings, signals and process rules. So `fast-tier` is a matrix over `ubuntu-24.04`, `macos-15` and `windows-2025`, which also checks that `uv.lock` installs on each ([testing.md](testing.md), "Platforms"):
-  - **Linux** runs the whole fast tier.
+  - **Linux** runs the whole fast tier, but for the one Windows-only test (Ctrl-Break, [cli.md](../runtime/cli.md)).
   - **macOS and Windows** deselect the tests of the code that runs in the Linux containers (`-m "not container_code"`, 88 of 290): Linux tests that code, and another host adds nothing ([testing.md](testing.md), "Platforms").
   - The tests are the same everywhere, real-time ones included. The macOS runner wakes threads 25 to 50 ms late and the Windows one about 25 ms (the figure is in each job's pytest header); the first runs of the matrix failed a dozen timing tests on macOS, which led to the mixer keeping its schedule and to the measured `lateness` in the bounds of reaction times.
 - **One Python**, 3.12, the floor of `requires-python` and the version `.python-version` names; uv installs it.
@@ -65,6 +66,17 @@ In order:
 - **Python 2.7 check.** A live test compiles every module in the image's `/opt/naoqi/modules/` with the image's own interpreter (`/opt/naoqi/bin/python2 -m compileall`), so a module the version does not load is still checked; both entries run it, closing [testing.md](testing.md)'s open question 2.
 - **The headless viewer**: naoqi-viewer renders through EGL (`MUJOCO_GL=egl`, which it sets itself for a headless viewer on Linux, with the job's `libegl1` and `libgl1-mesa-dri`), and the live tier runs a headless viewer with the render camera and the placeholder variant, so the camera loop is tested on every push ([viewer.md](../host/viewer.md), "In the live tier and CI"). A viewer that fails to launch fails the entry. CI never accepts the meshes' license.
 
+### The Windows live tier, by hand
+
+A second workflow, `.github/workflows/e2e-windows.yml`, runs the live tier on Windows: naoqi-sim's host side on `windows-2025` against NAOqi in Docker Engine inside WSL 2 ([container.md](../container/container.md), "Linux containers on GitHub's Windows runner"). It is not Docker Desktop, which Windows users run, but the Windows host side against real containers, which nothing else tests: its first run found that `naoqi-sim run` ignored Ctrl-Break ([cli.md](../runtime/cli.md)).
+
+- **Started by hand only** (`workflow_dispatch`; the Actions tab's "Run workflow", or `gh workflow run e2e-windows.yml`), never on a pull request or a push: about 20 minutes cold per version, and more moving parts (WSL, a systemd-managed Docker Engine, firewalls) than a pull request should wait on. Its own file, so that starting it runs it alone, not the whole of `ci.yml`. Worth starting before a release, and after a change to Windows-sensitive code (`cli.py`, `stack.py`, `docker_images.py`, `files.py`, `docker/compose.yaml`).
+- **One runner per NAOqi version**, side by side (`fail-fast: false`): its `versions` input is `both` (the default), `2.1` or `2.8`.
+- **Steps**: sync; Mesa's OpenGL next to the base `python.exe` (as naoqi-viewer's Windows fast tier) for the headless viewer; Ubuntu 24.04 under WSL 2 with `docker.io`; a Windows Firewall rule for 9562 and 9563 and WSL's Hyper-V firewall letting inbound traffic in, then a WSL restart; systemd's `dockerd` configured with a TCP socket (`"tls": false`) and `host-gateway-ip` at WSL's gateway, so the containers' `host.docker.internal` is Windows; Windows' Docker CLI at the WSL VM's address (`DOCKER_HOST`), with the buildx plugin; `naoqi-sim fetch-and-build-images <version>` from Windows; `uv run pytest tests-e2e -rs` with `NAOQI_SIM_E2E_VERSION`. Free disk is printed before and after the build.
+- **No image cache** yet: each run fetches and builds, as on a user's machine. Measured cold ([run 38410829728](https://github.com/funwithagents/naoqi-sim/actions/runs/38410829728)): 17 minutes for 2.1 (54 passed, 6 skipped) and 19 for 2.8 (55 passed, 5 skipped); 2.8 leaves 21 GB in WSL's virtual disk, with 32 GB free on `C:` before the run.
+- **Expected skips**: the audio loopback tests (no virtual sound device on Windows), the sim window (no display), and as on Linux the sound set and, on 2.1, the `languageTTS` test. Any other skip is a fault.
+- Not a required check. The macOS live tier has no counterpart: GitHub's macOS runners give a Linux VM no nested virtualization to start in (as far as known, not probed) and have no OpenGL, so it runs on developers' Macs.
+
 ### Expected skips
 
 The tests that skip by design on a runner; any other skip in a CI log is a fault.
@@ -74,8 +86,9 @@ The tests that skip by design on a runner; any other skip in a CI log is a fault
 | `e2e-sim` (2.8) | `test_naoqisim_live.py::test_the_sim_window` | The window does not depend on the NAOqi version: checked on the 2.1 entry |
 | `e2e-sim` (2.1) | `test_speech_live.py`'s `languageTTS` test | `languageTTS` is a 2.8 signal |
 | `e2e-sim` (both) | `test_audio_player_live.py`'s sound set test | Aldebaran's sound set (`soundsetaldebaran`) is a package the user supplies; CI has none |
+| `fast-tier` (Linux, macOS) | `test_cli.py::test_ctrl_break_stops_the_robot_on_windows` | Ctrl-Break (`SIGBREAK`) exists on Windows only |
 
-On macOS and Windows the 88 `container_code` tests are deselected, not skipped: the log counts them as deselected, and nothing skips.
+On macOS and Windows the 88 `container_code` tests are deselected, not skipped: the log counts them as deselected.
 
 ### Licensing
 

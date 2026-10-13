@@ -69,18 +69,25 @@ def _route_signals(
 ) -> Callable[[], None]:
     """Call `handler` on the loop for Ctrl-C and SIGTERM; returns what undoes it.
 
-    Windows' event loops have no `add_signal_handler`: there, a plain handler for Ctrl-C (SIGTERM
-    is never delivered on Windows) hands over to the loop. Python runs that handler only when the
-    main thread runs Python code, which a loop waiting for I/O may not do for a long time: a tick
-    every 0.1 s makes it run promptly on any loop.
+    Windows' event loops have no `add_signal_handler`: there, plain handlers for Ctrl-C and
+    Ctrl-Break (SIGTERM is never delivered on Windows; Ctrl-Break is the console signal another
+    process can send) hand over to the loop. Python runs those handlers only when the main thread
+    runs Python code, which a loop waiting for I/O may not do for a long time: a tick every 0.1 s
+    makes them run promptly on any loop.
     """
     try:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, handler)
     except NotImplementedError:
-        previous = signal.signal(
-            signal.SIGINT, lambda *_: loop.call_soon_threadsafe(handler)
-        )
+        plain = [signal.SIGINT]
+        if (
+            ctrl_break := getattr(signal, "SIGBREAK", None)
+        ) is not None:  # Windows only
+            plain.append(ctrl_break)
+        previous = {
+            sig: signal.signal(sig, lambda *_: loop.call_soon_threadsafe(handler))
+            for sig in plain
+        }
         tick: asyncio.TimerHandle | None = None
 
         def ticking() -> None:
@@ -92,7 +99,8 @@ def _route_signals(
         def restore_plain() -> None:
             if tick is not None:
                 tick.cancel()
-            signal.signal(signal.SIGINT, previous)
+            for sig, before in previous.items():
+                signal.signal(sig, before)
 
         return restore_plain
 
