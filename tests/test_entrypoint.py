@@ -17,6 +17,9 @@ from pathlib import Path
 
 import pytest
 
+# Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
+pytestmark = pytest.mark.container_code
+
 DOCKER = Path(__file__).resolve().parent.parent / "docker"
 ENTRYPOINTS = {v: DOCKER / "naoqi" / f"entrypoint-{v}.sh" for v in ("2.1", "2.8")}
 HEALTHCHECK = DOCKER / "naoqi" / "healthcheck.sh"

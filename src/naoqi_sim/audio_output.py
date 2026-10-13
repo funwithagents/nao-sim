@@ -39,6 +39,7 @@ JOIN_S = (
     0.1  # a stream joins the mix once this much of it has arrived (or it has ended)
 )
 QUEUE_S = 0.2  # what a stream may buffer ahead of the mix: the socket paces the sender
+RESYNC_S = 0.2  # how far behind its schedule the mixer still catches up
 DEFAULT_STREAM = "default"
 
 
@@ -409,7 +410,14 @@ class AudioOutput:
                 slot = time.monotonic()
                 if not self._sink_call(self.sink.begin, RATE, CHANNELS):
                     continue
-            at = max(slot, time.monotonic())
+            # The ticks keep their schedule: a late wake-up is caught up by mixing the ticks
+            # that are due back to back, so lateness never accumulates into the playback. Only
+            # beyond RESYNC_S behind does the schedule restart from now, leaving a gap, as a
+            # device that ran dry would.
+            now = time.monotonic()
+            if now - slot > RESYNC_S:
+                slot = now
+            at = slot
             mix = np.zeros((TICK_FRAMES, CHANNELS), dtype=np.float32)
             with self._changed:
                 for s in active:
@@ -432,7 +440,8 @@ class AudioOutput:
             chunk = np.clip(np.rint(mix), -32768, 32767).astype("<i2").tobytes()
             if not self._sink_call(self.sink.feed, chunk):
                 continue
-            self.playing_until = at + TICK_S
+            # A tick fed while catching up plays no earlier than now.
+            self.playing_until = max(at, time.monotonic()) + TICK_S
             self._tell(chunk, at)
             slot = at + TICK_S
             _sleep_until(
@@ -498,8 +507,9 @@ class AudioOutput:
 
 
 def _sleep_until(deadline: float) -> None:
-    left = deadline - time.monotonic()
-    if left > 0:
+    """Returns once `deadline` has passed: a sleep may end a hair early (Windows' timer
+    granularity), and what follows (a play returning, `playing_until` in the past) relies on it."""
+    while (left := deadline - time.monotonic()) > 0:
         time.sleep(left)
 
 

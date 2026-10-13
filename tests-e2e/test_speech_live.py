@@ -94,7 +94,8 @@ def test_stop_all_during_synthesis(nao):
     assert done["interrupted"] is True
     # Synthesis plus the stop, not the ~15 s of audio; synthesis alone varies on a shared runner.
     assert returned < 3.0
-    assert nao.played(mark) < 0.3
+    # A moment of audio at most, or none when the stop came before the first of it.
+    assert nao.played_if_any(mark) < 0.3
 
 
 # -- the boxes' pattern: start, wait for and stop a sentence by task id -------------------------

@@ -68,6 +68,8 @@ The API is **async**, as `NaoqiBridge`: `await sim.start()`, `await sim.stop()`,
 
 If any step fails, everything already started is stopped, in reverse order, and the error propagates. Calling `start()` on a running `NaoqiSim` raises `NaoqiSimError`.
 
+**A cancelled `start()`** (Ctrl-C in `naoqi-sim run`) stops what it started too, and only then raises `CancelledError`. A step runs on a thread, which a cancel can't interrupt, so the step in flight runs to its end first (`asyncio.shield`): otherwise the teardown's `compose down` would race a `compose up` still running, and the containers would come up after it. The readiness wait is the exception: an abort event makes it give up at its next poll (1 s), rather than wait out `ready_timeout_s`. The fast tier pins it with a fake `docker` whose `up` takes its time.
+
 **`await stop()`** stops the host devices, the simulated world, the containers (`docker compose down`, keeping the package store volumes), the host link and the audio output, in that order. It carries on through every step even if one fails, then raises the first failure. It is a no-op when not running, and `start()` may follow it.
 
 **`async with NaoqiSim(...) as sim:`** runs `start()` then `stop()` on every way out.
@@ -102,7 +104,7 @@ So `start()` only checks: an image missing or not verified raises `ImagesMissing
 | Member | Returns | Meaning |
 | --- | --- | --- |
 | `url` | `str` | `tcp://127.0.0.1:9559`, the address any qi client connects to |
-| `await status()` | `NaoqiSimStatus` | Read from the `NaoqiSim` service over qi, with the connect retry libqi 3 needs against 2.1: `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source` |
+| `await status()` | `NaoqiSimStatus` | Read from the `NaoqiSim` service over qi, in one connect attempt (libqi 3.1.8 fixed the failed connects 3.1.6 needed retries for): `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source` |
 | `fake_audio` | `FakeAudioSource` | The fake audio source a test plays sounds through ([audio-input.md](../host/audio-input.md), "The fake source"); `NotRunningError` when not running, `NaoqiSimError` when `audio_input.source` is not `fake` |
 | `config` | `NaoqiSimConfig` | The config it was built from |
 | `running` | `bool` | Between a successful `start()` and `stop()` |

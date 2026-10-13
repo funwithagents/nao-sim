@@ -4,13 +4,12 @@ driven with a stand-in `NaoqiSim` and real signals; `status`, `cleanup` and `log
 
 import asyncio
 import json
-import os
 import signal
-import socket
 import threading
 from typing import ClassVar
 
 import pytest
+from ports import free_port
 
 from naoqi_sim import cli, stack
 from naoqi_sim.config import NaoqiSimConfig
@@ -63,10 +62,26 @@ def stand_in(monkeypatch):
 
 
 def send_sigint_after(seconds: float) -> None:
-    threading.Timer(seconds, os.kill, (os.getpid(), signal.SIGINT)).start()
+    # Ctrl-C, raised in this process (os.kill on Windows terminates instead of signalling).
+    threading.Timer(seconds, signal.raise_signal, (signal.SIGINT,)).start()
 
 
-def test_run_starts_until_ctrl_c_then_stops(stand_in, tmp_path, capsys):
+@pytest.fixture(params=["loop signals", "no loop signals"])
+def signals(request, monkeypatch):
+    """`run` both ways it hears Ctrl-C: through the event loop (Linux, macOS) and, where the loop
+    has no signal handlers (Windows' loops), through a plain handler."""
+    if request.param == "no loop signals":
+        loop = asyncio.new_event_loop()
+        loop.close()
+
+        def unsupported(*args, **kwargs):
+            raise NotImplementedError
+
+        monkeypatch.setattr(type(loop), "add_signal_handler", unsupported)
+    return request.param
+
+
+def test_run_starts_until_ctrl_c_then_stops(signals, stand_in, tmp_path, capsys):
     path = tmp_path / "sim.json"
     path.write_text(
         json.dumps({"naoqi": {"version": "2.8"}, "viewer": {"headless": True}})
@@ -84,13 +99,13 @@ def test_run_starts_until_ctrl_c_then_stops(stand_in, tmp_path, capsys):
     )
 
 
-def test_run_without_a_file_uses_the_defaults(stand_in):
+def test_run_without_a_file_uses_the_defaults(signals, stand_in):
     send_sigint_after(0.3)
     assert cli.main(["run"]) == 0
     assert stand_in.made[0].config == NaoqiSimConfig()
 
 
-def test_ctrl_c_during_the_start_cancels_it(stand_in):
+def test_ctrl_c_during_the_start_cancels_it(signals, stand_in):
     stand_in.start_s = 10
     send_sigint_after(0.2)
 
@@ -133,9 +148,7 @@ def test_status_exits_0_only_when_ready(docker, monkeypatch, capsys):
 
 
 def test_cleanup_prints_what_it_removed(docker, monkeypatch, capsys):
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", s.getsockname()[1])
+    monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", free_port())
     docker.set(containers={"naoqi-sim-naoqi21": "exited", "naoqi-sim-tts": "running"})
 
     assert cli.main(["cleanup"]) == 0

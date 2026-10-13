@@ -1,4 +1,4 @@
-"""A fake `docker` first on PATH, for the tests of what naoqi-sim asks Docker.
+"""A fake `docker` first on PATH (a `docker.cmd` on Windows), for the tests of what naoqi-sim asks Docker.
 
 The fake keeps its state in a JSON file: the images (ID and labels, set by `compose build` from
 the environment's `NAOQI_SIM_VERSION` and `NAOQI_SIM_RECIPES`, the same ID for the same inputs, as
@@ -11,19 +11,20 @@ folder, and fails as BuildKit does when the folder is not there.
 
 import json
 import os
-import socket
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
+from ports import free_port
 
 from naoqi_sim import docker_images
 from naoqi_sim.docker_images import IMAGES, TTS_IMAGE
 
 FAKE_DOCKER = textwrap.dedent(
     """\
-    import hashlib, json, os, sys
+    import hashlib, json, os, sys, time
     path = os.environ["FAKE_DOCKER_STATE"]
     state = json.load(open(path))
     args = sys.argv[1:]
@@ -68,6 +69,13 @@ FAKE_DOCKER = textwrap.dedent(
                     "Labels": labels,
                 }
         elif verb == "up":
+            if state.get("up_s"):
+                # A real `up` takes seconds: it is seen starting, and its containers appear at
+                # its end, whatever ran meanwhile.
+                with open(path, "w") as f:
+                    json.dump(state, f)
+                time.sleep(state["up_s"])
+                state = json.load(open(path))
             state["up_tts_engine"] = os.environ.get("NAOQI_SIM_TTS_ENGINE")
             for s in services:
                 name = state["services"][s]["container"]
@@ -128,6 +136,12 @@ class FakeDocker:
         )
 
     def read(self) -> dict:
+        # A slow `up` rewrites the file while the test polls it: retry a half-written read.
+        for _ in range(50):
+            try:
+                return json.loads(self.path.read_text())
+            except json.JSONDecodeError:
+                time.sleep(0.01)
         return json.loads(self.path.read_text())
 
     def write(self, state: dict) -> None:
@@ -145,14 +159,19 @@ class FakeDocker:
 def docker(tmp_path, monkeypatch) -> FakeDocker:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    script = bin_dir / "docker"
-    script.write_text(f"#!{sys.executable}\n{FAKE_DOCKER}")
-    script.chmod(0o755)
+    if sys.platform == "win32":
+        # Windows runs no shebang: a .cmd that naoqi-sim finds through PATHEXT runs the fake.
+        (bin_dir / "fake_docker.py").write_text(FAKE_DOCKER, encoding="utf-8")
+        (bin_dir / "docker.cmd").write_text(
+            f'@"{sys.executable}" "%~dp0fake_docker.py" %*\r\n', encoding="utf-8"
+        )
+    else:
+        script = bin_dir / "docker"
+        script.write_text(f"#!{sys.executable}\n{FAKE_DOCKER}")
+        script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_DOCKER_STATE", str(tmp_path / "docker.json"))
     monkeypatch.setattr(docker_images, "POLL", 0.01)
     # Verification needs the NAOqi port free; use one nothing listens on.
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        monkeypatch.setattr(docker_images, "NAOQI_PORT", s.getsockname()[1])
+    monkeypatch.setattr(docker_images, "NAOQI_PORT", free_port())
     return FakeDocker(tmp_path / "docker.json")

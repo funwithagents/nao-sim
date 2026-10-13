@@ -9,7 +9,7 @@ This overview is the map of the whole project and the authority for naoqi-sim; t
 ## Goals
 
 - Existing qi code, including Choregraphe behaviours, runs on naoqi-sim on NAOqi 2.1.4.13 and 2.8 and gets speech, audio and camera images through the standard NAOqi services, with their documented methods, events and timing. naoqi-sim provides what a NAO's hardware provides; perception and speech recognition run in the clients (see [Perception and speech recognition](#perception-and-speech-recognition-on-the-clients)).
-- One command (`naoqi-sim run`, after the one-time `naoqi-sim fetch-and-build-images`) reaches a running simulated NAO, given Docker and the user's Choregraphe suite, on the platforms the libqi wheels cover (today macOS arm64 and Linux x86_64; see [Packaging](#packaging-and-platforms)).
+- One command (`naoqi-sim run`, after the one-time `naoqi-sim fetch-and-build-images`) reaches a running simulated NAO, given Docker and the user's Choregraphe suite, on the platforms the libqi wheels cover (macOS arm64, Linux x86_64 and Windows x64; see [Packaging](#packaging-and-platforms)).
 - No Aldebaran binary, robot package, mesh or derived file lands in the repository, a package or a published image.
 
 ## Scope
@@ -79,7 +79,7 @@ The code is MIT. Nothing from Aldebaran is in the repository, a package or a pub
 | libqi headers (BSD-3-Clause) and boost headers (Boost Software License), 2.8 only | [funwithagents/libqi](https://github.com/funwithagents/libqi), our fork of Aldebaran's libqi, at a pinned commit; boost's release archive | Same: build files of the 2.8 relay, because the public 2.8 SDK is older than the 2.8.7.4 suite |
 | Sound set and other robot packages | The user's own robot (the store that sold them is gone) | Installed by the user into the running sim as on a robot; kept in a local Docker volume |
 | NAO meshes and textures (CC BY-NC-ND 4.0) | `ros-naoqi/nao_meshes` installer | Never touched by naoqi-sim: naoqi-viewer fetches them after a typed license acceptance and keeps them in the user's data directory |
-| libqi and its Python 3 bindings (BSD-3-Clause) | [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python), a fork of Aldebaran's libqi | Prebuilt wheels from the fork's GitHub Releases, a runtime dependency |
+| libqi and its Python 3 bindings (BSD-3-Clause) | [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python), a fork of Aldebaran's libqi | Prebuilt wheels from the fork's package index on GitHub Pages, a runtime dependency |
 
 - `.gitignore` covers suite tarballs, `docker/image-data/`, meshes and textures. An automated asset guard (tree, wheel, sdist and Docker build context) is planned and deferred: it gets its spec when packaging starts.
 - The suite download fetches Aldebaran's own public files to the user's machine, as the user would by hand; nothing is redistributed. See [container.md](container/container.md).
@@ -203,9 +203,9 @@ The spike scripts (`spike/`, local only) cover these checks by hand today.
 
 Built as [project.md](project.md) ("Distribution") specifies: another project depends on naoqi-sim from GitHub with uv, pinned to a commit or tag; the container recipes ship as package data in the wheel and the image data go to the user data directory; the `viewer` extra; versions baked into the images.
 
-- The libqi wheels exist for macOS 15+ arm64 and Linux x86_64 (glibc 2.34+), Python 3.10–3.13. Installation elsewhere fails by design: naoqi-sim's host side cannot work without qi. v1 targets these two platforms only; Windows, Intel macOS, Linux arm64 and older systems are on the roadmap, each waiting on wheels from the libqi fork.
-- pip is not supported: it ignores uv's sources, and how it would find the libqi wheels is deferred ([project.md](project.md), open questions).
-- Containers: Docker Engine on Linux, Docker Desktop or OrbStack on macOS (amd64 emulation for the NAOqi images on Apple Silicon; the `tts` container is native). Measured on OrbStack only.
+- The libqi wheels (`qi>=3.1.8,<4`, from the fork's package index) exist for macOS 11+ arm64, Linux x86_64 (glibc 2.28+) and Windows x64, Python 3.10–3.15. Installation elsewhere (Intel macOS, Linux arm64) fails by design: naoqi-sim's host side cannot work without qi ([project.md](project.md)). The fast tier runs on all three in CI; the live tier on Linux, and locally on macOS.
+- pip is not supported: it ignores uv's sources. It would find `qi` on the libqi index (`--extra-index-url`), but not naoqi-viewer's git pin ([project.md](project.md), open questions).
+- Containers: Docker Engine on Linux, Docker Desktop or OrbStack on macOS (amd64 emulation for the NAOqi images on Apple Silicon; the `tts` container is native), Docker Desktop on Windows. Measured on OrbStack and Linux's Docker Engine only.
 
 ## Testing
 
@@ -230,8 +230,8 @@ Perception and speech recognition are naoqi-bridge milestones (see the toolkit d
 
 Questions that belong to a concept live in its spec; these cross several.
 
-- [ ] **libqi wheels**: distribution to pip users ([project.md](project.md)), and platform coverage (Windows, Intel macOS, Linux arm64, glibc below 2.34, macOS below 15, Python 3.14).
-- [ ] **Connect retries**: `qi.Session.connect()` from the libqi 3 wheels fails about once in three against NAOqi 2.1 (`disconnected`, instant); clients retry. The root cause in the fork is open.
+- [ ] **libqi wheels**: platform coverage beyond macOS arm64, Linux x86_64 and Windows x64 (Intel macOS, Linux arm64), and Python 3.14 for naoqi-sim ([project.md](project.md)).
+- [x] **Connect retries**: libqi 3.1.6's `qi.Session.connect()` failed about once in three against NAOqi 2.1 (`disconnected`, instant); 3.1.8 fixed it in the fork (200 plain connects: none failed), and naoqi-sim connects in one attempt.
 - [ ] **libqi fork, legacy clients**: the fork's server binds objects only after a service-0 capability message that libqi 2.1 clients never send, so a 2.1 client opening a fresh connection to a libqi 3 service fails. Not needed by this design; patch only if a use case appears.
 - [ ] **Docker Desktop**: everything was measured on OrbStack; Docker Desktop on macOS, Linux and Windows is to confirm.
 - [ ] **Speech duration tolerance**: how close `say()` must be to a NAO's own durations (proposed ±20% per sentence), and the reference values ([speech.md](services/speech.md)).

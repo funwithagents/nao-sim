@@ -4,6 +4,9 @@ import time
 import naoqi_sim_speech_core as core
 import pytest
 
+# Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
+pytestmark = pytest.mark.container_code
+
 END = [
     ("ALTextToSpeech/CurrentSentence", ""),
     ("ALTextToSpeech/TextDone", 1),

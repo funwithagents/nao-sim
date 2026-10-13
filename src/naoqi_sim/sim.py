@@ -121,23 +121,37 @@ class NaoqiSim:
         async with self._busy:
             if self._running:
                 raise NaoqiSimError("this NaoqiSim is already running")
+            abort = threading.Event()
             try:
-                world_config = await asyncio.to_thread(self._check)
-                await asyncio.to_thread(self._start_audio_output)
-                await asyncio.to_thread(self._start_containers)
-                await asyncio.to_thread(stack.wait_ready, self._config)
+                world_config = await self._step(abort, self._check)
+                await self._step(abort, self._start_audio_output)
+                await self._step(abort, self._start_containers)
+                await self._step(abort, stack.wait_ready, self._config, abort)
                 world = None
                 if world_config is not None:
-                    world = await asyncio.to_thread(self._start_world, world_config)
+                    world = await self._step(abort, self._start_world, world_config)
                 if world is not None and self._config.video_input.source == "render":
-                    await asyncio.to_thread(self._start_video_input, world)
+                    await self._step(abort, self._start_video_input, world)
                 if self._config.audio_input.source != "none":
-                    await asyncio.to_thread(self._start_audio_input)
+                    await self._step(abort, self._start_audio_input)
             except BaseException:
                 await asyncio.to_thread(self._teardown, False)
                 raise
             self._running = True
             log.info("naoqi-sim ready at %s", URL)
+
+    @staticmethod
+    async def _step[T](abort: threading.Event, fn: Callable[..., T], *args: Any) -> T:
+        """One step of `start()`, on a thread. A thread can't be interrupted: cancelled, the
+        step still runs to its end (after `abort` tells a waiting step to give up), so the
+        teardown never races what the step is starting, such as a `compose up` in flight."""
+        future = asyncio.ensure_future(asyncio.to_thread(fn, *args))
+        try:
+            return await asyncio.shield(future)
+        except asyncio.CancelledError:
+            abort.set()
+            await asyncio.wait([future])
+            raise
 
     async def stop(self) -> None:
         """Stop the audio and video inputs, the simulated world, the containers, the host link and

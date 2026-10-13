@@ -16,6 +16,9 @@ import pytest
 from naoqi_sim.audio_output import RATE as MIX_RATE
 from naoqi_sim.audio_output import AudioOutput, MemorySink, Server
 
+# Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
+pytestmark = pytest.mark.container_code
+
 
 @pytest.fixture
 def output():

@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 import subprocess
-import time
+import threading
 from dataclasses import dataclass
 
 from naoqi_sim import docker_images, files
@@ -83,9 +83,9 @@ def up(config: NaoqiSimConfig) -> None:
         )
 
 
-def wait_ready(config: NaoqiSimConfig) -> None:
+def wait_ready(config: NaoqiSimConfig, abort: threading.Event | None = None) -> None:
     docker_images.wait_healthy(
-        IMAGES[config.naoqi.version], timeout=config.naoqi.ready_timeout_s
+        IMAGES[config.naoqi.version], timeout=config.naoqi.ready_timeout_s, abort=abort
     )
 
 
@@ -126,20 +126,18 @@ def _containers() -> list[ContainerState]:
     )
 
 
-def connect(url: str = URL, attempts: int = 5):
-    """A qi session, with the retry libqi 3 needs: about one connect in three fails against 2.1."""
+def connect(url: str = URL):
+    """A qi session to the robot, in one attempt (libqi 3.1.8 fixed the failed connects that
+    3.1.6 needed retries for)."""
     import qi
 
-    error: Exception | None = None
-    for _ in range(attempts):
-        session = qi.Session()
-        try:
-            session.connect(url)
-            return session
-        except RuntimeError as e:
-            error = e
-            time.sleep(0.5)
-    raise NaoqiSimError(f"could not connect to {url} in {attempts} attempts: {error}")
+    session = qi.Session()
+    try:
+        session.connect(url)
+    except RuntimeError as e:
+        session.close()
+        raise NaoqiSimError(f"could not connect to {url}: {e}") from None
+    return session
 
 
 def read_naoqisim_status(url: str = URL) -> NaoqiSimStatus:
@@ -217,6 +215,6 @@ def show_logs(follow: bool = False, tail: int | None = None) -> int:
     if tail is not None:
         args += ["--tail", str(tail)]
     try:
-        return subprocess.run(args, check=False).returncode
+        return subprocess.run(docker_images.resolve(args), check=False).returncode
     except KeyboardInterrupt:
         return 0

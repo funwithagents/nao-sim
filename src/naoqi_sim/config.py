@@ -142,7 +142,7 @@ class _Loaders:
     def from_json_file(cls, path: str | Path) -> Self:
         path = Path(path)
         try:
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
         except OSError as e:
             raise ConfigError(f"cannot read {path}: {e.strerror or e}") from None
         try:

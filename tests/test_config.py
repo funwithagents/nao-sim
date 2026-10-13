@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import fields
 from pathlib import Path
 
@@ -143,7 +144,7 @@ def test_json_errors(tmp_path):
         NaoqiSimConfig.from_json("{")
     bad = tmp_path / "bad.json"
     bad.write_text("{")
-    with pytest.raises(ConfigError, match=str(bad)):
+    with pytest.raises(ConfigError, match=re.escape(str(bad))):
         NaoqiSimConfig.from_json_file(bad)
     with pytest.raises(ConfigError, match="cannot read"):
         NaoqiSimConfig.from_json_file(tmp_path / "missing.json")

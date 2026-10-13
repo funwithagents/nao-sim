@@ -26,6 +26,7 @@ import bz2
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -139,7 +140,7 @@ def _record_path(path: Path) -> tuple[Path, str]:
 
 def _load_record(record: Path) -> dict[str, dict]:
     try:
-        data = json.loads(record.read_text())
+        data = json.loads(record.read_text(encoding="utf-8"))
     except (OSError, ValueError):  # absent or unreadable: hash everything again
         return {}
     return data if isinstance(data, dict) else {}
@@ -155,7 +156,9 @@ def _remember(path: Path, sha256: str) -> None:
     record, key = _record_path(path)
     entries = _load_record(record)
     entries[key] = {**_stamp(path), "sha256": sha256}
-    record.write_text(json.dumps(entries, indent=2, sort_keys=True) + "\n")
+    record.write_text(
+        json.dumps(entries, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
 
 def _unchanged(path: Path, sha256: str) -> bool:
@@ -316,8 +319,11 @@ _DEBUGFS = 'apk add --no-cache -q e2fsprogs-extra >&2 && cat > /rootfs && debugf
 
 def docker_cat(rootfs: Iterable[bytes], path: str) -> Iterator[bytes]:
     """The file at `path` in the ext3 filesystem `rootfs`, read by debugfs in a throwaway container."""
+    docker = (
+        shutil.which("docker") or "docker"
+    )  # on Windows, as a shell finds it (PATHEXT)
     proc = subprocess.Popen(
-        ["docker", "run", "-i", "--rm", "alpine:3.20", "sh", "-c", _DEBUGFS, path],
+        [docker, "run", "-i", "--rm", "alpine:3.20", "sh", "-c", _DEBUGFS, path],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
     )

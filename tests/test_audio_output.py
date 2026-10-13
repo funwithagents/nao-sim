@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from naoqi_sim import audio_output
 from naoqi_sim.audio_output import (
     RATE as MIX_RATE,
 )
@@ -126,6 +127,26 @@ def mixes(c: RunningOutput):
 
 
 # --- One stream: the protocol, pacing, stop -------------------------------------------
+
+
+def test_late_wake_ups_do_not_drift_the_mix(memory, monkeypatch):
+    # Every sleep of the mixer wakes 30 ms late, longer than a tick, as a loaded machine's (or
+    # a CI virtual machine's) timers can: the ticks keep their schedule, and the play its length.
+    sleep_until = audio_output._sleep_until
+
+    def late(deadline: float) -> None:
+        if deadline > time.monotonic():  # a sleep there is wakes 30 ms late
+            sleep_until(deadline + 0.03)
+
+    monkeypatch.setattr(audio_output, "_sleep_until", late)
+    dues: list[float] = []
+    memory.output.listeners.append(lambda chunk, rate, channels, at: dues.append(at))
+
+    took = memory.play(0.5, stream="speech")
+
+    assert np.diff(dues) == pytest.approx(TICK_S)  # one tick apart, every one
+    assert dues[-1] + TICK_S - dues[0] == pytest.approx(0.5, abs=TICK_S)
+    assert took == pytest.approx(0.5, abs=0.15)  # the late wake-ups don't add up
 
 
 def test_play_records_the_stream_as_received_paced_in_real_time(memory):
@@ -365,14 +386,15 @@ def test_a_failing_sink_still_gets_its_end_and_the_plays_return():
 # --- Playing state and listeners --------------------------------------------------------------
 
 
-def test_playing_until_follows_the_mix(memory):
+def test_playing_until_follows_the_mix(memory, lateness):
     output = memory.output
     assert output.playing_until < time.monotonic()  # idle
 
     t0 = time.monotonic()
     done = memory.play_async(1.0)
     time.sleep(0.4)
-    assert output.playing_until > time.monotonic()
+    # The mix is fed a tick ahead: it covers now, unless this machine woke the mixer late.
+    assert output.playing_until > time.monotonic() - lateness()
     assert output.playing_until == pytest.approx(t0 + 0.4, abs=0.15)  # a tick ahead
     wait_for(lambda: done)
     assert output.playing_until == pytest.approx(t0 + 1.0, abs=0.15)

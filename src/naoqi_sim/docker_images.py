@@ -19,6 +19,7 @@ import logging
 import shutil
 import socket
 import subprocess
+import threading
 import time
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -86,11 +87,24 @@ def _command(version: str) -> str:
     return f"run `naoqi-sim fetch-and-build-images {version}`"
 
 
+def resolve(args: Iterable[str]) -> list[str]:
+    """`args` with its command found on PATH as a shell finds it: on Windows, `subprocess` looks
+    for `<name>.exe` only, where `shutil.which` follows PATHEXT (`.cmd`, `.bat`...)."""
+    command, *rest = args
+    return [shutil.which(command) or command, *rest]
+
+
 def run(
     *args: str, timeout: float = 120, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        args, capture_output=True, text=True, timeout=timeout, check=False, env=env
+        resolve(args),
+        capture_output=True,
+        encoding="utf-8",  # docker's own output, whatever the locale (Windows' isn't UTF-8)
+        errors="replace",
+        timeout=timeout,
+        check=False,
+        env=env,
     )
 
 
@@ -136,13 +150,13 @@ def _verified(image_data: Path) -> dict[str, str]:
     path = image_data / RECORD
     if not path.exists():
         return {}
-    return json.loads(path.read_text())["verified"]
+    return json.loads(path.read_text(encoding="utf-8"))["verified"]
 
 
 def _record(image_data: Path, verified: dict[str, str]) -> None:
     image_data.mkdir(parents=True, exist_ok=True)
     (image_data / RECORD).write_text(
-        json.dumps({"verified": verified}, indent=2) + "\n"
+        json.dumps({"verified": verified}, indent=2) + "\n", encoding="utf-8"
     )
 
 
@@ -194,9 +208,12 @@ def container_logs(container: str) -> str:
     return (res.stdout + res.stderr).strip()
 
 
-def wait_healthy(images: Images, timeout: float | None = None) -> None:
+def wait_healthy(
+    images: Images, timeout: float | None = None, abort: threading.Event | None = None
+) -> None:
     """Until the version's NAOqi container is healthy; `BootError` if it exits, turns
-    unhealthy or takes longer than `timeout` (default `READY_TIMEOUT`), with the end of its log."""
+    unhealthy or takes longer than `timeout` (default `READY_TIMEOUT`), with the end of its log,
+    or as soon as `abort` is set."""
     timeout = READY_TIMEOUT if timeout is None else timeout
     end = time.monotonic() + timeout
     while True:
@@ -220,7 +237,10 @@ def wait_healthy(images: Images, timeout: float | None = None) -> None:
                 f"NAOqi {images.version} not healthy after {timeout:.0f} s:\n"
                 + container_logs(images.container)
             )
-        time.sleep(POLL)
+        if abort is not None and abort.wait(POLL):
+            raise BootError(f"waiting for NAOqi {images.version} was cancelled")
+        if abort is None:
+            time.sleep(POLL)
 
 
 _TTS_HEALTH = "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"

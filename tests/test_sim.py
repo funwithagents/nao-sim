@@ -11,6 +11,7 @@ import wave
 
 import numpy as np
 import pytest
+from ports import free_port
 
 from naoqi_sim import docker_images, sim, stack
 from naoqi_sim.audio_input import FakeAudioSource
@@ -37,12 +38,6 @@ from naoqi_sim.errors import (
 from naoqi_sim.host_link import encode, read_message
 
 HEADLESS = ViewerSettings(headless=True)
-
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def listening(port: int) -> bool:
@@ -392,7 +387,9 @@ def test_a_viewer_that_cannot_launch_stops_everything(env):
 
 
 def test_a_cancelled_start_stops_what_was_started(env):
-    env.set(boot="starting")  # never healthy: the start waits
+    # Never healthy: the start waits. `up` takes its time, as a real one does: the cancel comes
+    # while it is in flight, and the teardown must not race it.
+    env.set(boot="starting", up_s=0.5)
 
     async def run():
         naoqisim = sim.NaoqiSim(NaoqiSimConfig(viewer=HEADLESS), sink=MemorySink())

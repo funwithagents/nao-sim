@@ -205,9 +205,9 @@ Each image matches a real NAO **on the same NAOqi version**, not the other versi
 | Platform | How it runs | Note |
 | --- | --- | --- |
 | Linux x86\_64 | Docker Engine | No emulation |
-| macOS Intel | Docker Desktop | |
+| macOS Intel | Docker Desktop | No libqi wheel, so naoqi-sim's host side does not install ([project.md](../project.md), "Platforms") |
 | macOS Apple Silicon | Docker Desktop or OrbStack, amd64 emulation (Rosetta) | Measured on OrbStack: boot times above, no visible lag. The `tts` container is native |
-| Windows | Docker Desktop (WSL 2) | |
+| Windows | Docker Desktop (WSL 2) | The host side installs and its fast tier runs on Windows in CI ([ci.md](../testing/ci.md)); the stack itself has not been run there yet (open question 1) |
 
 ## Open questions
 

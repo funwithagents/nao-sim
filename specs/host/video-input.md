@@ -42,7 +42,7 @@ The `video_input` block of [config.md](../runtime/config.md) picks one:
 
 The device injects frames on its own schedule, **independently of `ALVideoDevice`'s subscribers**: it never reads `getSubscribers()` and never converts a frame.
 
-- **Rate**: `video_input.fps` frames per second (an integer from 1 to 30, default 15), on a fixed schedule from the device's start. A frame that misses its slot is skipped, never caught up, so the rate never exceeds `fps`.
+- **Rate**: `video_input.fps` frames per second (an integer from 1 to 30, default 15), on a fixed schedule from the device's start. A frame that misses its slot is skipped, never caught up, so the rate never exceeds `fps`. `VideoInput.missed` counts the slots that put no frame into NAOqi: skipped by a render that ran past its slot, or replaced by the next frame before injection; frames put plus `missed` is the schedule, which the fast tier checks against the time the device actually ran (measured around `start()` and `stop()`), rather than a frame count in a fixed second a loaded machine can't hold.
 - **Size and format**: one RGB frame of 640×480 (VGA) per slot, the largest size both versions accept: 2.8's `putImage` refuses anything above VGA and silently downgrades a 4VGA subscription to QVGA; 2.1 accepts up to 4VGA. Odd sizes are refused erratically on both, so the device sends VGA only.
 - **One camera**: `CameraTop` (index 0) only. `CameraBottom` gets no frames from either source for now; a client subscribing to it gets what NAOqi serves for a camera never fed (see "As measured").
 - **NAOqi does the rest.** One injected RGB frame serves every subscriber of that camera at its own resolution and colorspace (RGB, BGR, YUV422, Y...), scaled up or down, with a timestamp NAOqi sets at `putImage`. A client asking for more than `fps` gets the last frame again, as `getImageRemote` returns it immediately with the same timestamp.
@@ -51,7 +51,7 @@ The device injects frames on its own schedule, **independently of `ALVideoDevice
 
 ### In a running `NaoqiSim`
 
-- The device runs in-process on its own threads, with its own qi session (the connect retry 2.1 needs), started by `NaoqiSim.start()` once the robot is ready **and, for `render`, once the viewer is launched**; `stop()` stops it before the viewer ([api.md](../runtime/api.md), "Lifecycle").
+- The device runs in-process on its own threads, with its own qi session (`stack.connect`, one attempt), started by `NaoqiSim.start()` once the robot is ready **and, for `render`, once the viewer is launched**; `stop()` stops it before the viewer ([api.md](../runtime/api.md), "Lifecycle").
 - **The window closed by the user** with `source = "render"`: the next `camera_frame` raises `ViewerClosed`. The device stops, writes `NaoqiSim/Camera/Source` back to `none` and logs once, at warning level, that the camera has no frames any more; NAOqi keeps serving the last frame. The robot keeps running, as for the window alone ([api.md](../runtime/api.md), "Lifecycle").
 - A failing `putImage` or render (anything but `ViewerClosed`) is logged and the device carries on with the next slot; a run of failures is logged once, not once per frame.
 
