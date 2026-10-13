@@ -394,7 +394,7 @@ def test_playing_until_follows_the_mix(memory, lateness):
     done = memory.play_async(1.0)
     time.sleep(0.4)
     # The mix is fed a tick ahead: it covers now, unless this machine woke the mixer late.
-    assert output.playing_until > time.monotonic() - lateness
+    assert output.playing_until > time.monotonic() - lateness()
     assert output.playing_until == pytest.approx(t0 + 0.4, abs=0.15)  # a tick ahead
     wait_for(lambda: done)
     assert output.playing_until == pytest.approx(t0 + 1.0, abs=0.15)

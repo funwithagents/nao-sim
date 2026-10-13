@@ -146,6 +146,14 @@ class Nao:
         """Seconds of audio in the first stream that started after `after` (time.monotonic())."""
         return self.sink.wait_for(lambda p: p.started_at >= after, timeout).duration_s
 
+    def played_if_any(self, after: float, settle: float = 1.0) -> float:
+        """Like `played`, for a play that was stopped: 0 when no stream started after `after`
+        (the stop came before any audio), once `settle` has given a started one time to end."""
+        try:
+            return self.played(after, settle)
+        except TimeoutError:
+            return 0.0
+
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_cmdline_main(config: pytest.Config) -> None:

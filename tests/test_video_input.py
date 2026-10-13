@@ -99,7 +99,9 @@ def test_paces_at_the_configured_rate(naoqi):
 
     assert 8 <= len(naoqi.puts) <= 11
     gaps = np.diff([put[4] for put in naoqi.puts])
-    assert gaps.min() > 0.04  # never a burst (back to back would be ~0 s)
+    # Never a burst: missed slots made up would put frames back to back (well under a
+    # millisecond apart), where a frame woken late still lands before the next slot's.
+    assert gaps.min() > 0.001
 
 
 def test_a_slow_source_skips_slots_and_never_catches_up(naoqi):

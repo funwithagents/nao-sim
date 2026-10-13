@@ -5,10 +5,10 @@
 # resets it before and after each test so state can't leak between tests. Keep
 # this tier deterministic and network-free — anything that needs a running NAOqi
 # belongs in tests-e2e/ instead.
-import functools
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -39,26 +39,44 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(skip)
 
 
-@functools.cache
-def wake_lateness() -> float:
-    """How late this machine wakes a thread from a short timed wait, at worst over 200 waits
-    (seconds): about 1 ms on a desktop, more on a busy CI virtual machine."""
-    event, worst = threading.Event(), 0.0
-    for _ in range(200):
-        t0 = time.monotonic()
-        event.wait(0.005)
-        worst = max(worst, time.monotonic() - t0 - 0.005)
-    return worst
+class _Lateness:
+    """How late this machine wakes a thread from a short timed wait: the worst seen so far by a
+    sampler thread doing 5 ms waits for the whole session, so it lives through the same load as
+    the tests (other xdist workers included). About 1 ms on a quiet desktop, tens of ms on a busy
+    CI virtual machine."""
+
+    def __init__(self) -> None:
+        self.worst = 0.0
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread is None:
+            self._thread = threading.Thread(target=self._sample, daemon=True)
+            self._thread.start()
+
+    def _sample(self) -> None:
+        event = threading.Event()
+        while True:
+            t0 = time.monotonic()
+            event.wait(0.005)
+            self.worst = max(self.worst, time.monotonic() - t0 - 0.005)
+
+
+_LATENESS = _Lateness()
+
+
+def pytest_configure() -> None:
+    _LATENESS.start()
 
 
 def pytest_report_header() -> str:
-    return (
-        f"timed waits wake up to {wake_lateness() * 1000:.1f} ms late on this machine"
-    )
+    time.sleep(1.0)  # a first figure for the header
+    return f"timed waits woke up to {_LATENESS.worst * 1000:.1f} ms late in the first second"
 
 
 @pytest.fixture
-def lateness() -> float:
-    """This machine's wake-up lateness, which a test bounding a reaction time adds to its
-    bound: the bound stays the spec's on a quiet machine (specs/testing/testing.md)."""
-    return wake_lateness()
+def lateness() -> Callable[[], float]:
+    """This machine's wake-up lateness so far, read at the assertion: a test bounding a reaction
+    time adds it to its bound, which stays the spec's on a quiet machine
+    (specs/testing/testing.md, "Platforms")."""
+    return lambda: _LATENESS.worst
