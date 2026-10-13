@@ -5,11 +5,11 @@ driven with a stand-in `NaoqiSim` and real signals; `status`, `cleanup` and `log
 import asyncio
 import json
 import signal
-import socket
 import threading
 from typing import ClassVar
 
 import pytest
+from ports import free_port
 
 from naoqi_sim import cli, stack
 from naoqi_sim.config import NaoqiSimConfig
@@ -148,9 +148,7 @@ def test_status_exits_0_only_when_ready(docker, monkeypatch, capsys):
 
 
 def test_cleanup_prints_what_it_removed(docker, monkeypatch, capsys):
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", s.getsockname()[1])
+    monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", free_port())
     docker.set(containers={"naoqi-sim-naoqi21": "exited", "naoqi-sim-tts": "running"})
 
     assert cli.main(["cleanup"]) == 0

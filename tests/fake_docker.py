@@ -11,13 +11,13 @@ folder, and fails as BuildKit does when the folder is not there.
 
 import json
 import os
-import socket
 import sys
 import textwrap
 import time
 from pathlib import Path
 
 import pytest
+from ports import free_port
 
 from naoqi_sim import docker_images
 from naoqi_sim.docker_images import IMAGES, TTS_IMAGE
@@ -173,7 +173,5 @@ def docker(tmp_path, monkeypatch) -> FakeDocker:
     monkeypatch.setenv("FAKE_DOCKER_STATE", str(tmp_path / "docker.json"))
     monkeypatch.setattr(docker_images, "POLL", 0.01)
     # Verification needs the NAOqi port free; use one nothing listens on.
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        monkeypatch.setattr(docker_images, "NAOQI_PORT", s.getsockname()[1])
+    monkeypatch.setattr(docker_images, "NAOQI_PORT", free_port())
     return FakeDocker(tmp_path / "docker.json")

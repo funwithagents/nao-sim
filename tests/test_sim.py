@@ -11,6 +11,7 @@ import wave
 
 import numpy as np
 import pytest
+from ports import free_port
 
 from naoqi_sim import docker_images, sim, stack
 from naoqi_sim.audio_input import FakeAudioSource
@@ -37,12 +38,6 @@ from naoqi_sim.errors import (
 from naoqi_sim.host_link import encode, read_message
 
 HEADLESS = ViewerSettings(headless=True)
-
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def listening(port: int) -> bool:

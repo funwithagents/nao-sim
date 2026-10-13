@@ -507,8 +507,9 @@ class AudioOutput:
 
 
 def _sleep_until(deadline: float) -> None:
-    left = deadline - time.monotonic()
-    if left > 0:
+    """Returns once `deadline` has passed: a sleep may end a hair early (Windows' timer
+    granularity), and what follows (a play returning, `playing_until` in the past) relies on it."""
+    while (left := deadline - time.monotonic()) > 0:
         time.sleep(left)
 
 

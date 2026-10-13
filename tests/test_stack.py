@@ -8,6 +8,7 @@ import threading
 import time
 
 import pytest
+from ports import free_port
 
 from naoqi_sim import stack
 from naoqi_sim.errors import DockerUnavailableError, NaoqiSimError
@@ -60,9 +61,7 @@ def test_the_service_is_read_only_once_naoqi_is_healthy(docker, qi_reads, boot):
 
 
 def test_cleanup_removes_what_a_dead_run_left(docker, monkeypatch):
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", s.getsockname()[1])
+    monkeypatch.setattr(stack, "AUDIO_OUTPUT_PORT", free_port())
     docker.set(containers={"naoqi-sim-naoqi21": "healthy", "naoqi-sim-tts": "running"})
 
     removed = asyncio.run(stack.cleanup())
