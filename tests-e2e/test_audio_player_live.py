@@ -193,7 +193,14 @@ def test_a_sound_and_a_sentence_play_together(nao, files):
     tts, player = nao.service("ALTextToSpeech"), nao.service("ALAudioPlayer")
     mark = time.monotonic()
     speech = tts.say(LONG, _async=True)
-    time.sleep(1.0)
+    # Into the sentence once it plays: synthesis takes a varying time on a shared runner.
+    deadline = time.monotonic() + 10
+    while not any(
+        p.stream == "speech" and p.started_at >= mark for p in nao.sink.playbacks
+    ):
+        assert time.monotonic() < deadline, "the sentence never started playing"
+        time.sleep(0.02)
+    time.sleep(0.3)
     player.playFile(files["wav"])
     speech.wait(30000)
 
