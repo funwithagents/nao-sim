@@ -317,6 +317,7 @@ def test_play_sine_plays_its_tone_for_its_duration(player, output):
     assert freqs[np.argmax(spectrum)] == pytest.approx(1000, abs=5)
 
 
+@pytest.mark.realtime
 def test_without_an_audio_output_a_call_still_lasts_the_file(tmp_path):
     player = core.Player(soundcard="127.0.0.1:9", apps=str(tmp_path))  # nothing listens
     t0 = time.monotonic()

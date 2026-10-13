@@ -128,6 +128,7 @@ def mixes(c: RunningOutput):
 # --- One stream: the protocol, pacing, stop -------------------------------------------
 
 
+@pytest.mark.realtime
 def test_play_records_the_stream_as_received_paced_in_real_time(memory):
     took = memory.play(0.5, stream="speech")
 
@@ -161,6 +162,7 @@ def test_null_sink_is_paced_too():
         c.shutdown()
 
 
+@pytest.mark.realtime
 def test_stop_ends_a_stream_within_a_tick(memory):
     done = memory.play_async(2.0, stream="speech")
     time.sleep(0.5)
@@ -241,6 +243,7 @@ def test_stopping_one_stream_leaves_the_others(memory):
     assert not mixes(memory)[-1].interrupted  # the speech went on to its end
 
 
+@pytest.mark.realtime
 def test_a_stop_without_a_name_stops_every_stream_and_tells_the_listeners(memory):
     heard: list[tuple[int, float]] = []
     memory.output.listeners.append(
