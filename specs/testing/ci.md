@@ -11,7 +11,7 @@ tests:
 
 # Continuous integration
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
@@ -73,7 +73,7 @@ A second workflow, `.github/workflows/e2e-windows.yml`, runs the live tier on Wi
 - **Started by hand only** (`workflow_dispatch`; the Actions tab's "Run workflow", or `gh workflow run e2e-windows.yml`), never on a pull request or a push: about 20 minutes cold per version, and more moving parts (WSL, a systemd-managed Docker Engine, firewalls) than a pull request should wait on. Its own file, so that starting it runs it alone, not the whole of `ci.yml`. Worth starting before a release, and after a change to Windows-sensitive code (`cli.py`, `stack.py`, `docker_images.py`, `files.py`, `docker/compose.yaml`).
 - **One runner per NAOqi version**, side by side (`fail-fast: false`): its `versions` input is `both` (the default), `2.1` or `2.8`.
 - **Steps**: sync; Mesa's OpenGL next to the base `python.exe` (as naoqi-viewer's Windows fast tier) for the headless viewer; Ubuntu 24.04 under WSL 2 with `docker.io`; a Windows Firewall rule for 9562 and 9563 and WSL's Hyper-V firewall letting inbound traffic in, then a WSL restart; systemd's `dockerd` configured with a TCP socket (`"tls": false`) and `host-gateway-ip` at WSL's gateway, so the containers' `host.docker.internal` is Windows; Windows' Docker CLI at the WSL VM's address (`DOCKER_HOST`), with the buildx plugin; `naoqi-sim fetch-and-build-images <version>` from Windows; `uv run pytest tests-e2e -rs` with `NAOQI_SIM_E2E_VERSION`. Free disk is printed before and after the build.
-- **No image cache** yet: each run fetches and builds, as on a user's machine.
+- **No image cache** yet: each run fetches and builds, as on a user's machine. Measured cold ([run 38410829728](https://github.com/funwithagents/naoqi-sim/actions/runs/38410829728)): 17 minutes for 2.1 (54 passed, 6 skipped) and 19 for 2.8 (55 passed, 5 skipped); 2.8 leaves 21 GB in WSL's virtual disk, with 32 GB free on `C:` before the run.
 - **Expected skips**: the audio loopback tests (no virtual sound device on Windows), the sim window (no display), and as on Linux the sound set and, on 2.1, the `languageTTS` test. Any other skip is a fault.
 - Not a required check. The macOS live tier has no counterpart: GitHub's macOS runners give a Linux VM no nested virtualization to start in (as far as known, not probed) and have no OpenGL, so it runs on developers' Macs.
 

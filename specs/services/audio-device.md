@@ -15,7 +15,7 @@ tests:
 
 # ALAudioDevice replacement
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 

@@ -16,10 +16,6 @@ on:
         type: choice
         options: [both, "2.1", "2.8"]
         default: both
-  # TEMPORARY, for the pull request that adds this workflow: a manual-only workflow can be started
-  # only once it is on main. Removed before merging.
-  push:
-    branches: [windows-live-fixes]
 
 jobs:
   e2e-windows:

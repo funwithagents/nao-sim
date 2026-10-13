@@ -1,6 +1,6 @@
 # Windows: what a live run against real containers found
 
-**Status:** In progress
+**Status:** Done
 
 Implements [cli.md](../specs/runtime/cli.md) ("How `run` hears Ctrl-C": Ctrl-Break on Windows), [audio-output.md](../specs/host/audio-output.md) (one end per tick) and [audio-device.md](../specs/services/audio-device.md) (2.8's subscribe waits 10 s) and records in [container.md](../specs/container/container.md) what running the live tier on GitHub's Windows runner showed. A one-off workflow on a scratch branch ran naoqi-sim's host side on Windows against NAOqi 2.1 in Docker Engine inside WSL 2 (not Docker Desktop); it is not part of CI.
 
@@ -27,4 +27,5 @@ Implements [cli.md](../specs/runtime/cli.md) ("How `run` hears Ctrl-C": Ctrl-Bre
 ## Verification
 
 - Locally on macOS: lint, format, types, the fast tier (290 passed, the Windows-only test skipped).
-- The one-off Windows run after the fixes, and the regular CI on the pull request.
+- `e2e-windows.yml` green on both versions ([run 38410829728](https://github.com/funwithagents/naoqi-sim/actions/runs/38410829728): 2.1 54 passed, 2.8 55 passed, the expected skips), through its temporary trigger, then removed.
+- The pull request's CI green ([run 38410822398](https://github.com/funwithagents/naoqi-sim/actions/runs/38410822398)): fast tier Linux 290 and macOS 202 (the Ctrl-Break test skipped), Windows 203; live 2.1 and 2.8 58 passed each.
