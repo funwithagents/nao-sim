@@ -1,0 +1,132 @@
+# The live tier on Windows, started by hand — specs/testing/ci.md, "The Windows live tier".
+#
+# naoqi-sim's host side runs on Windows against NAOqi in Docker Engine inside WSL 2, one runner
+# per NAOqi version: Linux containers on GitHub's Windows runner (specs/container/container.md,
+# "Linux containers on GitHub's Windows runner"). It is not Docker Desktop, which users run.
+# Not part of ci.yml: about 20 minutes cold per version, and more moving parts than a pull request
+# should wait on. Start it before a release, or after a change to Windows-sensitive code.
+
+name: Windows live tier
+
+on:
+  workflow_dispatch:
+    inputs:
+      versions:
+        description: NAOqi versions to run
+        type: choice
+        options: [both, "2.1", "2.8"]
+        default: both
+  # TEMPORARY, for the pull request that adds this workflow: a manual-only workflow can be started
+  # only once it is on main. Removed before merging.
+  push:
+    branches: [windows-live-fixes]
+
+jobs:
+  e2e-windows:
+    name: Windows live tier, NAOqi ${{ matrix.version }}
+    runs-on: windows-2025
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON((inputs.versions || 'both') == 'both' && '["2.1", "2.8"]' || format('["{0}"]', inputs.versions)) }}
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      # This version only, and a missing image or Docker fails instead of skipping.
+      NAOQI_SIM_E2E_VERSION: ${{ matrix.version }}
+      # Mesa for Windows: OpenGL for the headless viewer on a GPU-less runner, as naoqi-viewer's
+      # Windows fast tier; pinned with its SHA-256, bumped on purpose.
+      MESA_WIN_URL: https://github.com/pal1000/mesa-dist-win/releases/download/26.2.3/mesa3d-26.2.3-release-msvc.7z
+      MESA_WIN_SHA256: 3f3613adb43cfd0f2e665ce2400b130c275f0b3317cb3a05566320a3a67589ed
+      # The buildx plugin Compose builds with, which Windows' Docker CLI lacks.
+      BUILDX_WIN_URL: https://github.com/docker/buildx/releases/download/v0.37.1/buildx-v0.37.1.windows-amd64.exe
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Sync (against the lock)
+        run: uv sync --locked
+
+      - name: Disk
+        run: Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n="Free GB"; e={[math]::Round($_.Free / 1GB, 1)}}, @{n="Used GB"; e={[math]::Round($_.Used / 1GB, 1)}}
+
+      - name: Mesa's OpenGL for the headless viewer
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/mesa.7z" "$MESA_WIN_URL"
+          echo "$MESA_WIN_SHA256  $RUNNER_TEMP/mesa.7z" | sha256sum -c -
+          python_dir=$(uv run python -c "import sys; sys.stdout.write(sys.base_prefix)")  # no CRLF
+          7z e -y "$RUNNER_TEMP/mesa.7z" -o"$python_dir" x64/opengl32.dll x64/libgallium_wgl.dll
+          echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
+
+      - name: Ubuntu under WSL 2, with Docker Engine
+        uses: Vampire/setup-wsl@v5
+        with:
+          distribution: Ubuntu-24.04
+          wsl-version: 2
+          additional-packages: docker.io
+
+      # The containers connect out to the host's audio output (9562) and host link (9563): a
+      # Windows Firewall rule, and WSL's Hyper-V firewall letting inbound traffic in, which applies
+      # when the VM starts, hence the restart.
+      - name: Firewalls open for 9562 and 9563, WSL restarted
+        run: |
+          Set-Content -Path "$env:USERPROFILE\.wslconfig" -Value "[wsl2]`nvmIdleTimeout=-1`n[general]`ninstanceIdleTimeout=-1"
+          New-NetFirewallRule -DisplayName "naoqi-sim host" -Direction Inbound -Protocol TCP -LocalPort 9562,9563 -Action Allow | Out-Null
+          Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
+          wsl --shutdown
+          Start-Sleep 5
+
+      # The distribution boots with systemd, whose docker.io dockerd (-H fd://) is configured, not
+      # doubled: a TCP socket for Windows' Docker CLI (Docker 27+ wants TLS turned off explicitly)
+      # and host-gateway at Windows, so the containers' host.docker.internal is the host. The
+      # unit's -H fd:// conflicts with `hosts`: an override drops it. wsl.exe hands its arguments
+      # to a Linux shell, which eats backslashes and `$`: paths are computed here.
+      - name: Docker in WSL, driven from Windows
+        run: |
+          $gateway = (wsl -d Ubuntu-24.04 -u root -- sh -c "ip route show default | cut -d' ' -f3").Trim()
+          "Windows as seen from WSL: $gateway"
+          $config = '{"hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"], "tls": false, "host-gateway-ip": "' + $gateway + '"}'
+          [IO.File]::WriteAllText("$env:RUNNER_TEMP\daemon.json", $config)
+          $daemon = ("$env:RUNNER_TEMP\daemon.json" -replace '^([A-Za-z]):', { "/mnt/" + $_.Groups[1].Value.ToLower() }) -replace '\\', '/'
+          wsl -d Ubuntu-24.04 -u root -- mkdir -p /etc/docker /etc/systemd/system/docker.service.d
+          wsl -d Ubuntu-24.04 -u root -- cp $daemon /etc/docker/daemon.json
+          wsl -d Ubuntu-24.04 -u root -- sh -c "printf '[Service]\nExecStart=\nExecStart=/usr/bin/dockerd --containerd=/run/containerd/containerd.sock\n' > /etc/systemd/system/docker.service.d/naoqi-sim.conf"
+          wsl -d Ubuntu-24.04 -u root -- sh -c "systemctl daemon-reload && systemctl restart docker && systemctl is-active docker"
+          # WSL's localhost relay does not carry dockerd's socket: the VM's own address. It does
+          # carry a container published on 127.0.0.1, as NAOqi's 9559 is.
+          $vm = ((wsl -d Ubuntu-24.04 -u root -- hostname -I).Trim() -split ' ')[0]
+          "DOCKER_HOST=tcp://${vm}:2375" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:DOCKER_HOST = "tcp://${vm}:2375"
+          $plugins = "$env:USERPROFILE\.docker\cli-plugins"
+          New-Item -ItemType Directory -Force $plugins | Out-Null
+          Invoke-WebRequest -UseBasicParsing -OutFile "$plugins\docker-buildx.exe" $env:BUILDX_WIN_URL
+          for ($i = 0; $i -lt 30; $i++) { docker info *> $null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 1 }
+          docker info --format "OSType={{.OSType}} Kernel={{.KernelVersion}}"
+          docker compose version
+          docker buildx version
+
+      - name: Images, built from Windows
+        run: uv run naoqi-sim fetch-and-build-images ${{ matrix.version }}
+
+      - name: Disk after the build
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name, @{n="Free GB"; e={[math]::Round($_.Free / 1GB, 1)}}
+          wsl -d Ubuntu-24.04 -u root -- df -h /
+
+      - name: Live tier
+        timeout-minutes: 45
+        # Warnings and errors print live. There is no audio loopback (no virtual sound device on
+        # Windows) and no display: those tests skip (specs/testing/ci.md, "Expected skips").
+        run: uv run pytest tests-e2e -rs -o log_cli=true --log-cli-level=WARNING
+
+      - name: Container logs
+        if: failure()
+        continue-on-error: true
+        run: |
+          foreach ($c in (docker ps -a --filter name=naoqi-sim- --format "{{.Names}}")) { "::group::$c"; docker logs --tail 300 $c 2>&1; "::endgroup::" }
+          wsl -d Ubuntu-24.04 -u root -- sh -c "journalctl -u docker --no-pager | tail -50"
