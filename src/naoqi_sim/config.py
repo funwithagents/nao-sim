@@ -1,6 +1,6 @@
 """`NaoqiSimConfig`: which simulated NAO to run and which host devices to attach (specs/runtime/config.md).
 
-Follows naoqi-bridge's configuration conventions: frozen dataclasses, one per block; three
+Conventions: frozen dataclasses, one per block; three
 constructors on every class (`from_dict`, `from_json`, `from_json_file`) sharing one
 validation path; unknown keys are errors; a `ConfigError` names the key path. A default is
 declared once, on the dataclass field: a parser passes only the keys present. Imports neither

@@ -1,5 +1,5 @@
 """The robot's microphones on each NAOqi version, as an audio client hears them: it registers a
-service with `processRemote` and subscribes to `ALAudioDevice`, as naoqi-bridge does, while the test
+service with `processRemote` and subscribes to `ALAudioDevice`, as an audio client does on a NAO, while the test
 plays sounds through the fake audio source (the live tier runs it). The buffers come through the
 host link, the Python 2.7 replacement and the native relay."""
 

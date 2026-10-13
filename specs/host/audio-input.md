@@ -35,7 +35,7 @@ The `audio_input` block picks one:
 | `source` | Audio |
 | --- | --- |
 | `none` (default) | Nothing: the host link is not opened, `ALAudioDevice` accepts subscriptions and delivers nothing, `NaoqiSim/Audio/Source` stays `none` |
-| `fake` | A quiet room in which code plays sounds: silence, plus what a test (or naoqi-bridge's `sim` backend) plays through `NaoqiSim.fake_audio`. The source CI tests on every run |
+| `fake` | A quiet room in which code plays sounds: silence, plus what a test (or any program that runs the sim) plays through `NaoqiSim.fake_audio`. The source CI tests on every run |
 | `mic` | The host's default input device |
 
 #### The fake source

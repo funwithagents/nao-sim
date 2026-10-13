@@ -24,7 +24,7 @@ tests:
 
 The desktop `naoqi-bin` has no `ALSystem` and no version key in ALMemory ([container.md](container.md), "Desktop NAOqi facts"), so a client has no standard way to learn what it is talking to. The `NaoqiSim` service is naoqi-sim's identity: its existence says the target is naoqi-sim, it reports the naoqi-sim and NAOqi versions, publishes which host devices are attached (camera, microphone), and says whether boot is complete. The Docker healthcheck is built on it, and so will `naoqi-sim run` and `naoqi-sim status` be.
 
-It is also a contract with the other packages of the toolkit: naoqi-viewer's pose source identifies a target as `naoqi-sim` when the `NaoqiSim` service exists, and reads the NAOqi version it shows from `NaoqiSim/NaoqiVersion`; naoqi-bridge plans its target info the same way. The service name and these keys do not change without a coordinated release.
+It is also a contract with its clients: naoqi-viewer's pose source identifies a target as `naoqi-sim` when the `NaoqiSim` service exists, and reads the NAOqi version it shows from `NaoqiSim/NaoqiVersion`, and any client can tell naoqi-sim from a NAO the same way. The service name and these keys do not change without a coordinated release.
 
 ## Decided
 

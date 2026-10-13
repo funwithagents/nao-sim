@@ -144,8 +144,8 @@ class Chunk:
 
 
 class Listener:
-    """A client's audio service: registered on a session, subscribed to ALAudioDevice like
-    naoqi-bridge's microphone, recording every buffer with its arrival time."""
+    """A client's audio service: registered on a session, subscribed to ALAudioDevice as
+    on a NAO, recording every buffer with its arrival time."""
 
     count = 0
 

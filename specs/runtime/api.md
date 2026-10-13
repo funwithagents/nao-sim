@@ -30,8 +30,7 @@ tests:
 
 - the `naoqi-sim` CLI ([cli.md](cli.md)), whose `run` loads a config file, starts a `NaoqiSim` and stays in the foreground;
 - the live tests (`tests-e2e/`), which build their stacks from configs instead of driving `docker compose` themselves;
-- naoqi-bridge's `sim` backend (`{"backend": "sim", "sim": {…}}`, the block a `NaoqiSimConfig`), which awaits a `NaoqiSim`'s start, connects its ordinary qi backend to `url` and stops it with the bridge; it has no other sim-specific behaviour;
-- any Python caller that wants a NAO for the duration of a script or a test.
+- any Python caller that wants a NAO for the duration of a script, a test or an application: it either awaits a `NaoqiSim`'s start and stops it when done, or uses the naoqi-sim already running on the machine (found with `read_status()`, below) and leaves it running; either way it then talks to the robot with its ordinary qi client, as to a NAO.
 
 It replaces the overview's "one host process started by `naoqi-sim up`" (now `naoqi-sim run`): the host services are what a running `NaoqiSim` owns. A client of the simulated robot never needs it: once started, naoqi-sim is reached at `sim.url` with any qi client, as a NAO.
 
@@ -47,7 +46,7 @@ It replaces the overview's "one host process started by `naoqi-sim up`" (now `na
 
 ### Lifecycle
 
-The API is **async**, as `NaoqiBridge`: `await sim.start()`, `await sim.stop()`, `async with NaoqiSim(...) as sim:`. Blocking work (Docker, qi calls) runs in `asyncio.to_thread`; the host devices run on their own threads, so nothing they do blocks the caller's event loop. naoqi-bridge's `sim` backend awaits it directly; the CLI wraps it in `asyncio.run`.
+The API is **async**: `await sim.start()`, `await sim.stop()`, `async with NaoqiSim(...) as sim:`. Blocking work (Docker, qi calls) runs in `asyncio.to_thread`; the host devices run on their own threads, so nothing they do blocks the caller's event loop. An async caller awaits it directly; the CLI wraps it in `asyncio.run`.
 
 **`await start()`** runs these steps in order, and returns once the robot is ready:
 
@@ -64,7 +63,7 @@ The API is **async**, as `NaoqiBridge`: `await sim.start()`, `await sim.stop()`,
 5. **Simulated world**: when the config calls for it ([viewer.md](../host/viewer.md), "Which viewer runs"), build a `NaoqiViewer` in sim mode from the `viewer` block and `url`, and `launch()` it (in `asyncio.to_thread`; naoqi-viewer's API is synchronous). Its `LaunchError` fails the start like any other step.
 6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer. Each writes its `NaoqiSim/*/Source` key. The audio input serves the host link from then on; a fake source also listens to the audio output, so the robot hears its own voice ([audio-input.md](../host/audio-input.md), "The robot hears itself").
 
-**The window closed by the user** stops the viewer only: the robot keeps running, as a NAO does when nobody watches it, so a naoqi-bridge app or a test that owns the `NaoqiSim` never loses its robot to a click. A `NaoqiSim` notices it from a thread waiting on the viewer (`NaoqiViewer.wait()`) and logs it once, at warning level, saying the robot is still running; it does not reopen the window. What the render camera does then is the video input's business ([video-input.md](../host/video-input.md)).
+**The window closed by the user** stops the viewer only: the robot keeps running, as a NAO does when nobody watches it, so an application or a test that owns the `NaoqiSim` never loses its robot to a click. A `NaoqiSim` notices it from a thread waiting on the viewer (`NaoqiViewer.wait()`) and logs it once, at warning level, saying the robot is still running; it does not reopen the window. What the render camera does then is the video input's business ([video-input.md](../host/video-input.md)).
 
 If any step fails, everything already started is stopped, in reverse order, and the error propagates. Calling `start()` on a running `NaoqiSim` raises `NaoqiSimError`.
 

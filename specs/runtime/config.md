@@ -17,9 +17,9 @@ tests:
 
 ## Purpose
 
-One declarative description of *which simulated NAO to run and which devices to attach to it*. A [`NaoqiSim`](api.md) is built from it, the `naoqi-sim` CLI loads it from a file, and naoqi-bridge's `sim` backend embeds it. Today the same facts are spread over `docker compose` profiles, environment variables (`NAOQI_SIM_VERSION`, `NAOQI_SIM_TTS_ENGINE`) and the audio output's flags; a config file makes a setup reproducible and lets a test, a CLI user and naoqi-bridge describe the same stack the same way.
+One declarative description of *which simulated NAO to run and which devices to attach to it*. A [`NaoqiSim`](api.md) is built from it, the `naoqi-sim` CLI loads it from a file, and a program that runs a simulated NAO can embed it in its own config. Today the same facts are spread over `docker compose` profiles, environment variables (`NAOQI_SIM_VERSION`, `NAOQI_SIM_TTS_ENGINE`) and the audio output's flags; a config file makes a setup reproducible and lets a test, a CLI user and a Python program describe the same stack the same way.
 
-It follows naoqi-bridge's configuration conventions on purpose (its `specs/config.md`), so the two packages' files look alike and a naoqi-sim config can be pasted into a naoqi-bridge one unchanged.
+Its conventions (frozen dataclasses, three loaders sharing one validation path, unknown keys rejected, errors naming the key path; below) keep it self-contained, so a naoqi-sim config can be pasted unchanged into a larger JSON config and loaded from there with `NaoqiSimConfig.from_dict`.
 
 This config is the **host-level** description. The container keeps its own interface, the entrypoint's environment variables ([container.md](../container/container.md), "Entrypoint"); `NaoqiSim` generates the compose environment from the config, and nobody writes those variables by hand any more.
 
@@ -144,12 +144,12 @@ The config accepts every source value from the start (`webcam`, `render`, `mic`,
 
 ### File format
 
-JSON, as naoqi-bridge: a `sim` block is pasted between a naoqi-sim file and a naoqi-bridge file unchanged, which a second format would break. The example files carry no comments; what each one is for is listed below and in the README.
+JSON: a naoqi-sim file is pasted into another program's JSON config unchanged, and back, which a second format would break. The example files carry no comments; what each one is for is listed below and in the README.
 
 ### Embedding in other configs
 
 - The `naoqi-sim` CLI reads a `NaoqiSimConfig` file as is (`naoqi-sim run --config sim.json`, see [cli.md](cli.md)).
-- naoqi-bridge's `sim` backend (`"backend": "sim"`) embeds it as its `sim` block, exactly a `NaoqiSimConfig`, so a block can be copied between a naoqi-sim file and a naoqi-bridge file. naoqi-bridge imports `NaoqiSimConfig` from `naoqi_sim` (lazily, behind its `[sim]` extra); naoqi-sim never imports naoqi-bridge.
+- Another program embeds it as one block of its own config, exactly a `NaoqiSimConfig`: a naoqi-sim file pastes in unchanged and copies back out unchanged. The program hands that block to `NaoqiSimConfig.from_dict`, imported from `naoqi_sim.config` (which imports neither qi nor the devices' libraries); naoqi-sim knows nothing of the enclosing config.
 
 ### Example files
 

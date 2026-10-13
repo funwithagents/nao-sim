@@ -58,11 +58,11 @@ When the extra is needed and missing, `NaoqiSim.start()` fails before starting a
 
 ### Window closed
 
-Closing the sim window stops the viewer only; the robot keeps running, and the `NaoqiSim` logs it once and does not reopen the window ([api.md](../runtime/api.md), "Lifecycle"). A NAO does not stop when nobody watches it, and a naoqi-bridge app or a test that owns the `NaoqiSim` must not lose its robot to a click. Ctrl-C (or `NaoqiSim.stop()`) stops the run.
+Closing the sim window stops the viewer only; the robot keeps running, and the `NaoqiSim` logs it once and does not reopen the window ([api.md](../runtime/api.md), "Lifecycle"). A NAO does not stop when nobody watches it, and an application or a test that owns the `NaoqiSim` must not lose its robot to a click. Ctrl-C (or `NaoqiSim.stop()`) stops the run.
 
 ### Dependency
 
-Through the `naoqi-sim[viewer]` extra, which pulls naoqi-viewer and with it MuJoCo. Without it, naoqi-sim runs with no window and no render camera: every NAOqi API, speech, the audio input and the webcam all work, which suits servers. naoqi-viewer depends on libqi only, never on naoqi-sim, so the chain stays one-way; `naoqi-bridge[sim]` pulls `naoqi-sim[viewer]`, so the full experience stays one install.
+Through the `naoqi-sim[viewer]` extra, which pulls naoqi-viewer and with it MuJoCo. Without it, naoqi-sim runs with no window and no render camera: every NAOqi API, speech, the audio input and the webcam all work, which suits servers. naoqi-viewer depends on libqi only, never on naoqi-sim, so the chain stays one-way.
 
 - naoqi-viewer is not on PyPI: `[tool.uv.sources]` takes it from its GitHub repository (`funwithagents/naoqi-viewer`), pinned to a commit, as the libqi wheels are taken from theirs, and a project depending on naoqi-sim from git gets that pin with it ([project.md](../project.md), "Distribution"). Its meshes, fetched with `naoqi-viewer fetch-meshes`, are shared by every environment on the machine.
 - The dev environment installs the extra, so the code that drives the viewer type-checks against naoqi-viewer's real API; the fast tier never launches it.

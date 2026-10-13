@@ -11,7 +11,7 @@ def services(nao) -> set[str]:
 
 
 def test_basic_awareness_runs_as_on_a_nao(nao):
-    # What a client such as naoqi-bridge's set_basic_awareness does with it.
+    # What a client turning basic awareness on does with it.
     awareness = nao.service("ALBasicAwareness")
     awareness.startAwareness()
     try:

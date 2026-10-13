@@ -4,7 +4,7 @@ naoqi-sim is a NAO in a box. NAOqi (`naoqi-bin` from the user's own Choregraphe 
 
 It is unofficial and MIT-licensed, not affiliated with Aldebaran, and ships no Aldebaran assets.
 
-This overview is the map of the whole project and the authority for naoqi-sim; the toolkit-wide document (naoqi-bridge, naoqi-sim, naoqi-viewer) covers cross-package concerns only and defers to it. Each concept gets its own spec (see [_index.md](_index.md)) when work on it starts; until then, its section here is the reference. Sections whose concept has a spec only summarize it and link to it.
+This overview is the map of the whole project and the authority for naoqi-sim. Each concept gets its own spec (see [_index.md](_index.md)) when work on it starts; until then, its section here is the reference. Sections whose concept has a spec only summarize it and link to it.
 
 ## Goals
 
@@ -20,10 +20,10 @@ This overview is the map of the whole project and the authority for naoqi-sim; t
 | Override modules for the services the desktop NAOqi lacks: speech, audio input, sound files | Reimplementing NAOqi, its walk engine, fall manager, or vision and audio algorithms |
 | Host devices: loudspeaker, microphone or sounds played from code, webcam or rendered camera | A physics simulation driving NAOqi (no simulator interface exists for it) |
 | The simulated world (window, rendered head cameras), through naoqi-viewer's sim mode | ROS / ROS 2, Webots |
-| A capability probe that measures what a NAOqi target offers | Client libraries: they connect to naoqi-sim as to any NAO (naoqi-bridge offers naoqi-sim as its `[sim]` extra and a `sim` backend that runs a `NaoqiSim`; naoqi-sim never depends on it) |
+| A capability probe that measures what a NAOqi target offers | Client libraries: they connect to naoqi-sim as to any NAO (one may also run a `NaoqiSim` itself through the [API](runtime/api.md); naoqi-sim never depends on a client) |
 |  | The NAO model, the meshes and the 3D rendering: naoqi-viewer owns them |
 |  | Perception and speech recognition: no replacement of `ALFaceDetection`, `ALPeoplePerception`, `ALMovementDetection` or `ALSpeechRecognition`; clients run them on the camera and microphone streams |
-|  | Robot packages beyond the `animations` package (sound set, `dialog_*`, dances): the user, or a client such as naoqi-bridge, installs them as on a robot |
+|  | Robot packages beyond the `animations` package (sound set, `dialog_*`, dances): the user, or a client, installs them as on a robot |
 
 ## Architecture
 
@@ -35,7 +35,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | Override modules | Inside NAOqi (Python 2.7, plus one small native relay in C++ where a binary must be sent) | Replace or add NAOqi services in-process, so in-process callers (`ALAnimatedSpeech`, `ALDialog`) and host clients both reach them: `ALTextToSpeech`, `ALAudioDevice`, `ALAudioPlayer`, the `NaoqiSim` status service | [service-replacement.md](container/service-replacement.md); one spec per service in [services/](services/) |
 | `tts` container | Docker, native architecture | Turns text, marker and pause items into audio with exact marker offsets (Piper, eSpeak NG) and streams it to the host | [tts-engine.md](container/tts-engine.md) |
 | Host devices | Host (Python 3), owned by a running `NaoqiSim` | Audio output (plays the PCM it receives); audio, video and touch inputs planned | [devices.md](host/devices.md), one spec per device in [host/](host/) |
-| `NaoqiSim` object and config | Host (Python 3), in the caller's process | Built from a `NaoqiSimConfig`; `start()`/`stop()` run the containers, the host devices and the simulated world. Behind the CLI, the live tests and naoqi-bridge's `sim` backend | [api.md](runtime/api.md), [config.md](runtime/config.md) |
+| `NaoqiSim` object and config | Host (Python 3), in the caller's process | Built from a `NaoqiSimConfig`; `start()`/`stop()` run the containers, the host devices and the simulated world. Behind the CLI, the live tests and any Python program that runs a simulated NAO | [api.md](runtime/api.md), [config.md](runtime/config.md) |
 | Host link | Containers to host, one TCP port | Carries what qi cannot: microphone PCM into `ALAudioDevice`, its subscriptions out | [devices.md](host/devices.md), "The host link" |
 | Simulated world (planned) | Host, naoqi-viewer's own viewer process, started by `NaoqiViewer.launch()` | The NAO model posed from naoqi-sim's NAOqi in a scene, the window, head-camera renders | [viewer.md](host/viewer.md) |
 | `naoqi-sim` CLI | Host | `fetch-and-build-images` (built), `run`, `cleanup`, `status`, `logs`, over the `NaoqiSim` object | [cli.md](runtime/cli.md) |
@@ -65,7 +65,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | CI | Implemented ([ci.md](testing/ci.md)) |
 | Capability probe | Spike scripts only; deferred (see [below](#capability-probe)) |
 | Asset guard | Planned, deferred (see [Licensing](#licensing)) |
-| Perception, speech recognition | Not naoqi-sim's: clients (naoqi-bridge, planned) |
+| Perception, speech recognition | Not naoqi-sim's: clients |
 
 ## Licensing
 
@@ -105,7 +105,7 @@ The **`NaoqiSim` status service** ([status-service.md](container/status-service.
 
 ## Host services
 
-Specified in [devices.md](host/devices.md): the simulated robot's inputs and outputs, as dumb devices owned by a running `NaoqiSim` ([api.md](runtime/api.md)) in the process that started it (`naoqi-sim run`, a test, naoqi-bridge). Each is named after its role and has its own spec in [host/](host/):
+Specified in [devices.md](host/devices.md): the simulated robot's inputs and outputs, as dumb devices owned by a running `NaoqiSim` ([api.md](runtime/api.md)) in the process that started it (`naoqi-sim run`, a test, a Python program). Each is named after its role and has its own spec in [host/](host/):
 
 | Device | Spec | Through |
 | --- | --- | --- |
@@ -154,7 +154,7 @@ Clients get camera images and microphone audio through the standard NAOqi servic
 
 ## Perception and speech recognition: on the clients
 
-naoqi-sim provides what a NAO's hardware provides (camera images, microphone audio, a loudspeaker, touch) through the standard NAOqi services, and replaces no perception or speech recognition module. Face, people and movement detection and speech recognition run in the clients (naoqi-bridge plans them) on the frames they read from `ALVideoDevice` and the audio they read from `ALAudioDevice`, so the same code runs on naoqi-sim and on a real NAO. As a consequence, code that relies on NAOqi's own detectors or recognizer (`FaceDetected` events, `ALDialog`, the Choregraphe face and speech recognition boxes) gets no results on naoqi-sim.
+naoqi-sim provides what a NAO's hardware provides (camera images, microphone audio, a loudspeaker, touch) through the standard NAOqi services, and replaces no perception or speech recognition module. Face, people and movement detection and speech recognition run in the clients on the frames they read from `ALVideoDevice` and the audio they read from `ALAudioDevice`, so the same code runs on naoqi-sim and on a real NAO. As a consequence, code that relies on NAOqi's own detectors or recognizer (`FaceDetected` events, `ALDialog`, the Choregraphe face and speech recognition boxes) gets no results on naoqi-sim.
 
 What was measured on both desktop suites (Oct 8, 2026) stays here as the reference for those clients:
 
@@ -209,7 +209,7 @@ Built as [project.md](project.md) ("Distribution") specifies: another project de
 
 ## Testing
 
-Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tier with no Docker, and an opt-in `tests-e2e/` tier that builds, starts and stops each version's stack itself. CI ([ci.md](testing/ci.md)) runs both on GitHub's hosted `ubuntu-24.04` runners, with no self-hosted runner, as reachy-mini-bridge's CI does: a static gate, the fast tier, and a live matrix over 2.1 and 2.8 that fetches, builds and caches the images itself (never pushed), with a headless viewer and the render camera. Downstream repositories (naoqi-viewer, naoqi-bridge) pin a naoqi-sim commit for their own live jobs; naoqi-sim's CI does not test them.
+Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tier with no Docker, and an opt-in `tests-e2e/` tier that builds, starts and stops each version's stack itself. CI ([ci.md](testing/ci.md)) runs both on GitHub's hosted `ubuntu-24.04` runners, with no self-hosted runner, as reachy-mini-bridge's CI does: a static gate, the fast tier, and a live matrix over 2.1 and 2.8 that fetches, builds and caches the images itself (never pushed), with a headless viewer and the render camera. Downstream repositories (naoqi-viewer, client libraries) pin a naoqi-sim commit for their own live jobs; naoqi-sim's CI does not test them.
 
 ## Milestones
 
@@ -224,7 +224,7 @@ The toolkit document numbers the milestones across the three packages; naoqi-sim
    - Exit: a vision script and an audio script written against the standard NAOqi services run unchanged on naoqi-sim.
 5. **NAOqi 2.8 validation** (toolkit 8): the capability probe and its committed reports for 2.1 and 2.8.
 
-Perception and speech recognition are naoqi-bridge milestones (see the toolkit document); naoqi-sim's part is the camera and microphone of milestone 4.
+Perception and speech recognition are the clients' ([Perception and speech recognition](#perception-and-speech-recognition-on-the-clients)); naoqi-sim's part is the camera and microphone of milestone 4.
 
 ## Open questions and risks
 

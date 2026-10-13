@@ -26,8 +26,8 @@ The host-side front door: the config, the `NaoqiSim` object and the `naoqi-sim` 
 
 | Spec | Description | Status |
 |---|---|---|
-| [config.md](runtime/config.md) | `NaoqiSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with its frame rate, viewer with its scene and variant), naoqi-bridge's loader conventions (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embedded as naoqi-bridge's `sim` block, JSON | Implemented |
-| [api.md](runtime/api.md) | The `NaoqiSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and naoqi-bridge's `sim` backend | Implemented |
+| [config.md](runtime/config.md) | `NaoqiSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with its frame rate, viewer with its scene and variant), loaders (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embeddable as a block of another program's config, JSON | Implemented |
+| [api.md](runtime/api.md) | The `NaoqiSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and any Python caller | Implemented |
 | [cli.md](runtime/cli.md) | The `naoqi-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Implemented |
 
 ### Containers: `container/`
