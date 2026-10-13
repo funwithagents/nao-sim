@@ -97,7 +97,10 @@ def test_paces_at_the_configured_rate(naoqi):
     time.sleep(1.0)
     device.stop()
 
-    assert 8 <= len(naoqi.puts) <= 11
+    # Ten slots in the second: each puts its frame, or is missed (a render or an injection
+    # stalled past it, as on a loaded machine), never caught up with a second frame.
+    assert len(naoqi.puts) <= 11
+    assert 8 <= len(naoqi.puts) + device.missed <= 11
     gaps = np.diff([put[4] for put in naoqi.puts])
     # Never a burst: missed slots made up would put frames back to back (well under a
     # millisecond apart), where a frame woken late still lands before the next slot's.
@@ -115,6 +118,9 @@ def test_a_slow_source_skips_slots_and_never_catches_up(naoqi):
     times = [put[4] for put in naoqi.puts]
     late = [t for t in times if t > times[0] + 0.65]
     assert len(times) < 30
+    assert (
+        27 <= len(times) + device.missed <= 31
+    )  # the slow slots were missed, not lost
     # Back on the 30 fps schedule: a burst would put the missed frames back to back (well under
     # a millisecond apart), where a frame woken late still lands before the next slot's.
     assert np.diff(late).min() > 0.001

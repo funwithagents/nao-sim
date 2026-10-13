@@ -22,7 +22,8 @@ Implements [project.md](../specs/project.md) ("libqi", "Platforms", "Distributio
 - `tests/fake_docker.py`: a `docker.cmd` on Windows; a slow `up` (`up_s`); reads retried over a half-written state
 - `tests/test_sim.py`, `tests/test_cli.py`, `tests/test_stack.py`: ports from `tests/ports.py`; the cancelled start with a slow `up`
 - `tests/test_audio_output.py`: late wake-ups don't drift the mix; `playing_until` mid-play within the measured lateness
-- `tests/test_video_input.py`: "no burst" as no two frames back to back
+- `src/naoqi_sim/video_input.py`: `missed`, the slots that put no frame
+- `tests/test_video_input.py`: "no burst" as no two frames back to back; the schedule as frames put plus `missed`
 - `tests-e2e/conftest.py`: the live tier forced serial
 - `tests/test_cli.py`: `run` driven through the loop's signal handlers and without them; Ctrl-C by `signal.raise_signal`
 - `tests/test_stack.py`: a failed connect is not retried

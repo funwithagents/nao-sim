@@ -61,7 +61,7 @@ class VideoInput:
     ):
         self._source = source
         self._period = 1.0 / fps
-        self._connect = connect or (lambda: stack.connect())  # a qi session, retried
+        self._connect = connect or (lambda: stack.connect())  # a qi session
         self._session: Any = None
         self._video: Any = None
         self._memory: Any = None
@@ -70,6 +70,9 @@ class VideoInput:
         self._frame: np.ndarray | None = None
         self._failing: set[str] = set()
         self._threads: list[threading.Thread] = []
+        # Slots of the schedule that put no frame into NAOqi: skipped by a render that ran late,
+        # or replaced by the next frame before injection. Slots put + missed = the schedule.
+        self.missed = 0
 
     def start(self) -> None:
         self._session = self._connect()
@@ -118,12 +121,16 @@ class VideoInput:
             else:
                 self._succeeded("render")
                 with self._ready:
+                    if self._frame is not None:  # not injected yet: replaced
+                        self.missed += 1
                     self._frame = image
                     self._ready.notify_all()
             due += self._period
             late = time.monotonic() - due
             if late >= 0:
-                due += (int(late / self._period) + 1) * self._period
+                skipped = int(late / self._period) + 1
+                self.missed += skipped
+                due += skipped * self._period
 
     def _inject(self) -> None:
         while True:
