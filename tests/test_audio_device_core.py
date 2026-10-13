@@ -62,21 +62,37 @@ class Host:
 
 
 class Relay:
-    """Stands in for _NaoqiSimAudioRelay: records each delivery per subscriber."""
+    """Stands in for _NaoqiSimAudioRelay: records each delivery per subscriber. Like the real
+    relay, it keeps a proxy per name until told to forget it, and a proxy to a service that a
+    client has since registered again under that name reaches the destroyed one."""
 
     def __init__(self):
         self.got: dict[str, list[tuple]] = {}
         self.block: set[str] = set()
         self.fail: set[str] = set()
         self.forgotten: list[str] = []
+        # name -> how often it was registered again; and the registration its proxy reaches
+        self.registered: dict[str, int] = {}
+        self._proxies: dict[str, int] = {}
         self.release = threading.Event()
         self.changed = threading.Condition()
+
+    def register_again(self, name: str) -> None:
+        """A client registers a new service under `name`, the old one destroyed."""
+        self.registered[name] = self.registered.get(name, 0) + 1
+
+    def forget(self, name: str) -> None:
+        self.forgotten.append(name)
+        self._proxies.pop(name, None)
 
     def deliver(self, name, channels, samples, stamp, buffer):
         if name in self.block:
             self.release.wait(5)
         if name in self.fail:
             raise RuntimeError("subscriber gone")
+        current = self.registered.get(name, 0)
+        if self._proxies.setdefault(name, current) != current:
+            raise RuntimeError(f"{name}::processRemote module destroyed")
         with self.changed:
             self.got.setdefault(name, []).append((channels, samples, stamp, buffer))
             self.changed.notify_all()
@@ -111,7 +127,7 @@ def device(link, monkeypatch):
     dev = core.AudioDevice(
         relay.deliver,
         exists=lambda name: name in SERVICES,
-        forget=relay.forgotten.append,
+        forget=relay.forget,
         address=f"127.0.0.1:{hostlink.port}",
         log=lambda msg: None,
     )
@@ -284,7 +300,39 @@ def test_a_subscriber_that_keeps_failing_is_dropped(device, monkeypatch):
     while "Gone" in dev.subscribers() and time.time() < deadline:
         time.sleep(0.01)
     assert dev.subscribers() == {"Front": FRONT}
-    assert relay.forgotten == ["Gone"]
+    assert relay.forgotten.count("Gone") == 2  # at its subscribe, and when dropped
+
+
+def test_a_client_registering_again_under_the_same_name_gets_the_buffers(device):
+    """Twice in a row: each new registration of the name, subscribed after an unsubscribe,
+    receives the buffers (the relay must not keep reaching the destroyed service)."""
+    dev, host, relay = device
+    for round in range(3):
+        if round:
+            dev.unsubscribe("Front")
+            host.wait_need(lambda n: n["formats"] == [])
+            relay.register_again("Front")
+        dev.set_preferences("Front", 16000, 3, 0)
+        dev.subscribe("Front")
+        host.wait_need(lambda n: len(n["formats"]) == 1)
+        before = len(relay.got.get("Front", []))
+        host.pcm(FRONT, 1, 1, bytes([round, 0]))
+        assert relay.wait("Front", before + 1)[-1][3] == bytes([round, 0])
+    assert dev.subscribers() == {"Front": FRONT}
+
+
+def test_a_client_that_died_and_registered_again_gets_the_buffers(device):
+    """No unsubscribe: the name is still subscribed when the new service subscribes it."""
+    dev, host, relay = device
+    dev.set_preferences("Front", 16000, 3, 0)
+    dev.subscribe("Front")
+    host.wait_need(lambda n: len(n["formats"]) == 1)
+    host.pcm(FRONT, 1, 1, b"\x01\x00")
+    relay.wait("Front", 1)
+    relay.register_again("Front")
+    dev.subscribe("Front")
+    host.pcm(FRONT, 1, 1, b"\x02\x00")
+    assert relay.wait("Front", 2)[-1][3] == b"\x02\x00"
 
 
 def test_a_few_early_failures_do_not_drop_a_subscriber(device):

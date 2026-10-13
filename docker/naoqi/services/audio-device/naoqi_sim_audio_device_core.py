@@ -154,7 +154,8 @@ class AudioDevice(object):
 
     deliver(name, nbOfChannels, nbOfSamplesByChannel, timeStamp, buffer): the relay's call.
     exists(name): whether a service by that name is registered.
-    forget(name): tells the relay to drop its proxy to a subscriber that went away."""
+    forget(name): tells the relay to drop its proxy to a subscriber, so the next delivery to that
+    name reaches the service holding it then (called on unsubscribe, subscribe and failure)."""
 
     def __init__(self, deliver, exists, forget=None, address=HOST_LINK, log=_stderr, start=True):
         self._deliver = deliver
@@ -180,10 +181,13 @@ class AudioDevice(object):
 
     def subscribe(self, name):
         with self._lock:
-            if name in self._subscribers:
-                return
-        if not self._exists(name):
+            subscribed = name in self._subscribers
+        if not subscribed and not self._exists(name):
             raise RuntimeError("ALAudioDevice.subscribe: no module or service named %r" % name)
+        # Whoever holds the name now gets the buffers: a client may have registered it again
+        # (after an unsubscribe, or after dying without one), and the relay's proxy would still
+        # reach the service it replaced.
+        self._forget_proxy(name)
         with self._lock:
             if name in self._subscribers:
                 return
@@ -197,6 +201,7 @@ class AudioDevice(object):
         if sub is not None:
             sub.stop()
             self.link.send_need()
+            self._forget_proxy(name)
 
     def subscribers(self):
         with self._lock:
@@ -209,11 +214,14 @@ class AudioDevice(object):
                 del self._subscribers[name]
                 sub._stopped = True
         self.link.send_need()
+        self._forget_proxy(name)
+
+    def _forget_proxy(self, name):
         if self._forget is not None:
             try:
                 self._forget(name)
-            except Exception:
-                pass
+            except Exception as e:  # the relay keeps a stale proxy: the next subscribe retries
+                self._log("%s: the relay could not forget its proxy (%s)" % (name, e))
 
     # --- Energy -------------------------------------------------------------------------------
 

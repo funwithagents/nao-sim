@@ -184,3 +184,35 @@ def test_a_client_that_disappears_does_not_disturb_another(nao, listen):
     since = time.monotonic()
     time.sleep(1.0)
     assert 10 <= len(staying.received(since=since)) <= 13
+
+
+def test_a_client_subscribing_again_under_the_same_name_hears(nao):
+    """A client's audio service, unsubscribed, unregistered and its session closed, then the
+    same again from a new session under the same name: each session hears, twice in a row."""
+    name = "NaoqiSimE2EAgain"
+    for _ in range(3):
+        session = connect(nao.sim.url)
+        listener = Listener(session, name).subscribe(*FRONT_16K)
+        try:
+            assert len(listener.wait(3, timeout=5)) >= 3
+        finally:
+            listener.close()
+            session.close()
+
+
+def test_a_client_that_died_and_registers_again_hears(nao):
+    """As above, without unsubscribing: the session closes with the name still subscribed."""
+    name = "NaoqiSimE2EReborn"
+    gone = connect(nao.sim.url)
+    Listener(gone, name).subscribe(*FRONT_16K).wait(2)
+    gone.close()
+    session = connect(nao.sim.url)
+    listener = Listener(session, name).subscribe(*FRONT_16K)
+    try:
+        time.sleep(0.5)
+        since = time.monotonic()
+        time.sleep(1.0)
+        assert len(listener.received(since=since)) >= 10  # about 11.7 per second
+    finally:
+        listener.close()
+        session.close()

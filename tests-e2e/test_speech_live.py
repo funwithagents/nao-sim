@@ -205,3 +205,18 @@ def test_set_language_emits_language_tts(nao):
         tts.languageTTS.disconnect(link)
 
     assert got == ["French", "English"]
+
+
+def test_a_language_that_is_not_installed_is_refused(nao):
+    tts = nao.service("ALTextToSpeech")
+    tts.setLanguage("French")
+    try:
+        assert "Klingon" not in tts.getAvailableLanguages()
+        with pytest.raises(RuntimeError, match="Klingon"):
+            tts.setLanguage("Klingon")
+        assert tts.getLanguage() == "French"
+        with pytest.raises(RuntimeError, match="Klingon"):
+            tts.say("nuqneH", "Klingon")
+        assert tts.getLanguage() == "French"
+    finally:
+        tts.setLanguage("English")

@@ -37,8 +37,8 @@ The module routes audio; it does no signal processing. The host produces every f
 | Method | Behavior |
 | --- | --- |
 | `setClientPreferences(name, sampleRate, channels, deinterleaved)` | Stores the format for `name`, taken into account at its next `subscribe` (as NAOqi's documentation says). Without a call, a subscriber gets the default: 48 kHz, all channels, interleaved |
-| `subscribe(name)` | Starts delivering to the service `name` (a module or a service a client registered). `name` must exist: a name no service holds raises (on 2.8 after waiting up to 3 s for it, see "As measured"). Subscribing a name already subscribed is a no-op |
-| `unsubscribe(name)` | Stops delivering to it; an unknown name is a no-op |
+| `subscribe(name)` | Starts delivering to the service `name` (a module or a service a client registered). `name` must exist: a name no service holds raises (on 2.8 after waiting up to 10 s for it, see "As measured"). Subscribing a name already subscribed keeps its subscription and format, and its buffers now reach whichever service holds the name ("A name registered again") |
+| `unsubscribe(name)` | Stops delivering to it, and the relay forgets its proxy; an unknown name is a no-op |
 | `enableEnergyComputation()`, `disableEnergyComputation()` | Energy is computed only while enabled, with or without subscribers |
 | `getFrontMicEnergy()`, `getRearMicEnergy()`, `getLeftMicEnergy()`, `getRightMicEnergy()` | The last energy the host computed for that microphone, in [0, 32768]; `0.0` while disabled |
 | `openAudioInputs()`, `closeAudioInputs()` | No-ops: capture follows the subscribers |
@@ -62,6 +62,7 @@ The formats are those of NAOqi's documentation (the 2.1 suite's offline docs, `a
 - **Through the native relay.** The delivery thread calls `_NaoqiSimAudioRelay.deliver(name, nbOfChannels, nbOfSamplesByChannel, timeStamp, buffer)` with the PCM as a Python string; the relay calls the subscriber's `processRemote(nbOfChannels, nbOfSamplesByChannel, timeStamp, buffer)` with the buffer as a binary, so a libqi 3 client receives a `bytearray` as from a NAO. 2.1 reaches the relay with `naoqi.ALProxy`, 2.8 through the module's own `qi.Session` (both measured, see "As measured").
 - **Timestamps.** Each buffer is stamped on arrival in the container, `[seconds, microseconds]` of the container's clock, since `processRemote`'s `timeStamp` is the robot's time, comparable to NAOqi's other timestamps.
 - **A subscriber that goes away.** Three consecutive failed deliveries to a name spanning at least 2 s (a client disconnected without unsubscribing) unsubscribe it, logged, and the relay is told to forget its proxy. The 2 s keep a new subscriber that the relay cannot reach yet (2.8, "As measured") from being dropped.
+- **A name registered again.** The relay keeps a proxy per subscriber name, which reaches the service that held the name when it was made: if a client registers a new service under the same name, the old proxy reaches a destroyed module. So the relay is told to forget a name's proxy on every `unsubscribe` and every `subscribe` (also of a name still subscribed, for a client that died without unsubscribing and registered again), and the next delivery reaches the service holding the name then. Both versions deliver through the relay; the module's own `qi.Session` only finds the relay and checks that a name exists, asking for the service each time, so it keeps no handle to a subscriber. (Found by a client's live tests: before this, every other session of a client reusing its name was deaf.)
 - **No host source.** With no host link, or while the host has no source (`NaoqiSim/Audio/Source` is `none`), subscriptions are accepted and nothing is delivered.
 
 ### Chunks

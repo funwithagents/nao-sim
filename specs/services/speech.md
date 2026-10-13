@@ -90,7 +90,8 @@ Only a C++ `ALModule` serves `post`/`pCall`, `wait(id)`, `stop(id)` and `isRunni
   - `setParameter("speed"|"defaultVoiceSpeed", N)` sets the rate (percent).
   - `setParameter("pitchShift", x)` sets the pitch (x times 100 when x < 10).
   - `resetSpeed` sets the rate back to 100.
-- **Language**: English and French. `say(text, language)` switches language for that call only (2.1: explicit second binding; 2.8: varargs). `setLanguage` also emits `languageTTS` (2.8).
+- **Language**: English and French, one list (`naoqi_sim_speech_core.LANGUAGES`) answering `getAvailableLanguages` and `getSupportedLanguages`. `say(text, language)` switches language for that call only (2.1: explicit second binding; 2.8: varargs). `setLanguage` also emits `languageTTS` (2.8).
+  - **A language that is not installed raises**, as on a NAO, where clients rely on the error to tell the user a language is missing: `setLanguage` raises a `RuntimeError` naming the language and the available ones, and the language and `languageTTS` stay as they were; `say(text, language)` raises the same way before anything is spoken (the core checks it before starting the call, so the error reaches the front's caller). The names are matched exactly, as `getAvailableLanguages` spells them.
 - **Fallback clock**: if the engine is unreachable, `say()` still blocks for 0.3 s per token and raises bookmarks on that clock, so behaviours keep running without sound.
 - **Stubs**: `setVoice`, `loadVoicePreference`, `setLanguageDefaultVoice`, `enableNotifications`, `disableNotifications` and `sayToFile` are accepted and logged, with no effect. `getVoice` returns `"naoqisim"`; `locale` returns `"en_US"`. 2.8 also has `_pause`, `_resume` and `reset`.
 - **Diagnostics**: `whoami()` names the implementation. Calls are logged as JSON lines to `/home/nao/speech_almodule.jsonl` (2.1) or `/home/nao/speech_qiservice.jsonl` (2.8).

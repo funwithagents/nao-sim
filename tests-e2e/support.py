@@ -149,9 +149,9 @@ class Listener:
 
     count = 0
 
-    def __init__(self, session: qi.Session):
+    def __init__(self, session: qi.Session, name: str | None = None):
         Listener.count += 1
-        self.name = f"NaoqiSimE2EListener{Listener.count}"
+        self.name = name or f"NaoqiSimE2EListener{Listener.count}"
         self.session = session
         self.chunks: list[Chunk] = []
         self._lock = threading.Lock()

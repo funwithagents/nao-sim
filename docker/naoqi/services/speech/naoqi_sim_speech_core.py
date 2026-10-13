@@ -27,6 +27,9 @@ TTS_URL = os.environ.get("NAOQI_SIM_TTS_URL", "http://tts:8080")
 FALLBACK_SECONDS_PER_TOKEN = 0.3
 # Ids for the calls the front makes blocking (no task id): above any task id the broker hands out.
 FIRST_OWN_ID = 1000000
+# The installed languages: getAvailableLanguages, getSupportedLanguages and what setLanguage and
+# say(text, language) accept (the engine's voices, specs/container/tts-engine.md).
+LANGUAGES = ("English", "French")
 
 _TAG = re.compile(r"\\(pau|rspd|vct|mrk|mrkpause|vol|emph|bound|readmode|rst|tn)(?:=([^\\]*))?\\", re.I)
 
@@ -61,6 +64,13 @@ def parse(text, state):
     flush(text[pos:])
     state["rspd"], state["vct"] = rate, pitch
     return items, rate, pitch
+
+
+def check_language(method, lang):
+    """Raises, as a NAO does, for a language that is not installed."""
+    if lang not in LANGUAGES:
+        raise RuntimeError("ALTextToSpeech.%s: language %r is not available (available: %s)"
+                           % (method, lang, ", ".join(LANGUAGES)))
 
 
 class Speaker(object):
@@ -127,6 +137,8 @@ class Speaker(object):
     def say(self, text, sid=None, language=None):
         """Speaks `text` (in `language` for this call only, if given) once its turn comes, and
         returns when the audio is over or the call is stopped."""
+        if language:
+            check_language("say", language)
         if sid is None:
             sid = self.new_id()
         if not self._wait_turn(sid):
@@ -201,7 +213,10 @@ class Speaker(object):
                 self._turn.notify_all()
 
     def start(self, sid, text, language=None):
-        """Runs say() for the front on a thread and returns at once; wait_done() follows it."""
+        """Runs say() for the front on a thread and returns at once; wait_done() follows it. An
+        unknown language raises here, to the caller, before anything is spoken."""
+        if language:
+            check_language("say", language)
         done = threading.Event()
         with self._turn:
             self._running[sid] = done
@@ -226,6 +241,7 @@ class Speaker(object):
         return done is None or done.wait(timeout_s)
 
     def set_language(self, lang):
+        check_language("setLanguage", lang)  # the language and languageTTS stay as they were
         self.language = lang
         self.signal("languageTTS", lang)
 

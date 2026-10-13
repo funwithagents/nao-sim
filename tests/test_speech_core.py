@@ -249,6 +249,32 @@ def test_a_call_speaks_in_the_language_it_was_given_only():
     assert sp.language == "English"
 
 
+def test_set_language_refuses_a_language_that_is_not_installed():
+    sp = FakeEngine(duration=0.0)
+    sp.set_language("French")
+
+    with pytest.raises(RuntimeError, match=r"'Klingon'.*English, French"):
+        sp.set_language("Klingon")
+    assert sp.language == "French"
+    # No languageTTS for the refused one
+    assert sp.signals == [("languageTTS", "French")]
+    sp.say("bonjour", 1)
+    assert sp.engine_calls[-1]["language"] == "French"
+
+
+def test_a_call_in_a_language_that_is_not_installed_raises_unspoken():
+    sp = FakeEngine(duration=0.0)
+
+    with pytest.raises(RuntimeError, match="Klingon"):
+        sp.say("nuqneH", 1, "Klingon")
+    with pytest.raises(RuntimeError, match="Klingon"):
+        sp.start(2, "nuqneH", "Klingon")  # to the front's caller, not on the say thread
+    assert sp.wait_done(2, 0.0) is True
+    assert sp.engine_calls == []
+    assert sp.events == []
+    assert sp.language == "English"
+
+
 def test_stop_by_id_ends_the_speaking_call_and_the_next_one_speaks():
     sp = FakeEngine(duration=0.6)
     first, first_done = say_in_thread(sp, "first", 5)

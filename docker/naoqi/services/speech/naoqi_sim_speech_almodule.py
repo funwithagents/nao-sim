@@ -63,11 +63,11 @@ class NaoqiSimTextToSpeech(ALModule):
 
     def getAvailableLanguages(self):
         """Returns the installed languages."""
-        return ["English", "French"]
+        return list(core.LANGUAGES)
 
     def getSupportedLanguages(self):
         """Returns the supported languages."""
-        return ["English", "French"]
+        return list(core.LANGUAGES)
 
     def setParameter(self, name, value):
         """Sets a parameter (speed, pitchShift...)."""
