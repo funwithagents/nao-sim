@@ -359,7 +359,6 @@ def test_a_cut_stops_the_robots_voice_in_the_room():
     assert not source.read(at + 0.05, 9600).any()  # nothing after the cut
 
 
-@pytest.mark.realtime
 def test_the_robot_is_heard_through_the_audio_output(device):
     """What the audio output plays reaches a subscriber, as on a NAO: nothing mutes it."""
     dev, conn, _ = device()

@@ -74,8 +74,7 @@ extend-exclude = ["docker/naoqi/services", "spike"]
 # Only the fast, deterministic tier is collected by default; tests-e2e/ is opt-in.
 testpaths = ["tests"]
 markers = [
-    "realtime: asserts wall-clock timing to tens of ms; CI deselects it on the macOS runner, whose timers run late (specs/testing/ci.md)",
-    "container_code: tests code that runs in the Linux containers; skipped on Windows (specs/testing/testing.md)",
+    "container_code: tests code that runs in the Linux containers; CI runs it on Linux only, and Windows skips it (specs/testing/testing.md)",
 ]
 
 [tool.pyright]

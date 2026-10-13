@@ -69,7 +69,6 @@ def mix_frames(sink: MemorySink) -> np.ndarray:
 # -- playing a file -----------------------------------------------------------------------
 
 
-@pytest.mark.realtime
 def test_a_file_plays_for_its_length_as_its_own_stream(player, output, tmp_path):
     sink, _ = output
     path = write_wav(tmp_path / "beep.wav", 0.5)
@@ -221,7 +220,6 @@ def test_loaded_files_have_ids_and_names(player, tmp_path):
     assert player.get_loaded_files_ids() == []
 
 
-@pytest.mark.realtime
 def test_play_pause_and_play_again_of_a_loaded_file(player, output, tmp_path):
     sink, _ = output
     fid = player.load_file(write_wav(tmp_path / "a.wav", 0.6))
@@ -241,7 +239,6 @@ def test_play_pause_and_play_again_of_a_loaded_file(player, output, tmp_path):
     assert not p.interrupted and p.duration_s == pytest.approx(0.6)
 
 
-@pytest.mark.realtime
 def test_go_to_jumps_and_the_position_follows(player, output, tmp_path):
     play(player, 13, write_wav(tmp_path / "a.wav", 2.0))
     time.sleep(0.2)
@@ -317,7 +314,6 @@ def test_play_sine_plays_its_tone_for_its_duration(player, output):
     assert freqs[np.argmax(spectrum)] == pytest.approx(1000, abs=5)
 
 
-@pytest.mark.realtime
 def test_without_an_audio_output_a_call_still_lasts_the_file(tmp_path):
     player = core.Player(soundcard="127.0.0.1:9", apps=str(tmp_path))  # nothing listens
     t0 = time.monotonic()

@@ -114,7 +114,6 @@ def test_rate_and_pitch_apply_to_the_call_and_carry_over():
 # -- say ---------------------------------------------------------------------
 
 
-@pytest.mark.realtime
 def test_say_raises_the_event_sequence_on_the_engine_clock():
     sp = FakeEngine(duration=0.3, marks={"2": 0.2, "1": 0.1})
     t0 = time.monotonic()
@@ -189,7 +188,6 @@ def test_stop_all_during_synthesis_is_not_lost():
     assert sp.engine_stops == 1
 
 
-@pytest.mark.realtime
 def test_a_stop_before_say_does_not_cut_the_next_sentence():
     sp = FakeEngine(duration=0.2)
     sp.stop_all()
@@ -200,7 +198,6 @@ def test_a_stop_before_say_does_not_cut_the_next_sentence():
     assert ("ALTextToSpeech/TextInterrupted", 1) not in sp.sequence()
 
 
-@pytest.mark.realtime
 def test_fallback_clock_when_the_engine_is_unreachable(monkeypatch):
     monkeypatch.setattr(core, "FALLBACK_SECONDS_PER_TOKEN", 0.05)
     sp = FakeEngine(fail=True)
@@ -252,7 +249,6 @@ def test_a_call_speaks_in_the_language_it_was_given_only():
     assert sp.language == "English"
 
 
-@pytest.mark.realtime
 def test_stop_by_id_ends_the_speaking_call_and_the_next_one_speaks():
     sp = FakeEngine(duration=0.6)
     first, first_done = say_in_thread(sp, "first", 5)
@@ -271,7 +267,6 @@ def test_stop_by_id_ends_the_speaking_call_and_the_next_one_speaks():
     assert sp.engine_stops == 1
 
 
-@pytest.mark.realtime
 def test_stop_by_id_of_a_waiting_call_drops_it_unspoken():
     sp = FakeEngine(duration=0.4)
     first, first_done = say_in_thread(sp, "first", 5)
@@ -316,7 +311,6 @@ def test_calls_speak_in_arrival_order():
     assert spoken(sp) == [10, 11, 12]
 
 
-@pytest.mark.realtime
 def test_start_returns_at_once_and_wait_done_follows_the_call():
     sp = FakeEngine(duration=0.3)
     t0 = time.monotonic()

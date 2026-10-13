@@ -5,7 +5,10 @@
 # resets it before and after each test so state can't leak between tests. Keep
 # this tier deterministic and network-free — anything that needs a running NAOqi
 # belongs in tests-e2e/ instead.
+import functools
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -34,3 +37,28 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if item.get_closest_marker("container_code"):
             item.add_marker(skip)
+
+
+@functools.cache
+def wake_lateness() -> float:
+    """How late this machine wakes a thread from a short timed wait, at worst over 200 waits
+    (seconds): about 1 ms on a desktop, more on a busy CI virtual machine."""
+    event, worst = threading.Event(), 0.0
+    for _ in range(200):
+        t0 = time.monotonic()
+        event.wait(0.005)
+        worst = max(worst, time.monotonic() - t0 - 0.005)
+    return worst
+
+
+def pytest_report_header() -> str:
+    return (
+        f"timed waits wake up to {wake_lateness() * 1000:.1f} ms late on this machine"
+    )
+
+
+@pytest.fixture
+def lateness() -> float:
+    """This machine's wake-up lateness, which a test bounding a reaction time adds to its
+    bound: the bound stays the spec's on a quiet machine (specs/testing/testing.md)."""
+    return wake_lateness()

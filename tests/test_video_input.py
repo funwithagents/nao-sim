@@ -92,7 +92,6 @@ def test_injects_the_sources_frames_into_the_top_camera_at_vga(naoqi):
     assert np.frombuffer(naoqi.puts[1][3], np.uint8)[0] == 2
 
 
-@pytest.mark.realtime
 def test_paces_at_the_configured_rate(naoqi):
     device = running(Frames(), naoqi, fps=10)
     time.sleep(1.0)

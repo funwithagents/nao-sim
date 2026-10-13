@@ -70,9 +70,9 @@ jobs:
       - name: Sync (against the lock)
         run: uv sync --locked
       - name: Fast tier
-        # The macOS runner's timers run late (0.05 to 0.5 s on a sleep), which the wall-clock
-        # tests can't absorb: they run on the other two and on developers' Macs (specs/testing/ci.md).
-        run: uv run pytest -rs ${{ runner.os == 'macOS' && '-m "not realtime"' || '' }}
+        # The code that runs in the Linux containers is tested once, on Linux: another host
+        # adds nothing to it (specs/testing/ci.md).
+        run: uv run pytest -rs ${{ runner.os != 'Linux' && '-m "not container_code"' || '' }}
 
   e2e-sim:
     name: live tier, NAOqi ${{ matrix.version }}

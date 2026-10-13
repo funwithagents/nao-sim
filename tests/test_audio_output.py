@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from naoqi_sim import audio_output
 from naoqi_sim.audio_output import (
     RATE as MIX_RATE,
 )
@@ -128,7 +129,23 @@ def mixes(c: RunningOutput):
 # --- One stream: the protocol, pacing, stop -------------------------------------------
 
 
-@pytest.mark.realtime
+def test_late_wake_ups_do_not_drift_the_mix(memory, monkeypatch):
+    # Every sleep of the mixer wakes 30 ms late, longer than a tick, as a loaded machine's (or
+    # a CI virtual machine's) timers can: the ticks keep their schedule, and the play its length.
+    sleep_until = audio_output._sleep_until
+    monkeypatch.setattr(
+        audio_output, "_sleep_until", lambda deadline: sleep_until(deadline + 0.03)
+    )
+    dues: list[float] = []
+    memory.output.listeners.append(lambda chunk, rate, channels, at: dues.append(at))
+
+    took = memory.play(0.5, stream="speech")
+
+    assert np.diff(dues) == pytest.approx(TICK_S)  # one tick apart, every one
+    assert dues[-1] + TICK_S - dues[0] == pytest.approx(0.5, abs=TICK_S)
+    assert took == pytest.approx(0.5, abs=0.15)  # the late wake-ups don't add up
+
+
 def test_play_records_the_stream_as_received_paced_in_real_time(memory):
     took = memory.play(0.5, stream="speech")
 
@@ -162,7 +179,6 @@ def test_null_sink_is_paced_too():
         c.shutdown()
 
 
-@pytest.mark.realtime
 def test_stop_ends_a_stream_within_a_tick(memory):
     done = memory.play_async(2.0, stream="speech")
     time.sleep(0.5)
@@ -243,7 +259,6 @@ def test_stopping_one_stream_leaves_the_others(memory):
     assert not mixes(memory)[-1].interrupted  # the speech went on to its end
 
 
-@pytest.mark.realtime
 def test_a_stop_without_a_name_stops_every_stream_and_tells_the_listeners(memory):
     heard: list[tuple[int, float]] = []
     memory.output.listeners.append(
@@ -281,7 +296,6 @@ def test_volume_and_pan_from_the_play_header(memory):
     assert (left, right) == (125, 250)  # balance: the left at 1 - pan, the right whole
 
 
-@pytest.mark.realtime
 def test_pause_holds_a_stream_and_resume_lets_it_go_on(memory):
     t0 = time.monotonic()
     done = memory.play_async(0.5, stream="player:2")
@@ -369,7 +383,6 @@ def test_a_failing_sink_still_gets_its_end_and_the_plays_return():
 # --- Playing state and listeners --------------------------------------------------------------
 
 
-@pytest.mark.realtime
 def test_playing_until_follows_the_mix(memory):
     output = memory.output
     assert output.playing_until < time.monotonic()  # idle
@@ -395,7 +408,6 @@ def test_a_stop_ends_the_playing_period_at_once(memory):
     assert memory.output.playing_until == pytest.approx(t_stop, abs=0.1)
 
 
-@pytest.mark.realtime
 def test_listeners_hear_every_tick_of_the_mix_when_it_is_due(memory):
     heard: list[tuple[int, int, int, float]] = []
     memory.output.listeners.append(
