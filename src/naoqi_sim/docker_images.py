@@ -86,11 +86,18 @@ def _command(version: str) -> str:
     return f"run `naoqi-sim fetch-and-build-images {version}`"
 
 
+def resolve(args: Iterable[str]) -> list[str]:
+    """`args` with its command found on PATH as a shell finds it: on Windows, `subprocess` looks
+    for `<name>.exe` only, where `shutil.which` follows PATHEXT (`.cmd`, `.bat`...)."""
+    command, *rest = args
+    return [shutil.which(command) or command, *rest]
+
+
 def run(
     *args: str, timeout: float = 120, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        args,
+        resolve(args),
         capture_output=True,
         encoding="utf-8",  # docker's own output, whatever the locale (Windows' isn't UTF-8)
         errors="replace",

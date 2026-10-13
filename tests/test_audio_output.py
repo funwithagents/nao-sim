@@ -278,6 +278,7 @@ def test_volume_and_pan_from_the_play_header(memory):
     assert (left, right) == (125, 250)  # balance: the left at 1 - pan, the right whole
 
 
+@pytest.mark.realtime
 def test_pause_holds_a_stream_and_resume_lets_it_go_on(memory):
     t0 = time.monotonic()
     done = memory.play_async(0.5, stream="player:2")
@@ -365,6 +366,7 @@ def test_a_failing_sink_still_gets_its_end_and_the_plays_return():
 # --- Playing state and listeners --------------------------------------------------------------
 
 
+@pytest.mark.realtime
 def test_playing_until_follows_the_mix(memory):
     output = memory.output
     assert output.playing_until < time.monotonic()  # idle
@@ -390,6 +392,7 @@ def test_a_stop_ends_the_playing_period_at_once(memory):
     assert memory.output.playing_until == pytest.approx(t_stop, abs=0.1)
 
 
+@pytest.mark.realtime
 def test_listeners_hear_every_tick_of_the_mix_when_it_is_due(memory):
     heard: list[tuple[int, int, int, float]] = []
     memory.output.listeners.append(

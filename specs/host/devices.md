@@ -15,7 +15,7 @@ tests:
 
 # Host devices
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -43,7 +43,7 @@ This spec holds what every device shares: the contract below and the host link. 
 - **Publishes its source.** An input device writes its `NaoqiSim/*/Source` key when it starts ([status-service.md](../container/status-service.md), "ALMemory keys"), as an ordinary qi client, and writes `none` back when it stops (best effort: NAOqi may be stopping too).
 - **Real time.** A device paces its data in real time whatever its seam, so NAOqi's timing (a blocking `say()`, a microphone chunk cadence, a camera frame rate) is the same with a device, a file or memory.
 - **Off unless asked** for the devices that capture the user: the webcam and the microphone run only when the config enables them, with an indicator in the sim window (or the terminal when headless) while live.
-- **Over qi when qi suffices.** A device whose NAOqi side is a public API (`putImage`, ALMemory) calls it as an ordinary qi client, with the connect retry libqi 3 needs against 2.1. Only what qi cannot carry goes over the host link below.
+- **Over qi when qi suffices.** A device whose NAOqi side is a public API (`putImage`, ALMemory) calls it as an ordinary qi client, connecting in one attempt as any client does since libqi 3.1.8 (`stack.connect`). Only what qi cannot carry goes over the host link below.
 
 ### The host link
 

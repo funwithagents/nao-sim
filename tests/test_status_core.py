@@ -1,6 +1,10 @@
 """The NaoqiSim status service's shared logic: what it publishes in ALMemory and when it is ready."""
 
 import naoqi_sim_status_core as core
+import pytest
+
+# Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
+pytestmark = pytest.mark.container_code
 
 
 class FakeMemory:

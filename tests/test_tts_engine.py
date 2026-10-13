@@ -7,6 +7,9 @@ import numpy as np
 import pytest
 import server
 
+# Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
+pytestmark = pytest.mark.container_code
+
 
 @pytest.fixture
 def synth(monkeypatch):

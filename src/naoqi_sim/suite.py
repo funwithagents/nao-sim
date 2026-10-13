@@ -26,6 +26,7 @@ import bz2
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -318,8 +319,11 @@ _DEBUGFS = 'apk add --no-cache -q e2fsprogs-extra >&2 && cat > /rootfs && debugf
 
 def docker_cat(rootfs: Iterable[bytes], path: str) -> Iterator[bytes]:
     """The file at `path` in the ext3 filesystem `rootfs`, read by debugfs in a throwaway container."""
+    docker = (
+        shutil.which("docker") or "docker"
+    )  # on Windows, as a shell finds it (PATHEXT)
     proc = subprocess.Popen(
-        ["docker", "run", "-i", "--rm", "alpine:3.20", "sh", "-c", _DEBUGFS, path],
+        [docker, "run", "-i", "--rm", "alpine:3.20", "sh", "-c", _DEBUGFS, path],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
     )

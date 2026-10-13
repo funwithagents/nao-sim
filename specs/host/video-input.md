@@ -14,7 +14,7 @@ tests:
 
 # Video input
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -51,7 +51,7 @@ The device injects frames on its own schedule, **independently of `ALVideoDevice
 
 ### In a running `NaoqiSim`
 
-- The device runs in-process on its own threads, with its own qi session (the connect retry 2.1 needs), started by `NaoqiSim.start()` once the robot is ready **and, for `render`, once the viewer is launched**; `stop()` stops it before the viewer ([api.md](../runtime/api.md), "Lifecycle").
+- The device runs in-process on its own threads, with its own qi session (`stack.connect`, one attempt), started by `NaoqiSim.start()` once the robot is ready **and, for `render`, once the viewer is launched**; `stop()` stops it before the viewer ([api.md](../runtime/api.md), "Lifecycle").
 - **The window closed by the user** with `source = "render"`: the next `camera_frame` raises `ViewerClosed`. The device stops, writes `NaoqiSim/Camera/Source` back to `none` and logs once, at warning level, that the camera has no frames any more; NAOqi keeps serving the last frame. The robot keeps running, as for the window alone ([api.md](../runtime/api.md), "Lifecycle").
 - A failing `putImage` or render (anything but `ViewerClosed`) is logged and the device carries on with the next slot; a run of failures is logged once, not once per frame.
 

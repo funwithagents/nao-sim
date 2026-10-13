@@ -31,8 +31,10 @@ Status: validation spike done on NAOqi 2.1.4.13 and 2.8.7.4, see [spike/RESULTS.
 
 ## Run
 
-Python 3.12 or 3.13 on macOS (arm64) or Linux (x86_64): the libqi wheels (`qi`, from
-[funwithagents/libqi-python](https://github.com/funwithagents/libqi-python)) exist for those only.
+Python 3.12 or 3.13 on macOS (arm64), Linux (x86_64) or Windows (x64): the libqi wheels (`qi`, from
+[funwithagents/libqi-python](https://github.com/funwithagents/libqi-python)'s package index,
+`https://funwithagents.github.io/libqi-python/simple/`) exist for those only. The containers need
+Docker (Docker Desktop on macOS and Windows; Windows is not tested end to end yet).
 
 ```bash
 uv sync --dev
@@ -54,21 +56,16 @@ In the project's `pyproject.toml`:
 
 ```toml
 [project]
-requires-python = ">=3.12,<3.14"            # the libqi wheels' range
+requires-python = ">=3.12,<3.14"            # naoqi-sim's range
 dependencies = ["naoqi-sim[viewer]"]          # or "naoqi-sim": no window, no render camera
 
 [tool.uv.sources]
 naoqi-sim = { git = "https://github.com/funwithagents/naoqi-sim", rev = "<commit or tag>" }
-
-[tool.uv]
-environments = [                             # the platforms the libqi wheels exist for
-    "sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "sys_platform == 'linux' and platform_machine == 'x86_64'",
-]
 ```
 
-uv takes `qi` and naoqi-viewer from naoqi-sim's own sources, so the project declares neither (and
-should not pin naoqi-viewer at another commit). Then, once per machine:
+uv takes `qi` (from the libqi index) and naoqi-viewer from naoqi-sim's own sources, so the project
+declares neither (and should not pin naoqi-viewer at another commit), nor the platforms: on a machine
+the libqi wheels don't cover, `uv sync` fails for want of a `qi` wheel. Then, once per machine:
 
 ```bash
 uv sync
@@ -80,10 +77,10 @@ uv run naoqi-sim run                      # or a NaoqiSim in the project's code
 An installed naoqi-sim reads its recipes from its package and keeps the image data (1.8 GB for
 both versions), `hashes.json` and `images.json` in the user data directory
 (`~/Library/Application Support/naoqi-sim/image-data` on macOS, `~/.local/share/naoqi-sim/image-data` on
-Linux). `NAOQI_SIM_IMAGE_DATA=<folder>` points it, or a checkout, at another image data folder, so a
+Linux, `%LOCALAPPDATA%\naoqi-sim\image-data` on Windows). `NAOQI_SIM_IMAGE_DATA=<folder>` points it, or a checkout, at another image data folder, so a
 checkout and the projects depending on naoqi-sim can share one copy. naoqi-viewer's meshes are shared
-by every environment on the machine already. pip is not supported: it ignores uv's sources and
-finds no `qi` 3.1.6 on PyPI.
+by every environment on the machine already. pip is not supported: it ignores uv's sources, so
+it would miss naoqi-viewer's git pin.
 
 ## Test
 

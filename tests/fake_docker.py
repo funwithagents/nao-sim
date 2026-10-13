@@ -1,4 +1,4 @@
-"""A fake `docker` first on PATH, for the tests of what naoqi-sim asks Docker.
+"""A fake `docker` first on PATH (a `docker.cmd` on Windows), for the tests of what naoqi-sim asks Docker.
 
 The fake keeps its state in a JSON file: the images (ID and labels, set by `compose build` from
 the environment's `NAOQI_SIM_VERSION` and `NAOQI_SIM_RECIPES`, the same ID for the same inputs, as
@@ -145,9 +145,16 @@ class FakeDocker:
 def docker(tmp_path, monkeypatch) -> FakeDocker:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    script = bin_dir / "docker"
-    script.write_text(f"#!{sys.executable}\n{FAKE_DOCKER}")
-    script.chmod(0o755)
+    if sys.platform == "win32":
+        # Windows runs no shebang: a .cmd that naoqi-sim finds through PATHEXT runs the fake.
+        (bin_dir / "fake_docker.py").write_text(FAKE_DOCKER, encoding="utf-8")
+        (bin_dir / "docker.cmd").write_text(
+            f'@"{sys.executable}" "%~dp0fake_docker.py" %*\r\n', encoding="utf-8"
+        )
+    else:
+        script = bin_dir / "docker"
+        script.write_text(f"#!{sys.executable}\n{FAKE_DOCKER}")
+        script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("FAKE_DOCKER_STATE", str(tmp_path / "docker.json"))
     monkeypatch.setattr(docker_images, "POLL", 0.01)

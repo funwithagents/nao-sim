@@ -22,7 +22,7 @@ tests:
 
 # API: the simulated NAO (`NaoqiSim`)
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -102,7 +102,7 @@ So `start()` only checks: an image missing or not verified raises `ImagesMissing
 | Member | Returns | Meaning |
 | --- | --- | --- |
 | `url` | `str` | `tcp://127.0.0.1:9559`, the address any qi client connects to |
-| `await status()` | `NaoqiSimStatus` | Read from the `NaoqiSim` service over qi, with the connect retry libqi 3 needs against 2.1: `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source` |
+| `await status()` | `NaoqiSimStatus` | Read from the `NaoqiSim` service over qi, in one connect attempt (libqi 3.1.8 fixed the failed connects 3.1.6 needed retries for): `version`, `naoqi_version`, `ready`, `camera_source`, `audio_source` |
 | `fake_audio` | `FakeAudioSource` | The fake audio source a test plays sounds through ([audio-input.md](../host/audio-input.md), "The fake source"); `NotRunningError` when not running, `NaoqiSimError` when `audio_input.source` is not `fake` |
 | `config` | `NaoqiSimConfig` | The config it was built from |
 | `running` | `bool` | Between a successful `start()` and `stop()` |

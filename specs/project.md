@@ -10,7 +10,7 @@ tests:
 
 # Project
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -18,9 +18,12 @@ Structure and tooling for the naoqi-sim project itself: Python version, dependen
 
 ## Decided
 
-- **Python version:** 3.12 or 3.13 for host code (`requires-python = ">=3.12,<3.14"`, as naoqi-viewer), capped by the libqi wheels. Code that runs inside NAOqi (the Python in `docker/naoqi/services/`) is Python 2.7, imposed by the suites' embedded interpreter. `.python-version` pins 3.12 for the dev venv.
-- **libqi:** `qi==3.1.6` is a runtime dependency: naoqi-sim's host side talks to NAOqi over qi (camera injection, viewer, probe, live tests), so it does not run without it. The wheels come from the GitHub Releases of the [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python) fork, one direct URL per platform and Python version in `[tool.uv.sources]`, exactly as in naoqi-viewer; this also keeps uv from picking Aldebaran's older `qi` 3.1.5 on PyPI.
-- **Platforms:** the fork ships wheels for macOS 15+ on arm64 and Linux x86_64 (glibc 2.34+) only, so `[tool.uv] environments` limits the lock to those two. Elsewhere (Windows, Intel macOS, Linux arm64, older glibc or macOS) installation fails instead of producing a naoqi-sim that cannot reach NAOqi; wider coverage is a libqi fork task (see the overview's open questions).
+- **Python version:** 3.12 or 3.13 for host code (`requires-python = ">=3.12,<3.14"`, as naoqi-viewer): the versions tested. The libqi wheels go from cp310 to cp315, so the bound is ours, not libqi's. Code that runs inside NAOqi (the Python in `docker/naoqi/services/`) is Python 2.7, imposed by the suites' embedded interpreter. `.python-version` pins 3.12 for the dev venv.
+- **libqi:** `qi>=3.1.8,<4` is a runtime dependency: naoqi-sim's host side talks to NAOqi over qi (camera injection, viewer, probe, live tests), so it does not run without it. The wheels come from the package index of the [funwithagents/libqi-python](https://github.com/funwithagents/libqi-python) fork on GitHub Pages (`https://funwithagents.github.io/libqi-python/simple/`), declared as in naoqi-viewer: a named index (`[[tool.uv.index]] name = "libqi"`, `explicit = true`, so only what is pinned to it comes from it) and `qi = { index = "libqi" }` in `[tool.uv.sources]`. This also keeps uv from picking Aldebaran's older `qi` 3.1.5 on PyPI. `uv.lock` holds the exact version; the range lets naoqi-sim, naoqi-viewer and naoqi-bridge each move to a new libqi release on its own (`uv lock --upgrade-package qi`), and a 4.0 is adopted on purpose. 3.1.8 is the floor because it fixed the failed connects 3.1.6 needed retries for: every qi connect makes one attempt ([testing.md](testing/testing.md)).
+- **Platforms:** those the fork ships wheels for: **macOS 11+ on arm64, Linux x86_64 (glibc 2.28+), Windows x64**; `[tool.uv] environments` limits naoqi-sim's own lock to them. Elsewhere (Intel macOS, Linux arm64) installation fails instead of producing a naoqi-sim that cannot reach NAOqi. The containers need Docker: Docker Desktop on macOS and Windows ([container.md](container/container.md), "Platforms"). For Windows:
+  - `.gitattributes` checks every text file out with LF, so a Windows checkout, and the wheel a git install builds from it, carries the entrypoints and scripts under `docker/` as the containers run them (a CRLF entrypoint does not start);
+  - files naoqi-sim reads or writes (configs, the image records) are opened as UTF-8, and docker's output is read as UTF-8 (Windows' default is a legacy code page);
+  - `naoqi-sim run` hears Ctrl-C without the event loop's signal handlers, which Windows lacks ([cli.md](runtime/cli.md)).
 - **Package layout:** `src/` layout — `src/naoqi_sim/...` — not flat, to avoid accidentally importing an uninstalled package from the repo root.
 - **Dependency/venv management:** `uv`. Dev tooling lives in the `dev` dependency group (`uv sync --dev`), not in runtime `dependencies`. Build backend: `hatchling` (wheel packages `src/naoqi_sim`).
 - **Linting/formatting:** `ruff`, excluding `docker/naoqi/services/` (Python 2.7) and the local `spike/` scripts.
@@ -39,34 +42,28 @@ Structure and tooling for the naoqi-sim project itself: Python version, dependen
 
 ### Distribution
 
-naoqi-sim is distributed through its GitHub repository, not PyPI: another project depends on it as a **uv git dependency** pinned to a commit or tag. pip is not supported (see "Dependencies of a git install").
+naoqi-sim is distributed through its GitHub repository, not PyPI: another project depends on it as a **uv git dependency** pinned to a commit or tag. pip is not supported for naoqi-sim itself (see "Dependencies of a git install").
 
 - **In a project**: the project's `pyproject.toml` declares
 
   ```toml
   [project]
-  requires-python = ">=3.12,<3.14"            # the libqi wheels' range
+  requires-python = ">=3.12,<3.14"            # naoqi-sim's range
   dependencies = ["naoqi-sim[viewer]"]          # or "naoqi-sim" for no window and no render camera
 
   [tool.uv.sources]
   naoqi-sim = { git = "https://github.com/funwithagents/naoqi-sim", rev = "<commit or tag>" }
-
-  [tool.uv]
-  environments = [                             # the platforms the libqi wheels exist for
-      "sys_platform == 'darwin' and platform_machine == 'arm64'",
-      "sys_platform == 'linux' and platform_machine == 'x86_64'",
-  ]
   ```
 
   then, once per machine, `uv run naoqi-sim fetch-and-build-images` (the images) and, for Aldebaran's look in the window, `uv run naoqi-viewer fetch-meshes` (its typed license acceptance); `uv run naoqi-sim run --config ...` or a `NaoqiSim` in the project's code then runs the simulated NAO. Docker, the suite download, the images and the meshes are never uv's job.
-- **Dependencies of a git install.** uv applies naoqi-sim's own `[tool.uv.sources]` to a git dependency (measured with uv 0.11): `qi` resolves to the libqi fork's wheels and naoqi-viewer to its pinned commit, with nothing for the depending project to repeat. That project only has to stay within the wheels' platforms and Pythons (`requires-python` and `environments` above); without them the lock fails on the platforms with no `qi` 3.1.6. It must not pin naoqi-viewer itself at another commit: naoqi-sim's pin is the one tested with it. pip ignores `[tool.uv.sources]` and would look for `qi` 3.1.6 on PyPI, which has none.
+- **Dependencies of a git install.** uv applies naoqi-sim's own `[tool.uv.sources]` to a git dependency, the index source included (measured with uv 0.11.29): `qi` resolves to 3.1.8 from the libqi index and naoqi-viewer to its pinned commit, with nothing for the depending project to repeat. It needs no `environments` either: a registry dependency locks without a wheel for every platform (measured: a scratch project with none locked), so a machine the wheels don't cover fails at `uv sync`, for want of a wheel, rather than at `uv lock`. A project that would rather have its lock refuse those platforms adds naoqi-sim's three `environments`. It must not pin naoqi-viewer itself at another commit: naoqi-sim's pin is the one tested with it. pip ignores `[tool.uv.sources]`: it would find `qi` with `--extra-index-url https://funwithagents.github.io/libqi-python/simple/`, but naoqi-viewer's git pin would still be uv's alone.
 - **The wheel** a git install builds holds `naoqi_sim` and, as its package data, the container recipes under `naoqi_sim/docker/`: everything under `docker/` but `image-data/` and Python caches (compose; `naoqi/`: the Dockerfiles and their ignore files, entrypoints, healthcheck and `services/`, the Python 2.7 and C++ sources of our NAOqi modules; `tts-engine/`), none of it an Aldebaran file. Hatch maps `src/naoqi_sim` and `docker` into the package (`only-include` and `sources`) and excludes `docker/image-data`, so even a wheel built from a checkout holding the suites carries none; `dev-mode-dirs = ["src"]` keeps the editable install of a checkout working, since hatch cannot make an editable install from a remapped path. The sdist is the repository's tracked files, which never include the image data either.
 - **Where the files are** ([api.md](runtime/api.md), "Files on disk"): an installed naoqi-sim reads its recipes from the package and keeps the image data in the user data directory; a checkout uses `docker/` and `docker/image-data/` as today. Both build the images the same way, and compute the same `io.naoqi-sim.recipes` digest from the same recipes.
 - **naoqi-viewer behind the extra** needs nothing more: its model and scenes are its package data, its meshes live in its own user data directory (`platformdirs.user_data_dir("naoqi-viewer")/meshes`), so one `fetch-meshes` serves every project and checkout on the machine, and its `naoqi-viewer` command and MuJoCo's `mjpython` (the macOS window) are installed in the depending project's environment with it.
 - **Runtime dependencies**: `numpy`, `qi`, `sounddevice`, `platformdirs`; the `viewer` extra adds naoqi-viewer. The webcam's OpenCV is decided with [video-input.md](host/video-input.md).
 - **Versions**: a depending project pins a commit or tag in its `[tool.uv.sources]` and moves it on purpose. The package version is baked into the images (`io.naoqi-sim.version`, `NaoqiSim/Version`) next to the recipes digest, which is what tells a commit's images from another's: moving to a commit that changed `docker/` makes `start()` ask for a rebuild, and one that did not reuses the images. The version is bumped by hand, with a tag, when a change is worth naming; the README carries the compatibility of naoqi-sim, naoqi-viewer and the NAOqi versions.
-- **Tested** by the live tier (`tests-e2e/test_install_live.py`): a scratch project installs this checkout as the wheel a git dependency builds, and runs `naoqi-sim run` from it on each version.
+- **Tested** by the live tier (`tests-e2e/test_install_live.py`): a scratch project, declaring only `requires-python`, the dependency and its source, installs this checkout as the wheel a git dependency builds, and runs `naoqi-sim run` from it on each version.
 
 ## Open questions
 
-1. **pip.** Installing with pip from the repository needs the libqi wheels from somewhere pip looks (a find-links URL, an index on GitHub Pages); deferred until someone needs pip.
+1. **pip.** `qi` is now on an index pip can use (`--extra-index-url`); naoqi-viewer, a git dependency without a package on an index, is what still keeps pip out. Deferred until someone needs pip.

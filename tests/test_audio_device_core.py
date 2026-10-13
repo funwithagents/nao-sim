@@ -12,6 +12,9 @@ import pytest
 
 from naoqi_sim.host_link import Connection, HostLink
 
+# Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
+pytestmark = pytest.mark.container_code
+
 
 class Host:
     """The host end: remembers the last need, sends what a test asks for."""

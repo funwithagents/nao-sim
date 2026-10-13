@@ -18,7 +18,7 @@ tests:
 
 # Testing
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -55,7 +55,7 @@ naoqi-sim is tested as what it is: containers that behave like a NAO in their AP
 - **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it first runs `check_images` ([api.md](../runtime/api.md), "Images"): current images are used as they are; missing or outdated ones (an edit under `docker/` included) are built and verified with `fetch_and_build_images` when the image data are in `docker/image-data/`, and the version skips otherwise. Then it starts a `NaoqiSim` for that version, headless and silent, as any caller does ([api.md](../runtime/api.md)), connects, and stops it at the end; a test that needs another configuration (`naoqi-sim run`, the window) stops it and starts it again. Versions run one after the other, since both publish 9559.
 - **Skip, never fail, without the means.** No Docker, or neither the version's suite tarball nor its image: that version's tests skip. A contributor (or CI) without the suites is never broken.
 - **Fail loudly on a conflict.** If 9559 or the audio output's 9562 is already taken (a naoqi-sim, or a stack started by hand), the tests fail with that message rather than test someone else's stack.
-- **Connect with a retry**: the libqi 3 wheel fails about one connect in three against NAOqi 2.1, instantly, with `disconnected` (`support.connect`).
+- **Connect in one attempt** (`support.connect`): the libqi 3.1.6 wheel failed about one connect in three against NAOqi 2.1, instantly, with `disconnected`, and the tier retried; 3.1.8, the floor ([project.md](../project.md)), fixed it (200 plain connects to 2.1: 12 failures with 3.1.6, none with 3.1.8).
 - **What was played.** The `NaoqiSim` runs with a `MemorySink` ([audio-output.md](../host/audio-output.md), "Audio sinks"): the tests assert on each playback's audio, its timing and whether it was cut. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
 - **What the robot hears.** The `NaoqiSim` runs the fake audio source ([audio-input.md](../host/audio-input.md), "The fake source"): a test subscribes to `ALAudioDevice` as a client does, plays sounds through `fake_audio` when it chooses, and checks what it receives against them.
 - **Real devices only on a declared loopback.** The tests that use the machine's sound devices (the microphone, the robot's speech played aloud and heard back, the `DevicePlayer`) skip unless `NAOQI_SIM_E2E_AUDIO=loopback` says the default output and input are wired to each other; a developer never has the tests play into their loudspeakers or record their microphone by surprise. CI sets it over a PulseAudio null sink ([ci.md](ci.md)), where a missing loopback fails, as `NAOQI_SIM_E2E_VERSION` turns a missing version into a failure. An unknown value fails the session at collection.

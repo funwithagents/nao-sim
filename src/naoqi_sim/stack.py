@@ -214,6 +214,6 @@ def show_logs(follow: bool = False, tail: int | None = None) -> int:
     if tail is not None:
         args += ["--tail", str(tail)]
     try:
-        return subprocess.run(args, check=False).returncode
+        return subprocess.run(docker_images.resolve(args), check=False).returncode
     except KeyboardInterrupt:
         return 0

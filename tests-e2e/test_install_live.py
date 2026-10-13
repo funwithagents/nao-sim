@@ -30,12 +30,6 @@ dependencies = ["naoqi-sim[viewer]"]
 
 [tool.uv.sources]
 naoqi-sim = {{ path = "{repo}", editable = false }}
-
-[tool.uv]
-environments = [
-    "sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "sys_platform == 'linux' and platform_machine == 'x86_64'",
-]
 """
 
 # What the installed package says about itself, run with the project's Python.

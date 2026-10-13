@@ -8,6 +8,7 @@
 import sys
 from pathlib import Path
 
+import pytest
 from fake_docker import docker  # noqa: F401  (the fixture, for every test file)
 
 # The container code is not a package: the NAOqi override modules (docker/naoqi/services/<service>/,
@@ -19,3 +20,17 @@ for _dir in [
     _DOCKER / "tts-engine",
 ]:
     sys.path.insert(0, str(_dir))
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    # The container code (the NAOqi modules' cores, the entrypoints, the speech engine) runs in
+    # Linux containers only; its tests need POSIX tools (bash, executable stand-ins) and test
+    # nothing about a Windows host, so they skip there (specs/testing/testing.md, "Platforms").
+    if sys.platform != "win32":
+        return
+    skip = pytest.mark.skip(
+        reason="code that runs in the Linux containers: tested on Linux and macOS"
+    )
+    for item in items:
+        if item.get_closest_marker("container_code"):
+            item.add_marker(skip)

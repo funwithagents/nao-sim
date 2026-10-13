@@ -4,6 +4,9 @@ import time
 import naoqi_sim_speech_core as core
 import pytest
 
+# Code that runs in the Linux containers: its tests skip on Windows (tests/conftest.py).
+pytestmark = pytest.mark.container_code
+
 END = [
     ("ALTextToSpeech/CurrentSentence", ""),
     ("ALTextToSpeech/TextDone", 1),
@@ -111,6 +114,7 @@ def test_rate_and_pitch_apply_to_the_call_and_carry_over():
 # -- say ---------------------------------------------------------------------
 
 
+@pytest.mark.realtime
 def test_say_raises_the_event_sequence_on_the_engine_clock():
     sp = FakeEngine(duration=0.3, marks={"2": 0.2, "1": 0.1})
     t0 = time.monotonic()
@@ -195,6 +199,7 @@ def test_a_stop_before_say_does_not_cut_the_next_sentence():
     assert ("ALTextToSpeech/TextInterrupted", 1) not in sp.sequence()
 
 
+@pytest.mark.realtime
 def test_fallback_clock_when_the_engine_is_unreachable(monkeypatch):
     monkeypatch.setattr(core, "FALLBACK_SECONDS_PER_TOKEN", 0.05)
     sp = FakeEngine(fail=True)

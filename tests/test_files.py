@@ -1,6 +1,7 @@
 """Where naoqi-sim finds its recipes and keeps the image data, in a checkout and installed as a
 git dependency (specs/runtime/api.md, "Files on disk")."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -73,7 +74,8 @@ def test_naoqi_sim_image_data_is_read_from_the_environment(tmp_path):
     # The variable is read at import: a fresh interpreter, as a user's shell starts one.
     out = subprocess.run(
         [sys.executable, "-c", "from naoqi_sim import files; print(files.IMAGE_DATA)"],
-        env={"NAOQI_SIM_IMAGE_DATA": str(tmp_path), "PATH": ""},
+        # Windows Python needs its own variables (SYSTEMROOT) to start.
+        env={**os.environ, "NAOQI_SIM_IMAGE_DATA": str(tmp_path)},
         capture_output=True,
         text=True,
         check=True,
