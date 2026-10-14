@@ -205,6 +205,20 @@ class Listener:
             pass
 
 
+# Where the known issues the live tests mark are documented.
+DESKTOP_FACTS = "specs/container/naoqi-fidelity.md, 'Desktop NAOqi facts'"
+
+
+def known_issue(request, nao, reason: str, versions=("2.1", "2.8")) -> None:
+    """Marks the running test as an expected failure on these versions, strictly: it fails the day
+    the behavior starts working, so the mark goes with the fix. `reason` says where the issue is
+    documented (a spec's known issue or open question)."""
+    if nao.version.name in versions:
+        request.applymarker(
+            pytest.mark.xfail(strict=True, reason=f"{nao.version.name}: {reason}")
+        )
+
+
 def unavailable(reason: str) -> NoReturn:
     """Skip a test whose means the machine lacks; fail it when a version is required."""
     if REQUIRED is not None:
@@ -283,6 +297,10 @@ class Container:
 
     def copy_in(self, src: Path, dest: str) -> None:
         res = _run("docker", "cp", str(src), f"{self.version.container}:{dest}")
+        assert res.returncode == 0, res.stderr
+
+    def copy_out(self, src: str, dest: Path) -> None:
+        res = _run("docker", "cp", f"{self.version.container}:{src}", str(dest))
         assert res.returncode == 0, res.stderr
 
     def image_env(self) -> dict[str, str]:

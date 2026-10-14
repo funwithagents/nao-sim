@@ -34,7 +34,7 @@ tests:
 
 ## Purpose
 
-The container gives the desktop `naoqi-bin` from the user's Choregraphe suite the old Linux it expects, on every platform, and exposes it on one port as a real robot would: `127.0.0.1:9559`. It is the only way naoqi-sim runs NAOqi (there is no native mode). How built-in services are replaced inside it is in [service-replacement.md](service-replacement.md); this spec covers the image, the network layout, boot and the entrypoint's configuration interface.
+The container gives the desktop `naoqi-bin` from the user's Choregraphe suite the old Linux it expects, on every platform, and exposes it on one port as a real robot would: `127.0.0.1:9559`. It is the only way naoqi-sim runs NAOqi (there is no native mode). How built-in services are replaced inside it is in [service-replacement.md](service-replacement.md); this spec covers the image, the network layout, boot and the entrypoint's configuration interface. How each image compares with a NAO of the same version, module by module and difference by difference, is in [naoqi-fidelity.md](naoqi-fidelity.md).
 
 ## Decided
 
@@ -161,7 +161,7 @@ One script per version, each reading top to bottom as that version's procedure: 
 | `MODULES` (our Python modules, which the loader loads in order; exported as `NAOQI_SIM_PYTHON_MODULES`, with `NAOQI_SIM_MODULES_DIR=/opt/naoqi/modules`) | `naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule` | `naoqi_sim_status_qiservice naoqi_sim_speech_qiservice naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice` |
 | `REPLACED` (the built-in names our fronts take) | `ALTextToSpeech ALAudioPlayer` | Same |
 | `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer` | Same |
-| Added built-ins (entries a NAO autoloads that the desktop suite ships but does not; see "Matching a NAO's modules"), written into the copy | `expressiveness` after `behaviormanager`; `basicawareness autonomousblinking autonomousmoves` after `alpanoramacompass`, so before `autonomouslife`, as on a NAO. `BUILTINS`, the names they register, are checked: `_ALExpressiveness ALBasicAwareness _ALAutonomousBlinking ALAutonomousMoves` | None |
+| Added built-ins (entries a NAO autoloads that the desktop suite ships but does not; see [naoqi-fidelity.md](naoqi-fidelity.md), "Matching a real NAOqi robot's modules"), written into the copy | `expressiveness` after `behaviormanager`; `basicawareness autonomousblinking autonomousmoves` after `alpanoramacompass`, so before `autonomouslife`, as on a NAO. `BUILTINS`, the names they register, are checked: `_ALExpressiveness ALBasicAwareness _ALAutonomousBlinking ALAutonomousMoves` | None |
 | `LAST` (registered last at boot, waited for) | `ALDialog` (`dialog`, the last autoload entry) | `ALPanoramaCompass` (the last autoload entry) and the package services `ALAnimatedSpeech ALDialog ALAutonomousLife` |
 
 The tunables below exist so the host-side tests can run the scripts against fake `naoqi-bin` and `qicli`; the images never set them: `NAOQI_SIM_READY_TRIES` (polls, one per second, before giving up on NAOqi; 120), `NAOQI_SIM_SETTLE_POLLS` (consecutive polls the service list must stay unchanged; 3), `NAOQI_SIM_POLL_INTERVAL` (seconds between polls; 1), `NAOQI_HOME`.
@@ -174,27 +174,6 @@ Sequence (both versions):
 4. Call `NaoqiSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] naoqi-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
 
 Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited container, never as a running one without its overrides. The healthcheck ([status-service.md](status-service.md)) reports `healthy` only after step 4.
-
-### Matching a NAO's modules
-
-Each image matches a real NAO **on the same NAOqi version**, not the other version's image: real robots differ between 2.1 and 2.8 too. The reference is the robot's own `autoload.ini` in the public robot image (`/etc/naoqi/autoload.ini` on 2.1, `/opt/aldebaran/etc/naoqi/autoload.ini` on 2.8), compared with the desktop suite's (measured Oct 9, 2026):
-
-| Difference between the two images | Cause | On real robots too? |
-| --- | --- | --- |
-| 2.8 only: `ALMood`, `ALBackgroundMovement`, `ALListeningMovement`, `ALSpeakingMovement`, `ALAnimationPlayer`, `Conversation`, `Knowledge`, `ALUserInfo`, ... | 2.8's `dialog`, `expressivity` and `life` packages | Yes |
-| 2.1 only: `ALBonjour`, `ALRedBallTracker`, `ALSegmentation3D`, `ALCloseObjectDetection` | Dropped in 2.8 | Yes |
-| `ALBasicAwareness`, `ALAutonomousMoves` and the hidden `_ALExpressiveness`, `_ALAutonomousBlinking` missing on 2.1 | The 2.1 desktop suite ships these libraries but leaves them out of its `autoload.ini` | No: naoqi-sim adds them to its autoload copy ("Entrypoint") |
-
-- Entries a NAO autoloads that the desktop suite ships but does not load: 2.1 `expressiveness`, `basicawareness`, `autonomousblinking`, `autonomousmoves`, `aldiagnosis`, `facetracker`, `visionrecognition`, `alchestbutton`, `memorywatcher`, `notificationreader`, `voiceemotionanalysis`, `mecalogger`, `dcm_hal`; 2.8 `aldiagnosis`, `memorywatcher`, `voiceemotionanalysis`. Each loads with `launchLocal` on a running image, which stays healthy (`voiceemotionanalysis` and `mecalogger` register nothing).
-- The 2.1 entrypoint adds the four that make the autonomous abilities a NAO 2.1 runs (expressiveness, awareness, blinking, autonomous moves) to its autoload copy, in the robot's order, with `autonomouslife` after them, since a NAO loads it after them and it may depend on them ("Entrypoint"). The others are added when a client needs them (open questions); vision modules are not wanted.
-- Entries a NAO autoloads that the desktop suites do not ship at all (audio input, `ALSystem`, face detection, speech recognition, sound localization, photo and video capture, landmark and barcode detection, infrared, laser...) cannot be added. naoqi-sim provides `ALAudioDevice` itself; `ALSystem` stays absent (its absence tells a client the target is not a real robot); detection and recognition are the clients' ([_overview.md](../_overview.md), "Perception and speech recognition").
-
-### Desktop NAOqi facts the rest of naoqi-sim relies on
-
-- No `ALSystem` service and no version key in ALMemory; `RobotConfig/Body/Type` is absent (2.1 and 2.8). The version (and the fact that the target is naoqi-sim) must come from a naoqi-sim service.
-- No `ALAudioDevice` on either version (naoqi-sim adds one, [audio-device.md](../services/audio-device.md)); `ALAudioPlayer` is a stub that spawns `/opt/naoqi/bin/sndfile-play`, which fails in Docker.
-- 2.1 has `Device/SubDeviceList/*` keys in ALMemory; the 2.8 virtual robot has none.
-- **2.8: `ALRobotPosture` cannot reliably reach "Sit".** The 2.8 desktop suite has no DCM, so its virtual robot has no inertial sensor (2.1's simulated DCM reports the torso upright), and the posture manager reads the lean of the Stand-to-Sit transition as a perturbation (`PostureManager: Perturbation during gotoPosture` in the log). Measured Oct 13, 2026, `ALMotion.wakeUp()` and `setMaxTryNumber(3)`, `goToPosture("Sit", 0.8)`: from Stand, `False` after 16 to 25 s, usually still in `Stand`, sometimes in `Sit` or `Unknown`; from Crouch, `Sit` reached each time but `True` only some of the time (15 to 21 s). Stand and Crouch work, as every move does on 2.1. Workaround: check `getPosture()` rather than the result, go through Crouch, or test Sit on 2.1.
 
 ### Platforms
 
@@ -229,4 +208,3 @@ Result: **54 passed, 6 skipped** (the audio loopback, which has no virtual sound
 
 1. **Docker Desktop.** Everything was measured on OrbStack and Linux's Docker Engine; Docker Desktop on macOS, Linux and Windows is still to confirm. GitHub's Windows runner has no Docker Desktop, but runs Linux containers in WSL 2, and the live tier passed there once against them ("Linux containers on GitHub's Windows runner", above); Docker Desktop itself is what users run, and is still to run.
 2. **Starting the stack.** `naoqi-sim run` and `cleanup` ([cli.md](../runtime/cli.md)) are not built; today it is `docker compose` by hand (see [README.md](../../README.md)). `NaoqiSim.start()` waits on the container's health rather than on the log line ([api.md](../runtime/api.md)).
-3. **More added built-ins.** The other shipped-but-not-autoloaded modules (2.1: `aldiagnosis`, `memorywatcher`, `alchestbutton`, `notificationreader`, `facetracker`, `visionrecognition`; 2.8: `aldiagnosis`, `memorywatcher`) are left out until a client needs one.

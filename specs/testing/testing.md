@@ -15,6 +15,13 @@ tests:
   - tests-e2e/test_status_live.py
   - tests-e2e/test_audio_input_live.py
   - tests-e2e/test_audio_loopback_live.py
+  - tests-e2e/test_memory_live.py
+  - tests-e2e/test_motion_live.py
+  - tests-e2e/test_leds_live.py
+  - tests-e2e/test_behaviors_live.py
+  - tests-e2e/test_sound_live.py
+  - tests-e2e/test_robot_info_live.py
+  - tests-e2e/test_absent_live.py
 ---
 
 # Testing
@@ -71,6 +78,9 @@ naoqi-sim is tested as what it is: containers that behave like a NAO in their AP
 - **What was played.** The `NaoqiSim` runs with a `MemorySink` ([audio-output.md](../host/audio-output.md), "Audio sinks"): the tests assert on each playback's audio, its timing and whether it was cut. What the `ALTextToSpeech` replacement received is read from its JSON log in the container.
 - **What the robot hears.** The `NaoqiSim` runs the fake audio source ([audio-input.md](../host/audio-input.md), "The fake source"): a test subscribes to `ALAudioDevice` as a client does, plays sounds through `fake_audio` when it chooses, and checks what it receives against them.
 - **Real devices only on a declared loopback.** The tests that use the machine's sound devices (the microphone, the robot's speech played aloud and heard back, the `DevicePlayer`) skip unless `NAOQI_SIM_E2E_AUDIO=loopback` says the default output and input are wired to each other; a developer never has the tests play into their loudspeakers or record their microphone by surprise. CI sets it over a PulseAudio null sink ([ci.md](ci.md)), where a missing loopback fails, as `NAOQI_SIM_E2E_VERSION` turns a missing version into a failure. An unknown value fails the session at collection.
+- **One live tier, always run.** Every live test runs on every run, locally and in CI ([ci.md](ci.md)); there is no slower tier on a schedule. Measured Oct 14, 2026, on a Mac (OrbStack, both versions one after the other): 778 s for 220 tests, the heaviest being the end-to-end `naoqi-sim run` and install tests and the sim window (40 to 50 s each, per version); the one test per feature below adds about 1.5 minutes per version.
+- **One test per feature a robot user calls.** Besides the tests of naoqi-sim's own services and devices, the live tier has a test per feature of the standard behaviors, listed from each suite's Choregraphe box library (memory, motion and postures, LEDs, behaviors, sound settings, robot information; `test_memory_live.py` ... `test_robot_info_live.py`), written as a Python 3 qi client that checks the outcome somewhere else than the call's answer where it can (the joint sensors, the odometry, the loudspeakers' mix, a recording, ALMemory). The built-ins are tested like naoqi-sim's own services: the desktop NAOqi is not a robot's ([naoqi-fidelity.md](../container/naoqi-fidelity.md)). Services a robot has and naoqi-sim leaves out are checked absent (`test_absent_live.py`).
+- **A known issue is a strict expected failure.** A test checks what a real NAOqi robot does. Where naoqi-sim documents a difference (a known issue in [naoqi-fidelity.md](../container/naoqi-fidelity.md), or an open question of the service's spec), the test calls `support.known_issue(request, nao, reason, versions)`: on those versions it is an expected failure whose reason names where the issue is documented, and strict, so the day the behavior starts working the test fails and the mark goes with the fix.
 
 ## Tooling
 

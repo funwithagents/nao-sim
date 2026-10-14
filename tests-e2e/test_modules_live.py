@@ -1,7 +1,8 @@
-"""The modules a NAO of each version runs, on a running naoqi-sim stack (specs/container/container.md, "Matching
-a NAO's modules"): on 2.1 the entrypoint launches the autonomous abilities the desktop suite ships
-without loading, then Autonomous Life after them, as a NAO's autoload does; 2.8 has them as the
-expressivity package's services. Every module in the image is also checked as Python 2.7."""
+"""The modules a real NAOqi robot of each version runs, on a running naoqi-sim stack
+(specs/container/naoqi-fidelity.md, "Matching a real NAOqi robot's modules"): on 2.1 the
+entrypoint's autoload copy adds the autonomous abilities the desktop suite ships without loading,
+with Autonomous Life after them, as the robot's autoload does; 2.8 has them as the expressivity
+package's services. Every module in the image is also checked as Python 2.7."""
 
 import subprocess
 

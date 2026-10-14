@@ -58,7 +58,7 @@ A replacement takes the built-in's place in NAOqi's own boot. The entrypoint sta
 | --- | --- | --- |
 | Left out of the autoload copy | `audioout`, which provides both `ALTextToSpeech` and `ALAudioPlayer` | `audioplayer`, `ttsinterface` |
 | Loads the autoload | `naoqi-bin`, in order, in-process | `naoqi-service` (the `system.Naoqi` package service `naoqi-bin`'s `ALServiceManager` starts), same |
-| Loaded after ours | The rest of the autoload: `behaviormanager` (its preloaded behaviors' boxes make their proxies as they load), `animatedspeech`, `dialog`, and the added built-ins ([container.md](container.md), "Matching a NAO's modules") | The rest of the autoload, and the package services (`dialog`, `expressivity`, `life`...), which `ALServiceManager` starts beside `naoqi-service` |
+| Loaded after ours | The rest of the autoload: `behaviormanager` (its preloaded behaviors' boxes make their proxies as they load), `animatedspeech`, `dialog`, and the added built-ins ([naoqi-fidelity.md](naoqi-fidelity.md), "Matching a real NAOqi robot's modules") | The rest of the autoload, and the package services (`dialog`, `expressivity`, `life`...), which `ALServiceManager` starts beside `naoqi-service` |
 
 Our entries, in order:
 

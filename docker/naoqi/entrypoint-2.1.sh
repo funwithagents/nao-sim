@@ -7,7 +7,7 @@
 # (the relay, the loader, which loads our Python modules, then the C++ fronts), so every module it
 # loads afterwards finds them. The copy also gets the built-ins a NAO autoloads but the desktop
 # suite does not, at a NAO's places (specs/container/service-replacement.md, "Replacing a built-in";
-# specs/container/container.md, "Entrypoint" and "Matching a NAO's modules").
+# specs/container/container.md, "Entrypoint"; specs/container/naoqi-fidelity.md, "Matching a real NAOqi robot's modules").
 . "$(dirname "$0")/entrypoint-lib.sh"
 
 LEFT_OUT="audioout"                       # ALTextToSpeech's and ALAudioPlayer's library

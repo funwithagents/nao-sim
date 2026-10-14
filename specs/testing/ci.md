@@ -130,6 +130,8 @@ On the audio input's runs (PR #3, October 10, 2026), with the relay's build file
 - **The loopback** needed the silent low-latency client: without it, every device test failed on a 1.5 s to 1.7 s delay from playing to hearing.
 - **One 2.8 boot** was not healthy in time on a runner, with the image that had booted there five times before; the re-run passed. If it recurs, look at the 2.8 boot's timing on a loaded runner.
 
+On Oct 13, 2026 (runs on `main`, cache hit), a live entry took 10 to 12 minutes, against its 45-minute timeout. The live tier is one tier, always run ([testing.md](testing.md)); the tests per feature added on Oct 14 (about 1.5 minutes per version locally) are to be measured on the first run with them.
+
 ## Open questions
 
 None: the cache budget and the time budget were measured above. Revisit them if an edit under `docker/` becomes frequent enough for the eviction of the old archives to matter.
