@@ -129,7 +129,7 @@ def mixes(c: RunningOutput):
 # --- One stream: the protocol, pacing, stop -------------------------------------------
 
 
-def test_late_wake_ups_do_not_drift_the_mix(memory, monkeypatch):
+def test_late_wake_ups_do_not_drift_the_mix(memory, monkeypatch, lateness):
     # Every sleep of the mixer wakes 30 ms late, longer than a tick, as a loaded machine's (or
     # a CI virtual machine's) timers can: the ticks keep their schedule, and the play its length.
     sleep_until = audio_output._sleep_until
@@ -146,7 +146,9 @@ def test_late_wake_ups_do_not_drift_the_mix(memory, monkeypatch):
 
     assert np.diff(dues) == pytest.approx(TICK_S)  # one tick apart, every one
     assert dues[-1] + TICK_S - dues[0] == pytest.approx(0.5, abs=TICK_S)
-    assert took == pytest.approx(0.5, abs=0.15)  # the late wake-ups don't add up
+    # The late wake-ups don't add up (they would add 30 ms a tick); the play may still end one of
+    # this machine's own late wake-ups late, on top of the injected 30 ms.
+    assert took == pytest.approx(0.5, abs=0.15 + lateness())
 
 
 def test_play_records_the_stream_as_received_paced_in_real_time(memory):
