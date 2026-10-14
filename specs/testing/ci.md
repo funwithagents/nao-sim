@@ -130,7 +130,18 @@ On the audio input's runs (PR #3, October 10, 2026), with the relay's build file
 - **The loopback** needed the silent low-latency client: without it, every device test failed on a 1.5 s to 1.7 s delay from playing to hearing.
 - **One 2.8 boot** was not healthy in time on a runner, with the image that had booted there five times before; the re-run passed. If it recurs, look at the 2.8 boot's timing on a loaded runner.
 
-On Oct 13, 2026 (runs on `main`, cache hit), a live entry took 10 to 12 minutes, against its 45-minute timeout. The live tier is one tier, always run ([testing.md](testing.md)); the tests per feature added on Oct 14 (about 1.5 minutes per version locally) are to be measured on the first run with them.
+With the tests per feature (the live tier is one tier, always run, [testing.md](testing.md)) and our modules loaded from NAOqi's autoload, on Oct 14, 2026:
+
+| | Cold (build) | Cache hit |
+| --- | --- | --- |
+| `check` | 18 s | 17 s |
+| `fast-tier` (Ubuntu, Windows, macOS) | 37 s, 50 s, 75 s | 37 s, 61 s, 72 s |
+| `e2e-sim` 2.1 | 15 min 7 s | 9 min 49 s (tests 6 min 31 s: 94 passed, 5 skipped, 13 expected failures) |
+| `e2e-sim` 2.8 | 14 min 13 s | 10 min 42 s (tests 5 min 48 s: 97 passed, 2 skipped, 13 expected failures) |
+
+- **Against the day before** (Oct 13, cache hit), a live entry took 10 to 12 minutes without the tests per feature: the shorter 2.8 boot (about 18 s instead of 35 s) pays for most of them. Every entry stays well under its timeout.
+- **Two timing tests** of the fast tier failed on the macOS runner, whose waits wake 20 to 50 ms late: the late wake-up test of the audio output and the slot count of the video input. Both now add `lateness()` to their bounds ([testing.md](testing.md), "Platforms").
+- **One 2.8 live failure** (the robot heard a tone 0.68 s late, at the start of the session) did not recur on a re-run nor locally, where 2.8 hears 8 to 16 ms late from the moment it is ready. If it recurs, look at what the 2.8 boot still does on a runner once it is declared ready, about 10 s earlier than before.
 
 ## Open questions
 
