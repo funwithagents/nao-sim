@@ -60,7 +60,7 @@ The module writes these at load. All values are plain strings except `NaoqiSim/R
 
 ### Readiness
 
-"Ready" means the whole entrypoint sequence ([container.md](container.md), "Entrypoint") completed: NAOqi's service list settled with every needed service present, the built-ins were replaced, every module loaded, the dependents were restarted or launched, and **every replaced name answers again**. Only then does the entrypoint call `NaoqiSim.setReady` and print `[entrypoint] naoqi-sim ready`.
+"Ready" means the whole entrypoint sequence ([container.md](container.md), "Entrypoint") completed: NAOqi booted from the autoload copy with our modules in place of the built-ins, its service list settled with every needed service present, and **every replaced and every added name answers**. Only then does the entrypoint call `NaoqiSim.setReady` and print `[entrypoint] naoqi-sim ready`.
 
 The entrypoint exits non-zero (after terminating `naoqi-bin`) instead of carrying on when:
 

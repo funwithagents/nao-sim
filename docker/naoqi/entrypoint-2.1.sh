@@ -2,37 +2,31 @@
 # NAOqi 2.1 entrypoint. One naoqi-bin process holds every module and is itself the broker on the
 # public port 9559; our modules are naoqi.ALModule objects registered on that broker.
 #
-# Replacing ALTextToSpeech: the in-process modules that hold a proxy to it are left out of the
-# autoload file, the built-in exits, our modules load (its Python core among them), its C++ front
-# takes the name, then those modules are launched and bind to our replacement (specs/container/service-replacement.md, "Replacing a built-in"). They are launched with
-# the built-ins a NAO autoloads but the desktop suite does not, in a NAO's autoload order
-# (specs/container/container.md, "Matching a NAO's modules").
+# Our modules take the place of ALTextToSpeech and ALAudioPlayer in NAOqi's own boot: naoqi-bin
+# loads an autoload copy without the built-ins' library and with ours right after pythonbridge
+# (the relay, the loader, which loads our Python modules, then the C++ fronts), so every module it
+# loads afterwards finds them. The copy also gets the built-ins a NAO autoloads but the desktop
+# suite does not, at a NAO's places (specs/container/service-replacement.md, "Replacing a built-in";
+# specs/container/container.md, "Entrypoint" and "Matching a NAO's modules").
 . "$(dirname "$0")/entrypoint-lib.sh"
 
-REPLACED="ALTextToSpeech ALAudioPlayer"                              # built-ins our modules take over
-RELAY="$NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_audio_device_relay.so" # the native relay, loaded before our modules
-MODULES="naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule" # ours, in load order
-FRONTS="$NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_speech_front.so $NAOQI_HOME/lib/naoqi-sim/libnaoqi_sim_audio_player_front.so"      # C++ fronts taking the replaced names, after them
+LEFT_OUT="audioout"                       # ALTextToSpeech's and ALAudioPlayer's library
+OURS="naoqi_sim_audio_device_relay,naoqi_sim_loader,naoqi_sim_speech_front,naoqi_sim_audio_player_front"
+MODULES="naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule" # ours, loaded by the loader in order
+REPLACED="ALTextToSpeech ALAudioPlayer"   # the built-in names our C++ fronts take
 ADDED="ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer" # names no built-in holds, which we register
-LATE="behaviormanager expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog"
-# LATE, launched after our modules in a NAO's autoload order:
-#   behaviormanager              preloads the installed behaviors, whose boxes make their proxies
-#                                (ALAudioPlayer, ALTextToSpeech) as they load (deferred from the
-#                                autoload file)
-#   animatedspeech, dialog       hold a proxy to ALTextToSpeech (deferred from the autoload file)
-#   expressiveness, basicawareness, autonomousblinking, autonomousmoves
-#                                a NAO autoloads them, the desktop suite does not
-#   autonomouslife               a NAO loads it after those (deferred from the autoload file)
-LAST_SERVICE="ALPanoramaCompass"                       # registered last at boot, once LATE is out
+# The built-ins a NAO 2.1 autoloads and the desktop suite does not (expressiveness after
+# behaviormanager; awareness, blinking and autonomous moves before autonomouslife), and the names
+# they register.
+ADDED_ENTRIES="behaviormanager:expressiveness alpanoramacompass:basicawareness,autonomousblinking,autonomousmoves"
+BUILTINS="_ALExpressiveness ALBasicAwareness _ALAutonomousBlinking ALAutonomousMoves"
+LAST="ALDialog"                           # registered last at boot (dialog, the last entry)
 
-start_naoqi tcp://127.0.0.1:9559 \
-  -b 0.0.0.0 -p 9559 --autoload-file "$(autoload_without $LATE)" "$@"
-wait_for_naoqi ALLauncher ALPythonBridge $REPLACED $LAST_SERVICE
-exit_builtins $REPLACED
-load_native "$RELAY"
-load_modules $MODULES
-for front in $FRONTS; do load_native "$front"; done
-launch_local $LATE
+write_autoload "$LEFT_OUT" "pythonbridge:$OURS" $ADDED_ENTRIES
+export NAOQI_SIM_PYTHON_MODULES="$MODULES" NAOQI_SIM_MODULES_DIR="$NAOQI_HOME/modules"
+start_naoqi tcp://127.0.0.1:9559 -b 0.0.0.0 -p 9559 --autoload-file "$AUTOLOAD" "$@"
+wait_for_naoqi ALLauncher ALPythonBridge $LAST
 check_answer replaced $REPLACED
 check_answer added $ADDED
+check_answer "added built-in" $BUILTINS
 mark_ready

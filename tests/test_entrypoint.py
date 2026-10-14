@@ -1,11 +1,13 @@
 """The containers' entrypoints (one per NAOqi version) and the healthcheck, run on the host against fake `naoqi-bin` and `qicli`.
 
-The fakes sit first on PATH. `qicli` logs every invocation, lists `FAKE_QICLI_SERVICES` (minus
-the names that are "down", plus names that appear late) on `info` without a name, answers `info
-NAME` with failure while NAME is down, takes a name down on `call NAME.exit`, brings one back when
-the module (or the library, by file name) that registers it is loaded (`FAKE_QICLI_REGISTERS`),
-keeps the names our modules add down until then (`FAKE_QICLI_ABSENT`), and serves
-`NaoqiSim.setReady` and `NaoqiSim.isReady` in either suite's output style.
+Our modules load inside NAOqi's boot, from the autoload copy the entrypoint writes
+(specs/container/service-replacement.md, "Replacing a built-in"), so the entrypoint calls nothing
+but `NaoqiSim.setReady`: it writes the copy, starts `naoqi-bin`, waits for a settled service list
+and checks names. The fakes sit first on PATH. `qicli` logs every invocation, lists
+`FAKE_QICLI_SERVICES` (minus the names that are "down", plus names that appear late) on `info`
+without a name, answers `info NAME` with failure while NAME is down (a module that did not load),
+and serves `NaoqiSim.setReady` and `NaoqiSim.isReady` in either suite's output style.
+`naoqi-bin` records its arguments and the environment the loader reads.
 """
 
 import os
@@ -33,19 +35,6 @@ FAKE_QICLI = textwrap.dedent(
         f.write(" ".join(args) + "\\n")
     down_file = os.path.join(fake, "down")
     down = set(open(down_file).read().split()) if os.path.exists(down_file) else set()
-    registered_file = os.path.join(fake, "registered")
-    registered = set(open(registered_file).read().split()) if os.path.exists(registered_file) else set()
-    down |= set(os.environ.get("FAKE_QICLI_ABSENT", "").split()) - registered
-    registers = dict(
-        item.split("=") for item in os.environ.get("FAKE_QICLI_REGISTERS", "").split(",") if item
-    )
-    def save():
-        open(down_file, "w").write(" ".join(sorted(down)))
-        open(registered_file, "w").write(" ".join(sorted(registered)))
-    def register(name):
-        if name:
-            down.discard(name); registered.add(name)
-        save()
     counter = os.path.join(fake, "info.count")
     if args[0] == "info":
         n = int(open(counter).read()) + 1 if os.path.exists(counter) else 1
@@ -62,19 +51,6 @@ FAKE_QICLI = textwrap.dedent(
             sys.exit(0)
         sys.exit(1 if args[1] in down else 0)
     target = args[1]
-    if target.endswith(".exit"):
-        down.add(target[: -len(".exit")]); save(); sys.exit(0)
-    if target == "ALLauncher.launchPythonModule":
-        register(registers.get(args[2], "")); sys.exit(0)
-    if target == "ALLauncher.launchLocal":  # the modules the library registered, as 2.1 prints them
-        empty = os.environ.get("FAKE_QICLI_EMPTY_LAUNCH", "").split()
-        name = os.path.basename(args[2])
-        if name in empty:
-            print("ALLauncher.launchLocal: [  ]")
-        else:
-            register(registers.get(name, ""))
-            print('ALLauncher.launchLocal: [ "%s" ]' % registers.get(name, name))
-        sys.exit(0)
     if target.startswith("NaoqiSim."):
         if "NaoqiSim" in down:
             sys.stderr.write("Call failed: no such service\\n"); sys.exit(1)
@@ -95,36 +71,53 @@ FAKE_NAOQI_BIN = textwrap.dedent(
     #!/bin/bash
     echo "$@" > "$FAKE_DIR/naoqi-bin.args"
     echo "${NAOQI_SIM_INTERNAL_PORT:-unset}" > "$FAKE_DIR/naoqi-bin.port"
+    echo "${NAOQI_SIM_PYTHON_MODULES:-unset}" > "$FAKE_DIR/naoqi-bin.modules"
+    echo "${NAOQI_SIM_MODULES_DIR:-unset}" > "$FAKE_DIR/naoqi-bin.modules-dir"
     [ -n "${FAKE_NAOQI_EXIT:-}" ] && exit "$FAKE_NAOQI_EXIT"
     trap 'exit 0' TERM INT
     while :; do sleep 0.1; done
     """
 )
 
-AUTOLOAD = "pythonbridge\nanimatedspeech\naudioout\nalpanoramacompass\nautonomouslife\ndialog\n"
-SERVICES = (
-    "ServiceDirectory ALMemory ALLauncher ALPythonBridge ALTextToSpeech ALAudioPlayer "
-    "ALServiceManager ALAutonomousLife ALPanoramaCompass"
+# A suite autoload with every entry either version's entrypoint edits.
+AUTOLOAD = (
+    "[core]\nlauncher\n[extra]\nbehaviormanager\naudioout\naudioplayer\nttsinterface\n"
+    "pythonbridge\nanimatedspeech\nalpanoramacompass\nautonomouslife\ndialog\n"
 )
-
-RELAY = "libnaoqi_sim_audio_device_relay.so"
-SPEECH_FRONT = (
-    "libnaoqi_sim_speech_front.so"  # ALTextToSpeech's C++ front, over its core
+OURS = (
+    "naoqi_sim_audio_device_relay\nnaoqi_sim_loader\n"
+    "naoqi_sim_speech_front\nnaoqi_sim_audio_player_front\n"
 )
-PLAYER_FRONT = "libnaoqi_sim_audio_player_front.so"  # ALAudioPlayer's
-ADDED = "ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer"
-REGISTERS_21 = (
-    "naoqi_sim_status_almodule=NaoqiSim,naoqi_sim_speech_almodule=_NaoqiSimTextToSpeech,"
-    f"naoqi_sim_audio_device_almodule=ALAudioDevice,{RELAY}=_NaoqiSimAudioRelay,"
-    "naoqi_sim_audio_player_almodule=_NaoqiSimAudioPlayer,"
-    f"{SPEECH_FRONT}=ALTextToSpeech,{PLAYER_FRONT}=ALAudioPlayer"
+REPLACED = ["ALTextToSpeech", "ALAudioPlayer"]
+ADDED = [
+    "ALAudioDevice",
+    "_NaoqiSimAudioRelay",
+    "_NaoqiSimTextToSpeech",
+    "_NaoqiSimAudioPlayer",
+]
+BUILTINS_21 = [
+    "_ALExpressiveness",
+    "ALBasicAwareness",
+    "_ALAutonomousBlinking",
+    "ALAutonomousMoves",
+]
+# What a booted NAOqi lists: the suite's, ours (registered from the autoload), the added built-ins.
+SERVICES = " ".join(
+    [
+        "ServiceDirectory ALMemory ALLauncher ALPythonBridge ALServiceManager NaoqiSim",
+        *REPLACED,
+        *ADDED,
+        *BUILTINS_21,
+        "ALAnimatedSpeech ALAutonomousLife ALPanoramaCompass ALDialog",
+    ]
 )
-REGISTERS_28 = (
-    "naoqi_sim_status_qiservice=NaoqiSim,naoqi_sim_speech_qiservice=_NaoqiSimTextToSpeech,"
-    f"naoqi_sim_audio_device_qiservice=ALAudioDevice,{RELAY}=_NaoqiSimAudioRelay,"
-    "naoqi_sim_audio_player_qiservice=_NaoqiSimAudioPlayer,"
-    f"{SPEECH_FRONT}=ALTextToSpeech,{PLAYER_FRONT}=ALAudioPlayer"
-)
+MODULES = {
+    "2.1": "naoqi_sim_status_almodule naoqi_sim_speech_almodule "
+    "naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule",
+    "2.8": "naoqi_sim_status_qiservice naoqi_sim_speech_qiservice "
+    "naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice",
+}
+URLS = {"2.1": "--qi-url tcp://127.0.0.1:9559", "2.8": "--qi-url tcp://127.0.0.1:9558"}
 
 
 class Fakes:
@@ -137,8 +130,9 @@ class Fakes:
         for f in self.bin.iterdir():
             f.chmod(0o755)
         self.naoqi_home = tmp_path / "naoqi"
-        (self.naoqi_home / "etc" / "naoqi").mkdir(parents=True)
-        (self.naoqi_home / "etc" / "naoqi" / "autoload.ini").write_text(AUTOLOAD)
+        self.autoload = self.naoqi_home / "etc" / "naoqi" / "autoload.ini"
+        self.autoload.parent.mkdir(parents=True)
+        self.autoload.write_text(AUTOLOAD)
         self.tmp = tmp_path / "tmp"
         self.tmp.mkdir()
 
@@ -151,29 +145,37 @@ class Fakes:
             "TMPDIR": str(self.tmp),
             "NAOQI_SIM_POLL_INTERVAL": "0.05",
             "FAKE_QICLI_SERVICES": SERVICES,
-            "FAKE_QICLI_ABSENT": ADDED,
             **extra,
         }
+
+    def down(self, *names: str) -> None:
+        """These names never register: the modules or libraries behind them did not load."""
+        (self.dir / "down").write_text(" ".join(names))
 
     def calls(self) -> list[str]:
         log = self.dir / "qicli.log"
         return log.read_text().splitlines() if log.exists() else []
 
-    def naoqi_bin_args(self) -> str:
-        return (self.dir / "naoqi-bin.args").read_text().strip()
+    def naoqi_bin(self, what: str) -> str:
+        """What naoqi-bin got: its arguments (`args`), or the environment it and naoqi-service
+        inherit (`port`, `modules`, `modules-dir`)."""
+        return (self.dir / f"naoqi-bin.{what}").read_text().strip()
 
-    def naoqi_bin_port_env(self) -> str:
-        """NAOQI_SIM_INTERNAL_PORT as naoqi-bin (and so naoqi-service, our modules) inherits it."""
-        return (self.dir / "naoqi-bin.port").read_text().strip()
+    def started_naoqi(self) -> bool:
+        return (self.dir / "naoqi-bin.args").exists()
+
+    def booted_autoload(self) -> str:
+        """The autoload copy naoqi-bin was started with."""
+        return Path(self.naoqi_bin("args").split("--autoload-file ")[1]).read_text()
 
 
 class Entrypoint:
-    def __init__(self, fakes: Fakes, version: str, extra: dict[str, str]):
+    def __init__(self, fakes: Fakes, version: str, extra: dict[str, str] | None = None):
         self.fakes = fakes
         self.out = fakes.dir / "stdout"
         self.proc = subprocess.Popen(
             ["bash", str(ENTRYPOINTS[version])],
-            env=fakes.env(extra),
+            env=fakes.env(extra or {}),
             stdout=self.out.open("w"),
             stderr=subprocess.STDOUT,
         )
@@ -215,113 +217,62 @@ def calls_only(fakes: Fakes) -> list[str]:
     return [c for c in fakes.calls() if c.startswith("call ")]
 
 
+def listings(fakes: Fakes) -> int:
+    return sum(1 for c in fakes.calls() if c.startswith("info --qi-url"))
+
+
 def test_sequence_on_2_1(fakes):
-    ep = Entrypoint(fakes, "2.1", {"FAKE_QICLI_REGISTERS": REGISTERS_21})
+    ep = Entrypoint(fakes, "2.1")
     ep.wait_for_ready()
     ep.stop()
 
-    url = "--qi-url tcp://127.0.0.1:9559"
-    assert calls_only(fakes) == [
-        f"call ALTextToSpeech.exit {url}",
-        f"call ALAudioPlayer.exit {url}",
-        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{RELAY} {url}",
-        f"call ALPythonBridge.eval import sys; sys.path.insert(0, '{fakes.naoqi_home}/modules') {url}",
-        f"call ALLauncher.launchPythonModule naoqi_sim_status_almodule {url}",
-        f"call ALLauncher.launchPythonModule naoqi_sim_speech_almodule {url}",
-        f"call ALLauncher.launchPythonModule naoqi_sim_audio_device_almodule {url}",
-        f"call ALLauncher.launchPythonModule naoqi_sim_audio_player_almodule {url}",
-        # The front takes ALTextToSpeech once its core is loaded, before the modules that call it.
-        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{SPEECH_FRONT} {url}",
-        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{PLAYER_FRONT} {url}",
-        # Late, in a NAO's autoload order: the behavior manager (its preloaded boxes make their
-        # proxies to the replaced names), the TTS dependents, the built-ins a NAO autoloads and
-        # the desktop does not, and autonomouslife after those.
-        f"call ALLauncher.launchLocal behaviormanager {url}",
-        f"call ALLauncher.launchLocal expressiveness {url}",
-        f"call ALLauncher.launchLocal animatedspeech {url}",
-        f"call ALLauncher.launchLocal basicawareness {url}",
-        f"call ALLauncher.launchLocal autonomousblinking {url}",
-        f"call ALLauncher.launchLocal autonomousmoves {url}",
-        f"call ALLauncher.launchLocal autonomouslife {url}",
-        f"call ALLauncher.launchLocal dialog {url}",
-        f"call NaoqiSim.setReady {url}",
+    url = URLS["2.1"]
+    # Our modules loaded inside NAOqi's boot: nothing is exited, launched or loaded by a call.
+    assert calls_only(fakes) == [f"call NaoqiSim.setReady {url}"]
+    # The service list is polled until stable (1 + 3 polls), then every replaced, added and
+    # added built-in name is checked, right before setReady.
+    assert "NAOqi ready after 4 polls, 20 services" in ep.output()
+    assert fakes.calls()[-11:-1] == [
+        f"info {name} {url}" for name in REPLACED + ADDED + BUILTINS_21
     ]
-    # The service list is polled until stable (1 + 3 polls), then the replaced name and the added
-    # ones are checked after loading, right before setReady.
-    assert "NAOqi ready after 4 polls, 9 services" in ep.output()
-    assert fakes.calls()[-7:-1] == [
-        f"info ALTextToSpeech {url}",
-        f"info ALAudioPlayer {url}",
-        f"info ALAudioDevice {url}",
-        f"info _NaoqiSimAudioRelay {url}",
-        f"info _NaoqiSimTextToSpeech {url}",
-        f"info _NaoqiSimAudioPlayer {url}",
-    ]
-    # naoqi-bin got the broker arguments and the autoload copy with the late entries it lists
-    # deferred; the others were never in it.
-    args = fakes.naoqi_bin_args()
-    assert args.startswith("-b 0.0.0.0 -p 9559 --autoload-file ")
-    autoload = Path(args.split("--autoload-file ")[1]).read_text()
-    assert autoload == (
-        "pythonbridge\n#deferred animatedspeech\naudioout\nalpanoramacompass\n"
-        "#deferred autonomouslife\n#deferred dialog\n"
+    assert fakes.naoqi_bin("args").startswith("-b 0.0.0.0 -p 9559 --autoload-file ")
+    # The copy: audioout (both built-ins) left out, ours right after pythonbridge, and the
+    # built-ins a NAO 2.1 autoloads at a NAO's places, autonomouslife and dialog after them.
+    assert fakes.booted_autoload() == (
+        "[core]\nlauncher\n[extra]\nbehaviormanager\nexpressiveness\n#replaced audioout\n"
+        f"audioplayer\nttsinterface\npythonbridge\n{OURS}animatedspeech\nalpanoramacompass\n"
+        "basicawareness\nautonomousblinking\nautonomousmoves\nautonomouslife\ndialog\n"
     )
-
-
-# 2.8's package services whose code calls ALTextToSpeech or ALAudioPlayer, in boot order.
-DEPENDENTS_28 = [
-    "dialog.dialog",
-    "dialog.Conversation",
-    "expressivity.thinkingexpression",
-    "expressivity.expressiveness",
-    "expressivity.notificationreader",
-    "expressivity.autonomousabilitiesmodules",
-    "life.autonomouslife",
-]
+    # The loader's modules and their folder, which naoqi-bin's process inherits.
+    assert fakes.naoqi_bin("modules") == MODULES["2.1"]
+    assert fakes.naoqi_bin("modules-dir") == f"{fakes.naoqi_home}/modules"
 
 
 def test_sequence_on_2_8(fakes):
-    ep = Entrypoint(fakes, "2.8", {"FAKE_QICLI_REGISTERS": REGISTERS_28})
+    ep = Entrypoint(fakes, "2.8")
     ep.wait_for_ready()
     ep.stop()
 
-    url = "--qi-url tcp://127.0.0.1:9558"
-    assert calls_only(fakes) == [
-        # Every package service that calls the replaced names stops, the last started first.
-        *[
-            f"call ALServiceManager.stopService {s} {url}"
-            for s in reversed(DEPENDENTS_28)
-        ],
-        f"call ALTextToSpeech.exit {url}",
-        f"call ALAudioPlayer.exit {url}",
-        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{RELAY} {url}",
-        f"call ALPythonBridge.eval import sys; sys.path.insert(0, '{fakes.naoqi_home}/modules') {url}",
-        f"call ALLauncher.launchPythonModule naoqi_sim_status_qiservice {url}",
-        f"call ALLauncher.launchPythonModule naoqi_sim_speech_qiservice {url}",
-        f"call ALLauncher.launchPythonModule naoqi_sim_audio_device_qiservice {url}",
-        f"call ALLauncher.launchPythonModule naoqi_sim_audio_player_qiservice {url}",
-        # The front, with the signals ALAnimatedSpeech connects to, before its service restarts.
-        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{SPEECH_FRONT} {url}",
-        f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{PLAYER_FRONT} {url}",
-        # Then they start again in boot order, and bind to the replacements.
-        *[f"call ALServiceManager.startService {s} {url}" for s in DEPENDENTS_28],
-        f"call NaoqiSim.setReady {url}",
-    ]
-    args = fakes.naoqi_bin_args()
-    assert args == (
-        "--qi-listen-url tcp://127.0.0.1:9558 "
-        f"--autoload-file {fakes.naoqi_home}/etc/naoqi/autoload.ini"
+    url = URLS["2.8"]
+    assert calls_only(fakes) == [f"call NaoqiSim.setReady {url}"]
+    assert fakes.calls()[-7:-1] == [f"info {name} {url}" for name in REPLACED + ADDED]
+    assert fakes.naoqi_bin("args") == (
+        f"--qi-listen-url tcp://127.0.0.1:9558 --autoload-file {fakes.tmp}/autoload.ini"
     )
-    # The qi services connect back to NAOqi on the port the script exports.
-    assert fakes.naoqi_bin_port_env() == "9558"
+    # Both built-ins' libraries left out, ours right after pythonbridge; nothing added.
+    assert fakes.booted_autoload() == (
+        "[core]\nlauncher\n[extra]\nbehaviormanager\naudioout\n#replaced audioplayer\n"
+        f"#replaced ttsinterface\npythonbridge\n{OURS}animatedspeech\nalpanoramacompass\n"
+        "autonomouslife\ndialog\n"
+    )
+    # naoqi-service inherits the loader's variables, and the port our qi services connect to.
+    assert fakes.naoqi_bin("modules") == MODULES["2.8"]
+    assert fakes.naoqi_bin("modules-dir") == f"{fakes.naoqi_home}/modules"
+    assert fakes.naoqi_bin("port") == "9558"
 
 
 def test_polls_until_naoqi_answers(fakes):
-    ep = Entrypoint(
-        fakes,
-        "2.1",
-        {"FAKE_QICLI_REGISTERS": REGISTERS_21, "FAKE_QICLI_READY_AFTER": "4"},
-    )
+    ep = Entrypoint(fakes, "2.1", {"FAKE_QICLI_READY_AFTER": "4"})
     ep.wait_for_ready()
     ep.stop()
     assert (
@@ -329,30 +280,18 @@ def test_polls_until_naoqi_answers(fakes):
     )  # four refusals, then 1 + 3 stable
 
 
-def test_waits_for_the_required_services_and_a_settled_list(fakes):
-    # The ready service only appears at the 3rd listing, and another service keeps the list
-    # changing until the 6th: stable at polls 7, 8, 9, so nothing is called before the 9th.
-    ep = Entrypoint(
-        fakes,
-        "2.8",
-        {
-            "FAKE_QICLI_REGISTERS": REGISTERS_28,
-            "FAKE_QICLI_LATE": "ALPanoramaCompass:3,ALAudioPlayer:6",
-        },
-    )
+def test_waits_for_the_package_services_and_a_settled_list(fakes):
+    # 2.8's ALDialog (a package service) only appears at the 3rd listing, and ALAudioPlayer keeps
+    # the list changing until the 6th: stable at polls 7, 8, 9, so nothing is checked before.
+    ep = Entrypoint(fakes, "2.8", {"FAKE_QICLI_LATE": "ALDialog:3,ALAudioPlayer:6"})
     ep.wait_for_ready()
     ep.stop()
     assert "NAOqi ready after 9 polls" in ep.output()
-    listings_before_acting = 0
-    for c in fakes.calls():
-        if c.startswith("call "):
-            break
-        listings_before_acting += 1
-    assert listings_before_acting == 9
+    assert listings(fakes) == 9
 
 
 def test_gives_up_when_naoqi_never_answers(fakes):
-    (fakes.dir / "down").write_text("ALLauncher")
+    fakes.down("ALLauncher")
     ep = Entrypoint(fakes, "2.1", {"NAOQI_SIM_READY_TRIES": "3"})
     assert ep.wait_exit() == 1
     assert "not ready after 3 polls" in ep.output()
@@ -360,129 +299,73 @@ def test_gives_up_when_naoqi_never_answers(fakes):
     assert calls_only(fakes) == []
 
 
-def test_gives_up_when_a_required_service_never_appears(fakes):
-    (fakes.dir / "down").write_text("ALPythonBridge")
-    ep = Entrypoint(fakes, "2.1", {"NAOQI_SIM_READY_TRIES": "3"})
+@pytest.mark.parametrize(
+    "version, missing",
+    [("2.1", "ALPythonBridge"), ("2.1", "ALDialog"), ("2.8", "ALAutonomousLife")],
+)
+def test_gives_up_when_a_required_service_never_appears(fakes, version, missing):
+    fakes.down(missing)
+    ep = Entrypoint(fakes, version, {"NAOQI_SIM_READY_TRIES": "3"})
     assert ep.wait_exit() == 1
     assert "not ready after 3 polls" in ep.output()
-    assert "ALPythonBridge" in ep.output()
+    assert missing in ep.output()
     assert calls_only(fakes) == []
 
 
-def test_fails_when_a_replacement_did_not_register(fakes):
-    # The front loads but registers another name: ALTextToSpeech stays gone.
-    ep = Entrypoint(
-        fakes,
-        "2.1",
-        {"FAKE_QICLI_REGISTERS": REGISTERS_21.replace("=ALTextToSpeech", "=")},
-    )
+@pytest.mark.parametrize("version", ["2.1", "2.8"])
+@pytest.mark.parametrize(
+    "missing, what",
+    [
+        (
+            "ALTextToSpeech",
+            "replaced",
+        ),  # the speech front did not load: no ALTextToSpeech at all
+        ("ALAudioPlayer", "replaced"),
+        ("_NaoqiSimTextToSpeech", "added"),  # a core failed to import
+        ("_NaoqiSimAudioPlayer", "added"),
+        ("ALAudioDevice", "added"),
+        ("_NaoqiSimAudioRelay", "added"),  # the relay registered nothing
+    ],
+)
+def test_fails_when_one_of_our_names_does_not_register(fakes, version, missing, what):
+    fakes.down(missing)
+    ep = Entrypoint(fakes, version)
     assert ep.wait_exit() == 1
-    assert "replaced service ALTextToSpeech does not answer" in ep.output()
+    assert f"{what} service {missing} does not answer" in ep.output()
     assert "naoqi-sim ready" not in ep.output()
     assert not [c for c in fakes.calls() if "setReady" in c]
 
 
-@pytest.mark.parametrize("version", ["2.1", "2.8"])
-def test_fails_when_the_speech_core_does_not_register(fakes, version):
-    registers = REGISTERS_21 if version == "2.1" else REGISTERS_28
-    ep = Entrypoint(
-        fakes,
-        version,
-        {"FAKE_QICLI_REGISTERS": registers.replace("=_NaoqiSimTextToSpeech", "=")},
-    )
+def test_fails_when_an_added_built_in_registers_nothing(fakes):
+    fakes.down("ALBasicAwareness")
+    ep = Entrypoint(fakes, "2.1")
     assert ep.wait_exit() == 1
-    assert "added service _NaoqiSimTextToSpeech does not answer" in ep.output()
+    assert "added built-in service ALBasicAwareness does not answer" in ep.output()
     assert not [c for c in fakes.calls() if "setReady" in c]
 
 
-@pytest.mark.parametrize("version", ["2.1", "2.8"])
-def test_fails_when_the_speech_front_registers_nothing(fakes, version):
-    registers = REGISTERS_21 if version == "2.1" else REGISTERS_28
-    ep = Entrypoint(
-        fakes,
-        version,
-        {"FAKE_QICLI_REGISTERS": registers, "FAKE_QICLI_EMPTY_LAUNCH": SPEECH_FRONT},
-    )
+@pytest.mark.parametrize(
+    "version, entry", [("2.1", "audioout"), ("2.8", "pythonbridge")]
+)
+def test_refuses_a_suite_autoload_without_an_entry_it_edits(fakes, version, entry):
+    # Without it the copy would boot without our modules, or with the built-ins in their place.
+    fakes.autoload.write_text(AUTOLOAD.replace(f"{entry}\n", ""))
+    ep = Entrypoint(fakes, version)
     assert ep.wait_exit() == 1
-    front = f"{fakes.naoqi_home}/lib/naoqi-sim/{SPEECH_FRONT}"
-    assert f"the native module {front} registered no module" in ep.output()
-    # The modules that call ALTextToSpeech are never brought back onto nothing.
-    later = "animatedspeech" if version == "2.1" else "startService"
-    assert not [c for c in fakes.calls() if later in c]
-    assert not [c for c in fakes.calls() if "setReady" in c]
-
-
-@pytest.mark.parametrize("version", ["2.1", "2.8"])
-def test_fails_when_the_relay_registers_nothing(fakes, version):
-    registers = REGISTERS_21 if version == "2.1" else REGISTERS_28
-    ep = Entrypoint(
-        fakes,
-        version,
-        {"FAKE_QICLI_REGISTERS": registers, "FAKE_QICLI_EMPTY_LAUNCH": RELAY},
-    )
-    assert ep.wait_exit() == 1
-    assert (
-        f"the native module {fakes.naoqi_home}/lib/naoqi-sim/{RELAY} registered no module"
-        in ep.output()
-    )
-    # Nothing is loaded after it, and the robot is never marked ready.
-    assert not [c for c in fakes.calls() if "launchPythonModule" in c]
-    assert not [c for c in fakes.calls() if "setReady" in c]
-
-
-@pytest.mark.parametrize("version", ["2.1", "2.8"])
-def test_fails_when_the_audio_device_does_not_register(fakes, version):
-    registers = REGISTERS_21 if version == "2.1" else REGISTERS_28
-    ep = Entrypoint(
-        fakes,
-        version,
-        {"FAKE_QICLI_REGISTERS": registers.replace("=ALAudioDevice", "=")},
-    )
-    assert ep.wait_exit() == 1
-    assert "added service ALAudioDevice does not answer" in ep.output()
-    assert "naoqi-sim ready" not in ep.output()
-    assert not [c for c in fakes.calls() if "setReady" in c]
-
-
-def test_fails_when_a_late_built_in_registers_nothing(fakes):
-    ep = Entrypoint(
-        fakes,
-        "2.1",
-        {
-            "FAKE_QICLI_REGISTERS": REGISTERS_21,
-            "FAKE_QICLI_EMPTY_LAUNCH": "basicawareness",
-        },
-    )
-    assert ep.wait_exit() == 1
-    assert "launching basicawareness registered no module" in ep.output()
-    assert "naoqi-sim ready" not in ep.output()
-    # Nothing after the failed launch: no later built-in, no ready mark.
-    launched = [
-        c.split()[2]
-        for c in calls_only(fakes)
-        if "launchLocal" in c and "/lib/naoqi-sim/" not in c
-    ]
-    assert launched == [
-        "behaviormanager",
-        "expressiveness",
-        "animatedspeech",
-        "basicawareness",
-    ]
-    assert not [c for c in fakes.calls() if "setReady" in c]
+    assert f"has no entry {entry}" in ep.output()
+    assert not fakes.started_naoqi()
 
 
 def test_fails_when_the_status_module_is_missing(fakes):
-    (fakes.dir / "down").write_text("NaoqiSim")
-    ep = Entrypoint(
-        fakes, "2.1", {"FAKE_QICLI_REGISTERS": REGISTERS_21.replace("=NaoqiSim", "=")}
-    )
+    fakes.down("NaoqiSim")
+    ep = Entrypoint(fakes, "2.1")
     assert ep.wait_exit() == 1
     assert "NaoqiSim.setReady failed" in ep.output()
     assert "naoqi-sim ready" not in ep.output()
 
 
 def test_fails_when_naoqi_bin_dies(fakes):
-    (fakes.dir / "down").write_text("ALLauncher")
+    fakes.down("ALLauncher")
     ep = Entrypoint(fakes, "2.1", {"FAKE_NAOQI_EXIT": "3"})
     assert ep.wait_exit() == 1
     assert "naoqi-bin exited" in ep.output()
@@ -502,26 +385,3 @@ def test_healthcheck_follows_the_ready_flag(fakes, style):
     (fakes.dir / "down").write_text("NaoqiSim")
     assert run() == 1  # the service is gone
     assert all("tcp://127.0.0.1:9559" in c for c in fakes.calls())
-
-
-@pytest.mark.parametrize("version", ["2.1", "2.8"])
-def test_fails_when_the_audio_player_core_does_not_register(fakes, version):
-    registers = REGISTERS_21 if version == "2.1" else REGISTERS_28
-    ep = Entrypoint(
-        fakes,
-        version,
-        {"FAKE_QICLI_REGISTERS": registers.replace("=_NaoqiSimAudioPlayer", "=")},
-    )
-    assert ep.wait_exit() == 1
-    assert "added service _NaoqiSimAudioPlayer does not answer" in ep.output()
-    assert not [c for c in fakes.calls() if "setReady" in c]
-
-
-def test_fails_when_the_audio_player_front_does_not_take_its_name(fakes):
-    ep = Entrypoint(
-        fakes,
-        "2.8",
-        {"FAKE_QICLI_REGISTERS": REGISTERS_28.replace("=ALAudioPlayer", "=")},
-    )
-    assert ep.wait_exit() == 1
-    assert "replaced service ALAudioPlayer does not answer" in ep.output()

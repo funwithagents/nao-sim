@@ -60,8 +60,9 @@ ARG NAOQI_SIM_VERSION=dev
 # Our override modules (Python 2.7, each service's core and shells), flat in one importable folder,
 # loaded into NAOqi by the entrypoint.
 COPY services/*/*.py /opt/naoqi/modules/
-# Our C++ modules, loaded by the entrypoint with ALLauncher.launchLocal.
-COPY --from=native /tmp/native/*.so /opt/naoqi/lib/naoqi-sim/
+# Our C++ modules, beside the suite's: an autoload entry `foo` loads lib/naoqi/libfoo.so
+# (specs/container/service-replacement.md, "Replacing a built-in").
+COPY --from=native /tmp/native/*.so /opt/naoqi/lib/naoqi/
 # This version's boot procedure, and what it shares with the other one.
 COPY entrypoint-2.1.sh /opt/naoqi/bin/naoqi-sim-entrypoint.sh
 COPY entrypoint-lib.sh /opt/naoqi/bin/entrypoint-lib.sh

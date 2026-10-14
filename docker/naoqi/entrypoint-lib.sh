@@ -1,6 +1,6 @@
-# What both versions' entrypoints share (entrypoint-2.1.sh, entrypoint-2.8.sh source it): starting
-# naoqi-bin, waiting for a settled service list, removing built-ins, loading our Python modules,
-# checking the replacements answer, and marking boot complete. Each version's script reads as its
+# What both versions' entrypoints share (entrypoint-2.1.sh, entrypoint-2.8.sh source it): writing the
+# autoload copy our modules load from (in place of the built-ins they replace), starting naoqi-bin,
+# waiting for a settled service list, checking the replacements answer, and marking boot complete. Each version's script reads as its
 # exact procedure; see specs/container/container.md ("Entrypoint") and specs/container/service-replacement.md.
 #
 # Any failure exits non-zero after terminating naoqi-bin, so a failed boot shows as an exited
@@ -26,17 +26,26 @@ fail() {
 # call <Service.method> [args...]: a qicli call to NAOqi from inside the container.
 call() { qicli call "$@" --qi-url "$URL"; }
 
-# autoload_without [entries...]: the path of an autoload file without those entries (commented out
-# in a copy), or the suite's own file when there are none.
-autoload_without() {
-  local autoload=$NAOQI_HOME/etc/naoqi/autoload.ini
-  [ $# -eq 0 ] && { echo "$autoload"; return; }
-  local copy=${TMPDIR:-/tmp}/autoload.ini
-  cp "$autoload" "$copy"
-  for m in "$@"; do  # no `sed -i`: its syntax differs between GNU and BSD sed
-    sed "s/^$m\$/#deferred $m/" "$copy" > "$copy.tmp" && mv "$copy.tmp" "$copy"
+# write_autoload <left out entries> [<anchor>:<entry>,<entry>...]...: AUTOLOAD, a copy of the suite's
+# autoload.ini with the left out entries commented out (`#replaced <entry>`) and each anchor's
+# entries inserted right after it, in order. A missing entry or anchor fails the boot: a suite
+# without them would otherwise boot without our modules.
+write_autoload() {
+  local suite=$NAOQI_HOME/etc/naoqi/autoload.ini left=$1 item
+  shift
+  AUTOLOAD=${TMPDIR:-/tmp}/autoload.ini
+  for item in $left "${@%%:*}"; do
+    grep -qx "$item" "$suite" || fail "$suite has no entry $item"
   done
-  echo "$copy"
+  awk -v left="$left" -v inserts="$*" '
+    BEGIN {
+      n = split(left, l, " "); for (i = 1; i <= n; i++) out[l[i]] = 1
+      n = split(inserts, s, " "); for (i = 1; i <= n; i++) { split(s[i], kv, ":"); after[kv[1]] = kv[2] }
+    }
+    {
+      if ($0 in out) print "#replaced " $0; else print
+      if ($0 in after) { n = split(after[$0], e, ","); for (i = 1; i <= n; i++) print e[i] }
+    }' "$suite" > "$AUTOLOAD" || fail "writing $AUTOLOAD failed"
 }
 
 # start_naoqi <url the entrypoint reaches NAOqi on> <naoqi-bin arguments...>
@@ -49,8 +58,8 @@ start_naoqi() {
 }
 
 # wait_for_naoqi <services...>: until every one is registered AND the service list has not changed
-# for SETTLE polls. On a slow (cold-cache) 2.8 boot the last service appears while naoqi-service is
-# still loading modules, and exiting a built-in or loading a module then kills it.
+# for SETTLE polls: NAOqi finished booting (on 2.8 the package services keep registering for a few
+# seconds after naoqi-service's last autoload entry).
 wait_for_naoqi() {
   local services previous= stable=0 present i
   for i in $(seq 1 "$TRIES"); do
@@ -75,51 +84,10 @@ wait_for_naoqi() {
   fail "NAOqi not ready after $TRIES polls (waiting for $* and a stable service list): giving up"
 }
 
-# exit_builtins <names...>: built-ins we replace leave the broker and the ServiceDirectory first,
-# or in-process modules keep finding them.
-exit_builtins() {
-  for m in "$@"; do
-    log "exiting built-in $m"
-    call "$m.exit"
-    sleep "$INTERVAL"
-  done
-}
-
-# load_modules <modules...>: `from <module> import *` in ALPythonBridge's embedded Python 2.7
-# (naoqi-bin's own interpreter ignores the [python] section of autoload.ini), in order.
-load_modules() {
-  call ALPythonBridge.eval "import sys; sys.path.insert(0, '$NAOQI_HOME/modules')" >/dev/null \
-    || fail "ALPythonBridge.eval failed"
-  for m in "$@"; do
-    log "loading module $m"
-    call ALLauncher.launchPythonModule "$m"
-  done
-}
-
-# load_native <path>: one of our C++ modules, the native relay or a C++ front
-# (specs/container/service-replacement.md, "Binary arguments: the native relay" and "Task ids, wait
-# and stop(id): a C++ front"), loaded with launchLocal like a built-in; it must register a module.
-load_native() {
-  local out
-  log "loading the native module $1"
-  out=$(call ALLauncher.launchLocal "$1" 2>&1) || fail "loading the native module $1 failed: $out"
-  printf '%s\n' "$out" | grep -q '\[ *"' || fail "the native module $1 registered no module: $out"
-}
-
-# launch_local <entries...>: ALLauncher.launchLocal each autoload entry, in order. It answers with the
-# modules the library registered (`[ "ALBasicAwareness" ]`); an empty list means it registered none.
-launch_local() {
-  local out
-  for m in "$@"; do
-    log "launching built-in $m"
-    out=$(call ALLauncher.launchLocal "$m" 2>&1) || fail "launching $m failed: $out"
-    printf '%s\n' "$out" | grep -q '\[ *"' || fail "launching $m registered no module: $out"
-  done
-}
-
-# check_answer <replaced|added> <names...>: launchPythonModule does not report an import failure, so
-# every replaced name must answer again (otherwise the built-in is gone and nothing took its place),
-# and every name our modules add must answer.
+# check_answer <what> <names...>: every name must answer. Our modules load inside NAOqi's boot, where
+# an import failure (launchPythonModule does not report one) or a library that registers nothing
+# shows only as a missing name: a replaced name (the built-in is left out and nothing took its
+# place), a name our modules add, or a built-in we add to the autoload.
 check_answer() {
   local what=$1 answered i
   shift
@@ -129,7 +97,7 @@ check_answer() {
       if qicli info "$m" --qi-url "$URL" >/dev/null 2>&1; then answered=1; break; fi
       sleep "$INTERVAL"
     done
-    [ -n "$answered" ] || fail "$what service $m does not answer after loading the modules"
+    [ -n "$answered" ] || fail "$what service $m does not answer once NAOqi booted"
   done
 }
 

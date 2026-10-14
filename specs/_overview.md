@@ -93,7 +93,7 @@ Both lines are supported with one host code base; only the override modules are 
 | Image | Ubuntu 14.04, boot about 5 s | Ubuntu 16.04, NAO V6 model, boot about 15 s |
 | Public port | `naoqi-bin` broker on 9559 | Suite's gateway on 9559, `naoqi-bin` on loopback 9558 |
 | Override object model | `naoqi.ALModule`, registered on the broker | `qi.Session` service, `@qi.multiThreaded()` |
-| Replacing a built-in | Defer the dependents in autoload, `exit()` the built-in, load, `launchLocal` the dependents | `ALServiceManager` stop the dependents, `exit()` the built-in, load, start them |
+| Replacing a built-in | Its autoload entry left out, ours loaded in its place in NAOqi's boot | Same, in `naoqi-service`'s autoload |
 
 Details and measurements: [container.md](container/container.md) and [service-replacement.md](container/service-replacement.md). The desktop `naoqi-bin` has no `ALSystem`, no version key in ALMemory, no `ALAudioDevice`, no face engine and a stub `ALAudioPlayer`. naoqi-sim fills the identity, audio input and sound-file gaps below; the missing face engine is left to the clients ([Perception and speech recognition](#perception-and-speech-recognition-on-the-clients)).
 

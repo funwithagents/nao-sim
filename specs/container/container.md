@@ -15,6 +15,7 @@ code:
   - docker/naoqi/services/speech/naoqi_sim_speech_front.cpp
   - docker/naoqi/services/audio-player/naoqi_sim_audio_player_front.cpp
   - docker/naoqi/services/naoqi_sim_front_core.h
+  - docker/naoqi/services/service-replacement/naoqi_sim_loader.cpp
 tests:
   - tests/test_suite.py
   - tests/test_docker_images.py
@@ -89,8 +90,8 @@ The first step of `naoqi-sim fetch-and-build-images [2.1] [2.8] [--image-data DI
 Each Dockerfile has three stages, so the compiler and the headers never reach the image:
 
 1. **`suite`**: the suite extracted to `/opt/naoqi`.
-2. **`native`**, `FROM suite`: installs `g++` from the base's own Ubuntu (the suite's compiler generation), extracts the version's headers from the C++ SDK (`COPY --from=image-data`), and compiles every `services/*/*.cpp` of `docker/naoqi/` into `lib<name>.so`: today `naoqi_sim_audio_device_relay.cpp`, the native relay, and the C++ fronts `naoqi_sim_speech_front.cpp` (`ALTextToSpeech`, [speech.md](../services/speech.md), "Architecture") and `naoqi_sim_audio_player_front.cpp` (`ALAudioPlayer`, [audio-player.md](../services/audio-player.md)), with `services/naoqi_sim_front_core.h` beside them; 2.8 compiles with `-DNAOQISIM_NAOQI_28`, which switches on the fronts' 2.8 parts. Each is linked against the suite's libraries in `/opt/naoqi/lib`, and `ldd -r` must report no undefined symbol.
-3. The final stage, `FROM suite`: our files, the Python of `services/*/` copied flat to `/opt/naoqi/modules/`, and only the `.so` files from `native`, in `/opt/naoqi/lib/naoqi-sim/`.
+2. **`native`**, `FROM suite`: installs `g++` from the base's own Ubuntu (the suite's compiler generation), extracts the version's headers from the C++ SDK (`COPY --from=image-data`), and compiles every `services/*/*.cpp` of `docker/naoqi/` into `lib<name>.so`: today `naoqi_sim_audio_device_relay.cpp`, the native relay, `naoqi_sim_loader.cpp`, which loads our Python modules from the autoload ([service-replacement.md](service-replacement.md), "Replacing a built-in"), and the C++ fronts `naoqi_sim_speech_front.cpp` (`ALTextToSpeech`, [speech.md](../services/speech.md), "Architecture") and `naoqi_sim_audio_player_front.cpp` (`ALAudioPlayer`, [audio-player.md](../services/audio-player.md)), with `services/naoqi_sim_front_core.h` beside them; 2.8 compiles with `-DNAOQISIM_NAOQI_28`, which switches on the fronts' 2.8 parts. Each is linked against the suite's libraries in `/opt/naoqi/lib`, and `ldd -r` must report no undefined symbol.
+3. The final stage, `FROM suite`: our files, the Python of `services/*/` copied flat to `/opt/naoqi/modules/`, and only the `.so` files from `native`, in `/opt/naoqi/lib/naoqi/` beside the suite's modules, where an autoload entry `foo` finds `libfoo.so`.
 
 | | 2.1 | 2.8 |
 | --- | --- | --- |
@@ -149,36 +150,30 @@ Both NAOqi services publish `127.0.0.1:9559`, so only one runs at a time, and ea
 
 ### Entrypoint
 
-One script per version, each reading top to bottom as that version's procedure: `entrypoint-2.1.sh` and `entrypoint-2.8.sh`, copied to `/opt/naoqi/bin/naoqi-sim-entrypoint.sh` in their image. What they share is in `entrypoint-lib.sh`, which both source (copied next to them): starting `naoqi-bin`, waiting for a settled service list, removing built-ins, loading our modules, checking the replacements, marking boot complete. The version's facts are constants at the top of its script, not image environment variables:
+One script per version, each reading top to bottom as that version's procedure: `entrypoint-2.1.sh` and `entrypoint-2.8.sh`, copied to `/opt/naoqi/bin/naoqi-sim-entrypoint.sh` in their image. What they share is in `entrypoint-lib.sh`, which both source (copied next to them): writing the autoload copy, starting `naoqi-bin`, waiting for a settled service list, checking the replacements, marking boot complete. Our modules load inside NAOqi's own boot, from the autoload copy ([service-replacement.md](service-replacement.md), "Replacing a built-in"): the entrypoint loads, exits and restarts nothing. The version's facts are constants at the top of its script, not image environment variables:
 
 | | `entrypoint-2.1.sh` | `entrypoint-2.8.sh` |
 | --- | --- | --- |
 | `naoqi-bin` | `-b 0.0.0.0 -p 9559`: the broker is the public port | `--qi-listen-url tcp://127.0.0.1:9558`, behind the suite's gateway on 9559 |
 | Reached from inside on | `tcp://127.0.0.1:9559` | `tcp://127.0.0.1:9558`, exported as `NAOQI_SIM_INTERNAL_PORT` for our qi services |
-| `REPLACED` (built-ins whose `exit()` is called) | `ALTextToSpeech ALAudioPlayer` | Same |
-| `RELAY` (the native relay, loaded with `ALLauncher.launchLocal` before our modules) | `/opt/naoqi/lib/naoqi-sim/libnaoqi_sim_audio_device_relay.so` | Same |
-| `MODULES` (ours, loaded with `ALLauncher.launchPythonModule`, in order) | `naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule` | `naoqi_sim_status_qiservice naoqi_sim_speech_qiservice naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice` |
-| `FRONTS` (C++ fronts taking a replaced name, loaded with `ALLauncher.launchLocal` after our modules) | `/opt/naoqi/lib/naoqi-sim/libnaoqi_sim_speech_front.so` (`ALTextToSpeech`), `libnaoqi_sim_audio_player_front.so` (`ALAudioPlayer`) | Same |
+| `LEFT_OUT` (the replaced built-ins' autoload entries, commented out of the copy as `#replaced <entry>`) | `audioout` | `audioplayer ttsinterface` |
+| `OURS` (our autoload entries, right after `pythonbridge`, in order) | `naoqi_sim_audio_device_relay naoqi_sim_loader naoqi_sim_speech_front naoqi_sim_audio_player_front` | Same |
+| `MODULES` (our Python modules, which the loader loads in order; exported as `NAOQI_SIM_PYTHON_MODULES`, with `NAOQI_SIM_MODULES_DIR=/opt/naoqi/modules`) | `naoqi_sim_status_almodule naoqi_sim_speech_almodule naoqi_sim_audio_device_almodule naoqi_sim_audio_player_almodule` | `naoqi_sim_status_qiservice naoqi_sim_speech_qiservice naoqi_sim_audio_device_qiservice naoqi_sim_audio_player_qiservice` |
+| `REPLACED` (the built-in names our fronts take) | `ALTextToSpeech ALAudioPlayer` | Same |
 | `ADDED` (names no built-in holds, which our modules and the relay register) | `ALAudioDevice _NaoqiSimAudioRelay _NaoqiSimTextToSpeech _NaoqiSimAudioPlayer` | Same |
-| Dependents (hold a proxy to a replaced built-in) | Autoload entries `behaviormanager animatedspeech dialog`, launched late (`LATE`). `behaviormanager` preloads behaviors, and each box makes its proxies (a Play Sound box's to `ALAudioPlayer`, a Say box's to `ALTextToSpeech`) as it loads: started before the replacement, every preloaded behavior with such a box failed its first run with "module destroyed" (found by a client's live tests) | `DEPENDENTS`: the package services whose code names `ALTextToSpeech` or `ALAudioPlayer` (a search of the suite's packages, Oct 14, 2026), in boot order: `dialog.dialog dialog.Conversation expressivity.thinkingexpression expressivity.expressiveness expressivity.notificationreader expressivity.autonomousabilitiesmodules life.autonomouslife`; `ALServiceManager.stopService` before, the last started first, `startService` after, in order. With only `autonomousabilitiesmodules` restarted, `ALDialog` kept calling the exited `ALTextToSpeech` ("module destroyed", found by the live tier's dialog test) |
-| Added (built-ins a NAO autoloads that the desktop suite ships but does not; see "Matching a NAO's modules") | `expressiveness basicawareness autonomousblinking autonomousmoves`, launched late (`LATE`) | None |
-| `LATE` (launched with `ALLauncher.launchLocal` after our modules, in a NAO's autoload order; those the desktop autoloads are commented out of a copy of `autoload.ini`) | `behaviormanager expressiveness animatedspeech basicawareness autonomousblinking autonomousmoves autonomouslife dialog`: the dependents, the added built-ins, and `autonomouslife`, which a NAO loads after the added built-ins and may depend on | None |
-| `LAST_SERVICE` (registered last at boot) | `ALPanoramaCompass` (`alpanoramacompass`, the last autoload entry once `autonomouslife` and `dialog` are left out) | `ALPanoramaCompass` |
+| Added built-ins (entries a NAO autoloads that the desktop suite ships but does not; see "Matching a NAO's modules"), written into the copy | `expressiveness` after `behaviormanager`; `basicawareness autonomousblinking autonomousmoves` after `alpanoramacompass`, so before `autonomouslife`, as on a NAO. `BUILTINS`, the names they register, are checked: `_ALExpressiveness ALBasicAwareness _ALAutonomousBlinking ALAutonomousMoves` | None |
+| `LAST` (registered last at boot, waited for) | `ALDialog` (`dialog`, the last autoload entry) | `ALPanoramaCompass` (the last autoload entry) and the package services `ALAnimatedSpeech ALDialog ALAutonomousLife` |
 
 The tunables below exist so the host-side tests can run the scripts against fake `naoqi-bin` and `qicli`; the images never set them: `NAOQI_SIM_READY_TRIES` (polls, one per second, before giving up on NAOqi; 120), `NAOQI_SIM_SETTLE_POLLS` (consecutive polls the service list must stay unchanged; 3), `NAOQI_SIM_POLL_INTERVAL` (seconds between polls; 1), `NAOQI_HOME`.
 
-Sequence (2.1 / 2.8):
+Sequence (both versions):
 
-1. Start `naoqi-bin` (2.1: with the autoload copy without the `LATE` entries).
-2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge`, every replaced built-in and the last service are registered **and** the list has not changed for `NAOQI_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAOQI_SIM_READY_TRIES` polls fail, exit 1. The settling matters on 2.8: on a slow boot (cold cache, right after an image rebuild) the last service appears while `naoqi-service` is still loading modules, and exiting a built-in or loading a module into that half-started process killed it (measured: `ALServiceManager` restarted it and `launchPythonModule` was cancelled after 50 s).
-3. 2.8: stop the dependent services, the last started first.
-4. `exit()` the replaced built-ins.
-5. Load the relay (`launchLocal` of `RELAY`; a launch that registers no module exits 1), add `/opt/naoqi/modules` to the embedded interpreter's `sys.path` (`ALPythonBridge.eval`), load our modules, then the `FRONTS` (`launchLocal`, same check), which take the replaced names over their cores.
-6. 2.1: launch the `LATE` entries in order; a launch that registers no module (`launchLocal` returns an empty list) exits 1. 2.8: start the dependent services, in boot order.
-7. Check that every replaced and every added name answers (up to 10 s each; `launchPythonModule` does not report an import failure). If one does not, exit 1.
-8. Call `NaoqiSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] naoqi-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
+1. Write the autoload copy: the suite's `autoload.ini` with `LEFT_OUT` commented out, `OURS` after `pythonbridge` and, on 2.1, the added built-ins at their places. Export `NAOQI_SIM_PYTHON_MODULES` and `NAOQI_SIM_MODULES_DIR`, and start `naoqi-bin` with the copy.
+2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge` and every `LAST` service are registered **and** the list has not changed for `NAOQI_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAOQI_SIM_READY_TRIES` polls fail, exit 1. On 2.8 the package services keep registering for a few seconds after the last autoload entry; the settling waits for them.
+3. Check that every replaced, every added and (2.1) every added built-in name answers (up to 10 s each). `launchPythonModule` does not report an import failure and a library may register nothing, so a missing name is how a failed load shows. If one does not answer, exit 1.
+4. Call `NaoqiSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] naoqi-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
 
-Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited container, never as a running one without its overrides. The healthcheck ([status-service.md](status-service.md)) reports `healthy` only after step 8.
+Every exit 1 terminates `naoqi-bin` first, so a failed boot shows as an exited container, never as a running one without its overrides. The healthcheck ([status-service.md](status-service.md)) reports `healthy` only after step 4.
 
 ### Matching a NAO's modules
 
@@ -188,10 +183,10 @@ Each image matches a real NAO **on the same NAOqi version**, not the other versi
 | --- | --- | --- |
 | 2.8 only: `ALMood`, `ALBackgroundMovement`, `ALListeningMovement`, `ALSpeakingMovement`, `ALAnimationPlayer`, `Conversation`, `Knowledge`, `ALUserInfo`, ... | 2.8's `dialog`, `expressivity` and `life` packages | Yes |
 | 2.1 only: `ALBonjour`, `ALRedBallTracker`, `ALSegmentation3D`, `ALCloseObjectDetection` | Dropped in 2.8 | Yes |
-| `ALBasicAwareness`, `ALAutonomousMoves` and the hidden `_ALExpressiveness`, `_ALAutonomousBlinking` missing on 2.1 | The 2.1 desktop suite ships these libraries but leaves them out of its `autoload.ini` | No: naoqi-sim adds them (`LATE`) |
+| `ALBasicAwareness`, `ALAutonomousMoves` and the hidden `_ALExpressiveness`, `_ALAutonomousBlinking` missing on 2.1 | The 2.1 desktop suite ships these libraries but leaves them out of its `autoload.ini` | No: naoqi-sim adds them to its autoload copy ("Entrypoint") |
 
 - Entries a NAO autoloads that the desktop suite ships but does not load: 2.1 `expressiveness`, `basicawareness`, `autonomousblinking`, `autonomousmoves`, `aldiagnosis`, `facetracker`, `visionrecognition`, `alchestbutton`, `memorywatcher`, `notificationreader`, `voiceemotionanalysis`, `mecalogger`, `dcm_hal`; 2.8 `aldiagnosis`, `memorywatcher`, `voiceemotionanalysis`. Each loads with `launchLocal` on a running image, which stays healthy (`voiceemotionanalysis` and `mecalogger` register nothing).
-- The 2.1 entrypoint adds the four that make the autonomous abilities a NAO 2.1 runs (expressiveness, awareness, blinking, autonomous moves), launched in the robot's order with `autonomouslife` after them, since a NAO loads it after them and it may depend on them ("Entrypoint", `LATE`). The others are added when a client needs them (open questions); vision modules are not wanted.
+- The 2.1 entrypoint adds the four that make the autonomous abilities a NAO 2.1 runs (expressiveness, awareness, blinking, autonomous moves) to its autoload copy, in the robot's order, with `autonomouslife` after them, since a NAO loads it after them and it may depend on them ("Entrypoint"). The others are added when a client needs them (open questions); vision modules are not wanted.
 - Entries a NAO autoloads that the desktop suites do not ship at all (audio input, `ALSystem`, face detection, speech recognition, sound localization, photo and video capture, landmark and barcode detection, infrared, laser...) cannot be added. naoqi-sim provides `ALAudioDevice` itself; `ALSystem` stays absent (its absence tells a client the target is not a real robot); detection and recognition are the clients' ([_overview.md](../_overview.md), "Perception and speech recognition").
 
 ### Desktop NAOqi facts the rest of naoqi-sim relies on
