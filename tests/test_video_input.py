@@ -111,12 +111,16 @@ class Ran:
         device.stop()
         self.t3 = time.monotonic()
 
-    def slots(self) -> tuple[float, float]:
-        """The fewest and most slots of the schedule in that time."""
-        return (self.t2 - self.t1) * self.fps - 1, (self.t3 - self.t0) * self.fps + 1
+    def slots(self, lateness: float) -> tuple[float, float]:
+        """The fewest and most slots of the schedule in that time. A machine that wakes threads
+        `lateness` seconds late (a CI virtual machine) loses slots at both ends: before the
+        device's thread first runs, and after the last slot it handled when `stop()` finds it
+        sleeping late, besides the frame in flight (specs/testing/testing.md, "Platforms")."""
+        fewest = (self.t2 - self.t1 - 2 * lateness) * self.fps - 2
+        return fewest, (self.t3 - self.t0) * self.fps + 1
 
 
-def test_paces_at_the_configured_rate(naoqi):
+def test_paces_at_the_configured_rate(naoqi, lateness):
     ran = Ran(fps=10)
     device = ran.start(Frames(), naoqi)
     time.sleep(1.0)
@@ -124,7 +128,7 @@ def test_paces_at_the_configured_rate(naoqi):
 
     # Each slot puts its frame, or is missed (a render or an injection stalled past it, as on a
     # loaded machine), never caught up with a second frame.
-    fewest, most = ran.slots()
+    fewest, most = ran.slots(lateness())
     assert len(naoqi.puts) <= most
     assert fewest <= len(naoqi.puts) + device.missed <= most
     gaps = np.diff([put[4] for put in naoqi.puts])
@@ -133,7 +137,7 @@ def test_paces_at_the_configured_rate(naoqi):
     assert gaps.min() > 0.001
 
 
-def test_a_slow_source_skips_slots_and_never_catches_up(naoqi):
+def test_a_slow_source_skips_slots_and_never_catches_up(naoqi, lateness):
     source = Frames(delay=0.08)  # slower than 30 fps' 33 ms
     ran = Ran(fps=30)
     device = ran.start(source, naoqi)
@@ -144,7 +148,7 @@ def test_a_slow_source_skips_slots_and_never_catches_up(naoqi):
 
     times = [put[4] for put in naoqi.puts]
     late = [t for t in times if t > times[0] + 0.65]
-    fewest, most = ran.slots()
+    fewest, most = ran.slots(lateness())
     assert device.missed >= 5  # a frame every 80 ms missed slots of 33 ms
     assert fewest <= len(times) + device.missed <= most  # missed, not lost
     # Back on the 30 fps schedule: a burst would put the missed frames back to back (well under
