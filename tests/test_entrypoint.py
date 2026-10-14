@@ -268,6 +268,18 @@ def test_sequence_on_2_1(fakes):
     )
 
 
+# 2.8's package services whose code calls ALTextToSpeech or ALAudioPlayer, in boot order.
+DEPENDENTS_28 = [
+    "dialog.dialog",
+    "dialog.Conversation",
+    "expressivity.thinkingexpression",
+    "expressivity.expressiveness",
+    "expressivity.notificationreader",
+    "expressivity.autonomousabilitiesmodules",
+    "life.autonomouslife",
+]
+
+
 def test_sequence_on_2_8(fakes):
     ep = Entrypoint(fakes, "2.8", {"FAKE_QICLI_REGISTERS": REGISTERS_28})
     ep.wait_for_ready()
@@ -275,7 +287,11 @@ def test_sequence_on_2_8(fakes):
 
     url = "--qi-url tcp://127.0.0.1:9558"
     assert calls_only(fakes) == [
-        f"call ALServiceManager.stopService expressivity.autonomousabilitiesmodules {url}",
+        # Every package service that calls the replaced names stops, the last started first.
+        *[
+            f"call ALServiceManager.stopService {s} {url}"
+            for s in reversed(DEPENDENTS_28)
+        ],
         f"call ALTextToSpeech.exit {url}",
         f"call ALAudioPlayer.exit {url}",
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{RELAY} {url}",
@@ -287,7 +303,8 @@ def test_sequence_on_2_8(fakes):
         # The front, with the signals ALAnimatedSpeech connects to, before its service restarts.
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{SPEECH_FRONT} {url}",
         f"call ALLauncher.launchLocal {fakes.naoqi_home}/lib/naoqi-sim/{PLAYER_FRONT} {url}",
-        f"call ALServiceManager.startService expressivity.autonomousabilitiesmodules {url}",
+        # Then they start again in boot order, and bind to the replacements.
+        *[f"call ALServiceManager.startService {s} {url}" for s in DEPENDENTS_28],
         f"call NaoqiSim.setReady {url}",
     ]
     args = fakes.naoqi_bin_args()

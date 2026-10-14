@@ -68,7 +68,7 @@ Only a C++ `ALModule` serves `post`/`pCall`, `wait(id)`, `stop(id)` and `isRunni
 - **The front reaches the core** through `ALProxy` on 2.1 and a `qi::AnyObject` from the broker's session on 2.8, with typed calls.
 - **The hidden signals are the front's** (2.8): `_started (s)`, `synchroTTS (L)` and `languageTTS (s)` are advertised on the C++ module with `getBuilder().advertiseSignal` and fired as member signals, which a client in another process (`ALAnimatedSpeech` runs in `qilaunch`) receives (measured). The core asks the front to fire them through a hidden method (`_fire(name, text)`); the core never connects to them. `synchroTTS` is declared, never fired, as today.
 - **`_NaoqiSimTextToSpeech`, the Python core**: today's `naoqi_sim_speech_core.Speaker` and its shells, registered under the hidden name instead of `ALTextToSpeech` (an `ALModule` on 2.1, a qi service on 2.8), with the per-call ids and stops below. It is what the fast tier tests.
-- **Boot:** step 3 of "Replacing a built-in" loads the core, then the front; the readiness check covers both names. The dependents restarted in step 4 (`ALAnimatedSpeech`, `ALDialog` on 2.1; `expressivity.autonomousabilitiesmodules` on 2.8) find the front.
+- **Boot:** step 3 of "Replacing a built-in" loads the core, then the front; the readiness check covers both names. The dependents restarted in step 4 (`ALAnimatedSpeech`, `ALDialog` on 2.1; on 2.8 every package service whose code names `ALTextToSpeech` or `ALAudioPlayer`, `ALDialog` and `ALAnimatedSpeech` among them, [container.md](../container/container.md), "Entrypoint") find the front.
 
 ### Behaviour
 

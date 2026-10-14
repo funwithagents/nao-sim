@@ -55,10 +55,12 @@ A replacement registers under the built-in's name, after the built-in has left b
 
 | Step | 2.1 | 2.8 |
 | --- | --- | --- |
-| 1. Keep dependents off the old object | Remove them from the autoload copy and launch them late (`LATE` in `entrypoint-2.1.sh`: `behaviormanager animatedspeech dialog`; `behaviormanager` because its preloaded behaviors' boxes make their proxies as they load) | `ALServiceManager.stopService(<package service>)` (`DEPENDENTS` in `entrypoint-2.8.sh`: `expressivity.autonomousabilitiesmodules`) |
+| 1. Keep dependents off the old object | Remove them from the autoload copy and launch them late (`LATE` in `entrypoint-2.1.sh`: `behaviormanager animatedspeech dialog`; `behaviormanager` because its preloaded behaviors' boxes make their proxies as they load) | `ALServiceManager.stopService(<package service>)`, the last started first (`DEPENDENTS` in `entrypoint-2.8.sh`: every package service whose code names a replaced built-in, see [container.md](container.md), "Entrypoint") |
 | 2. Remove the built-in | `<Built-in>.exit()` (`REPLACED`); it leaves the broker and the ServiceDirectory cleanly | Same |
 | 3. Load the replacement | `launchPythonModule` (`MODULES`) | Same |
-| 4. Bring dependents back | `ALLauncher.launchLocal(<library>)` | `ALServiceManager.startService(<package service>)` |
+| 4. Bring dependents back | `ALLauncher.launchLocal(<library>)` | `ALServiceManager.startService(<package service>)`, in boot order |
+
+- Finding the dependents: any module whose code names a replaced built-in may hold a proxy to it, and only a call shows it does. On 2.8 a search of the suite's packages for `ALTextToSpeech` and `ALAudioPlayer` gives the list; restarting only `ALAnimatedSpeech`'s service left `ALDialog` calling the exited built-in, so a topic's answer failed with "module destroyed" (found by the live tier's dialog test).
 
 - Alternative for a built-in nobody needs: drop its C++ library from the autoload copy (`[core]`/`[extra]` entries are `lib<name>.so`). Note that `audioout` provides both `ALTextToSpeech` and `ALAudioPlayer`, so dropping it means replacing both.
 - A name that no built-in holds (`ALAudioDevice` on both versions) is registered directly, with no step 1, 2 or 4.
