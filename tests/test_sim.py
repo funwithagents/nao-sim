@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from ports import free_port
 
-from naoqi_sim import docker_images, sim, stack
+from naoqi_sim import docker_images, sim, stack, webcam
 from naoqi_sim.audio_input import FakeAudioSource
 from naoqi_sim.audio_output import MemorySink
 from naoqi_sim.config import (
@@ -28,7 +28,6 @@ from naoqi_sim.config import (
 )
 from naoqi_sim.errors import (
     BootError,
-    DeviceNotBuiltError,
     DeviceUnavailableError,
     ImagesMissingError,
     MissingExtraError,
@@ -233,23 +232,102 @@ def test_a_viewer_that_cannot_launch_never_starts_the_camera(env):
     assert env.viewer.events == ["launch viewer-config", "close"]
 
 
-@pytest.mark.parametrize(
-    ("config", "message"),
-    [
-        (
-            NaoqiSimConfig(
-                video_input=VideoInputSettings(bottom=CameraSettings(source="webcam")),
-                viewer=HEADLESS,
-            ),
-            "video_input.bottom.source 'webcam'",
-        ),
-    ],
-)
-def test_an_unbuilt_device_fails_before_anything_starts(env, config, message):
-    with pytest.raises(DeviceNotBuiltError, match=message):
+class Camera:
+    """A host webcam behind OpenCV's seam: counts the captures opened on it and released."""
+
+    def __init__(self):
+        self.opening = True
+        self.opens = 0
+        self.released = 0
+
+    def open(self, device):
+        self.opens += 1
+        camera = self
+
+        class Capture:
+            def isOpened(self):
+                return camera.opening
+
+            def read(self):
+                time.sleep(0.01)
+                return True, np.zeros((720, 1280, 3), np.uint8)
+
+            def getBackendName(self):
+                return "FAKE"
+
+            def release(self):
+                camera.released += 1
+
+        return Capture()
+
+
+@pytest.fixture
+def camera(monkeypatch):
+    camera = Camera()
+    monkeypatch.setattr(webcam, "open_capture", camera.open)
+    return camera
+
+
+def webcams(top: int | None = 0, bottom: int | None = None) -> VideoInputSettings:
+    def block(device):
+        if device is None:
+            return CameraSettings()
+        return CameraSettings(source="webcam", device=device)
+
+    return VideoInputSettings(top=block(top), bottom=block(bottom))
+
+
+def test_a_webcam_that_cannot_open_fails_before_anything_starts(env, camera):
+    camera.opening = False
+    config = NaoqiSimConfig(video_input=webcams(top=None, bottom=1), viewer=HEADLESS)
+    with pytest.raises(
+        DeviceUnavailableError,
+        match=r"^video_input.bottom.source 'webcam': webcam 1 does not open",
+    ):
         asyncio.run(sim.NaoqiSim(config, sink=MemorySink()).start())
     assert compose_calls(env) == []
     assert not listening(sim.AUDIO_OUTPUT_PORT)
+    assert camera.released == camera.opens == 1
+
+
+def test_a_webcam_feeds_a_headless_robot_without_the_viewer(env, camera):
+    config = NaoqiSimConfig(video_input=webcams(top=0), viewer=HEADLESS)
+    naoqisim = sim.NaoqiSim(config, sink=MemorySink())
+    asyncio.run(naoqisim.start())
+    deadline = time.monotonic() + 5
+    while "frame 0 640x480" not in env.viewer.events:
+        assert time.monotonic() < deadline, env.viewer.events
+        time.sleep(0.01)
+    asyncio.run(naoqisim.stop())
+
+    assert (
+        env.viewer.events
+        == [  # no launch: nothing is rendered and there is no window
+            "NaoqiSim/Camera/Top/Source = webcam",
+            "NaoqiSim/Camera/Bottom/Source = none",
+            "NaoqiSim/Camera/Source = webcam",
+            "frame 0 640x480",
+            "NaoqiSim/Camera/Top/Source = none",
+            "NaoqiSim/Camera/Bottom/Source = none",
+            "NaoqiSim/Camera/Source = none",
+        ]
+    )
+    # Opened by the check, then by the capture; both released by the end of stop().
+    assert camera.opens == 2 and camera.released == 2
+
+
+def test_two_cameras_on_one_webcam_share_its_capture(env, camera):
+    config = NaoqiSimConfig(video_input=webcams(top=0, bottom=0), viewer=HEADLESS)
+    naoqisim = sim.NaoqiSim(config, sink=MemorySink())
+    asyncio.run(naoqisim.start())
+    deadline = time.monotonic() + 5
+    while not {"frame 0 640x480", "frame 1 640x480"} <= set(env.viewer.events):
+        assert time.monotonic() < deadline, env.viewer.events
+        time.sleep(0.01)
+    asyncio.run(naoqisim.stop())
+
+    assert camera.opens == 2  # one check, one capture, for the two cameras
+    assert camera.released == 2
 
 
 def test_missing_images_fail_before_anything_starts(env, monkeypatch):

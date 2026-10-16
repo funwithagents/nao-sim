@@ -126,6 +126,11 @@ def test_cross_field_requirements():
         {"audio_output": {"mode": "play", "record": "x.wav"}}
     )
     assert config.audio_output.record == Path("x.wav")
+    # The cameras' pictures are drawn in the window: a headless viewer has none.
+    assert (
+        error_for({"viewer": {"headless": True, "cameras_display": True}}).key
+        == "viewer.cameras_display"
+    )
 
 
 def test_the_wav_source_is_gone():
@@ -191,7 +196,14 @@ def test_paths_in_a_file_resolve_against_its_folder(tmp_path):
 
 def test_the_example_files_load():
     names = sorted(p.name for p in EXAMPLES.glob("*.json"))
-    assert names == ["2.8.json", "ci.json", "default.json", "headless.json", "mic.json"]
+    assert names == [
+        "2.8.json",
+        "ci.json",
+        "default.json",
+        "headless.json",
+        "mic.json",
+        "webcam.json",
+    ]
     default = NaoqiSimConfig.from_json_file(EXAMPLES / "default.json")
     assert default == NaoqiSimConfig()
     assert NaoqiSimConfig.from_json_file(EXAMPLES / "2.8.json") == NaoqiSimConfig(
@@ -207,3 +219,11 @@ def test_the_example_files_load():
     assert ci.audio_input.source == "fake"
     mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")
     assert mic == NaoqiSimConfig(audio_input=AudioInputSettings(source="mic"))
+    webcam = NaoqiSimConfig.from_json_file(EXAMPLES / "webcam.json")
+    assert webcam == NaoqiSimConfig(
+        video_input=VideoInputSettings(
+            top=CameraSettings(source="webcam", device=0),
+            bottom=CameraSettings(source="render"),
+        ),
+        viewer=ViewerSettings(cameras_display=True),
+    )

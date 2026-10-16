@@ -144,10 +144,13 @@ dependencies = [
 viewer = [
     { name = "naoqi-viewer" },
 ]
+webcam = [
+    { name = "opencv-python-headless" },
+]
 
 [package.dev-dependencies]
 dev = [
-    { name = "naoqi-sim", extra = ["viewer"] },
+    { name = "naoqi-sim", extra = ["viewer", "webcam"] },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-xdist" },
@@ -156,17 +159,18 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "naoqi-viewer", marker = "extra == 'viewer'", git = "https://github.com/funwithagents/naoqi-viewer?rev=9964bc00df11194757251fe22c256cce3f740fe4" },
+    { name = "naoqi-viewer", marker = "extra == 'viewer'", git = "https://github.com/funwithagents/naoqi-viewer?rev=8f3976f4d153297ff8ed9897fb36f70c163747f7" },
     { name = "numpy" },
+    { name = "opencv-python-headless", marker = "extra == 'webcam'" },
     { name = "platformdirs" },
     { name = "qi", specifier = ">=3.1.8,<4", index = "https://funwithagents.github.io/libqi-python/simple/" },
     { name = "sounddevice" },
 ]
-provides-extras = ["viewer"]
+provides-extras = ["viewer", "webcam"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "naoqi-sim", extras = ["viewer"] },
+    { name = "naoqi-sim", extras = ["viewer", "webcam"] },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
@@ -176,7 +180,7 @@ dev = [
 [[package]]
 name = "naoqi-viewer"
 version = "0.1.0"
-source = { git = "https://github.com/funwithagents/naoqi-viewer?rev=9964bc00df11194757251fe22c256cce3f740fe4#9964bc00df11194757251fe22c256cce3f740fe4" }
+source = { git = "https://github.com/funwithagents/naoqi-viewer?rev=8f3976f4d153297ff8ed9897fb36f70c163747f7#8f3976f4d153297ff8ed9897fb36f70c163747f7" }
 dependencies = [
     { name = "mujoco" },
     { name = "numpy" },
@@ -210,6 +214,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/1b/3b16a9bc514a440a7a0883684111dcb1ef1aee960af2ca95da8fc775f124/numpy-2.5.3-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a5fa86b80fd24bcd1aff83ad23be44ea323de3f787be8f8b15d4a65621e25321", size = 16708577, upload-time = "2026-09-06T16:25:14.171Z" },
     { url = "https://files.pythonhosted.org/packages/5f/3e/a700ecbf36e85ae8328fd3b0e12eeddc22ed6358a64cb2bd913e0d195d65/numpy-2.5.3-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:1302b90c0e52281681b2975adfe8a860cb7b12216a27b4b0b4207c44bf7bccf0", size = 18465724, upload-time = "2026-09-06T16:25:20.949Z" },
     { url = "https://files.pythonhosted.org/packages/f3/ec/100f2b1794ede74a9b3d7ec6b9736927f56713414c1dfe19ab6c383494bf/numpy-2.5.3-cp313-cp313-win_amd64.whl", hash = "sha256:71cad2b2a7451ab79d8f5e71b453485b6775963d5cf794179144a7463fe6e8ec", size = 12560965, upload-time = "2026-09-06T16:25:26.602Z" },
+]
+
+[[package]]
+name = "opencv-python-headless"
+version = "5.0.0.93"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1d/99/76b7c80252aa83c1af16393454aafd125a0287101afe8deb0a6821af0e30/opencv_python_headless-5.0.0.93.tar.gz", hash = "sha256:b82f9831daab90b725c7c1ee1b36cb5732c367096ac76d119e64e14eb70d5f3c", size = 81817738, upload-time = "2026-07-02T07:01:06.039Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/7c/8c8097891c509d98cd128493835c95631c80be6a8f37ed9d25716c2e16f1/opencv_python_headless-5.0.0.93-cp37-abi3-macosx_13_0_arm64.whl", hash = "sha256:030ca5e0837a2963ab36ef896baa9767eb8d2b83353fb28af5a521e40dd8756f", size = 48322581, upload-time = "2026-07-02T05:50:34.207Z" },
+    { url = "https://files.pythonhosted.org/packages/2b/97/8170e9819764c47e436c130d3ff6cfb73b58f923eae9d3a03d8982b04aec/opencv_python_headless-5.0.0.93-cp37-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:09a872a157c1376ab922a69bbf22f9a95bcc7b658a9d8b436a60212b02b2eeb4", size = 56563598, upload-time = "2026-07-02T06:55:47.355Z" },
+    { url = "https://files.pythonhosted.org/packages/9b/21/f6ef335f6e65724aa78b8d792b48d40a48c381715f1e62f5a5049e09d07e/opencv_python_headless-5.0.0.93-cp37-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:ed709fdf9aa0bd1f2ed8549e71d19449b03a675bb581eb292285f6861953be37", size = 61204038, upload-time = "2026-07-02T06:56:41.823Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/88/763b967f7efd7226b82c9fae16d560cba049b1f0c036647e65c610fd636e/opencv_python_headless-5.0.0.93-cp37-abi3-win_amd64.whl", hash = "sha256:829717b6a95554f273e49e357cee3b3a2a26b6f4842fbc1bed2b45bdd8f87e0e", size = 43825962, upload-time = "2026-07-02T05:50:09.627Z" },
 ]
 
 [[package]]

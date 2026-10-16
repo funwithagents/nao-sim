@@ -324,11 +324,18 @@ class ViewerSettings(_Loaders):
         "empty"  # a bundled scene name ("empty", "table") or an MJCF file (.xml)
     )
     variant: ViewerVariant = "auto"
+    # the head cameras as ALVideoDevice serves them, as pictures in the window
+    cameras_display: bool = False
 
     def __post_init__(self) -> None:
         if not self.scene:
             raise ConfigError("must not be empty", key="scene")
         _check_choice(self.variant, ViewerVariant, "variant")
+        if self.headless and self.cameras_display:
+            raise ConfigError(
+                "is drawn only in the window, and a headless viewer has none",
+                key="cameras_display",
+            )
 
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
@@ -336,7 +343,12 @@ class ViewerSettings(_Loaders):
             cls,
             data,
             path,
-            {"headless": _as_bool, "scene": _as_str, "variant": _as_str},
+            {
+                "headless": _as_bool,
+                "scene": _as_str,
+                "variant": _as_str,
+                "cameras_display": _as_bool,
+            },
         )
 
     def _relative_to(self, directory: Path) -> Self:

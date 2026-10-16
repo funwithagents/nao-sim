@@ -1,11 +1,13 @@
 ---
 code:
   - src/naoqi_sim/video_input.py
+  - src/naoqi_sim/webcam.py
   - src/naoqi_sim/config.py
   - src/naoqi_sim/sim.py
   - src/naoqi_sim/viewer.py
 tests:
   - tests/test_video_input.py
+  - tests/test_webcam.py
   - tests/test_config.py
   - tests/test_sim.py
   - tests/test_viewer.py
@@ -14,7 +16,7 @@ tests:
 
 # Video input
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -34,10 +36,10 @@ The `video_input` block of [config.md](../runtime/config.md) ("The video input: 
 | --- | --- | --- |
 | `none` (default) | Nothing; the camera's key stays `none` and NAOqi serves its placeholder (see "As measured") | — |
 | `render` | The camera as naoqi-viewer renders it at the robot's current pose ([viewer.md](viewer.md)) | First: the only source CI can test. Top camera Oct 9, 2026; either camera Oct 16 |
-| `webcam` | The host webcam `device`, cropped to the camera | After `render` |
+| `webcam` | The host webcam `device`, centre-cropped to 4:3 and scaled to VGA | After `render`: Oct 16, 2026 |
 
 - **Render** closes the loop: NAOqi moves the head, naoqi-viewer renders what the camera sees (`NaoqiViewer.camera_frame(camera, 640, 480)`, RGB), the device injects it, NAOqi serves it. It needs the viewer, so `render` on either camera makes the viewer run, windowed or headless ([viewer.md](viewer.md), "Which viewer runs").
-- **Webcam**: OpenCV capture, cropped to the NAO camera's aspect and field of view (60.97° × 47.64°) and scaled to VGA. Off unless a camera's block says `webcam`, with the indicator of [devices.md](devices.md) ("Off unless asked"); while the source is on, the webcam captures. Each block names its own `device`, so a laptop's one webcam feeds the top camera (the bottom one rendered or unfed), or two webcams feed the two cameras.
+- **Webcam**: a host camera captured with OpenCV, centre-cropped to the NAO camera's 4:3 and scaled to VGA ("The webcam source" below). Off unless a camera's block says `webcam`, with the indicator of [devices.md](devices.md) ("Off unless asked"); while the source is on, the webcam captures. Each block names its own `device`, so a laptop's one webcam feeds the top camera (the bottom one rendered or unfed), or two webcams feed the two cameras; two blocks naming the same `device` share one capture.
 - The device publishes each camera's key, `NaoqiSim/Camera/Top/Source` and `NaoqiSim/Camera/Bottom/Source` (`render`, `webcam`, or `none` for a camera not fed), then the summary `NaoqiSim/Camera/Source` that `status()` reads (`none` when no camera is fed, the one source feeding them, `mixed` when they differ) when it starts, and `none` everywhere when it stops ([status-service.md](../container/status-service.md), which seeds all three at boot).
 
 ### Frames: fixed rate, VGA, both cameras, whoever subscribes
@@ -51,9 +53,23 @@ The device injects frames on its own schedule, **independently of `ALVideoDevice
 - NAOqi's own subscribers (`FrameGetter/*` on both versions; on 2.8 also people perception's `VideoDevice_TopCamera<QVGA>`, the depth camera's and `ALBasicAwareness`'s) need no special case: the device does not look at subscribers.
 - **Render and inject run on separate threads**, the newest rendered frame of each camera winning, so a `putImage` (1–5 ms under emulation) never makes the next render miss naoqi-viewer's 60 Hz tick: 30 fps held on both versions with one camera; with two, see "As measured".
 
+### The webcam source
+
+Built Oct 16, 2026 (plan [202610161851_webcam-source.md](../../plans/202610161851_webcam-source.md)), in `src/naoqi_sim/webcam.py`.
+
+- **OpenCV, behind the `webcam` extra.** `cv2.VideoCapture(device)` on the platform's own backend (AVFoundation on macOS, V4L2 on Linux, Media Foundation on Windows), from `opencv-python-headless`, which wheels cover on the three platforms with no system install. It comes with `naoqi-sim[webcam]`, imported only when a camera's source is `webcam`, so a CI or server install stays small; a config asking for a webcam without the extra fails at step 1 with `MissingExtraError` naming it ([api.md](../runtime/api.md), "Lifecycle").
+- **`device` is an index**, OpenCV's (0 for the default camera). OpenCV gives no camera names, so the log names the index, the backend and the resolution the camera opened at; matching by name is open question 3.
+- **The camera picks its own mode.** No size or rate is asked: the camera delivers what it prefers (a laptop's 1280×720 or 1920×1080 at 30, a USB webcam's 640×480), and the source fits it into VGA.
+- **Centre-cropped to 4:3, scaled to VGA, not mirrored.** A wider frame (16:9) loses its sides, a taller one its top and bottom; the crop is scaled to 640×480 (OpenCV's area interpolation) and converted from OpenCV's BGR to RGB. Frames are what a camera looking at the room sees, as the robot's own camera would, not a mirror.
+- **The webcam's own field of view, NAOqi's angles.** Frames keep the webcam's field of view (a laptop's is about 70° to 80° across, less the crop's sides); the angles `getImageRemote` reports and `ALVideoDevice`'s pixel-to-angle conversions stay the NAO's 60.97° × 47.64°. A client turning pixels into angles is off by the ratio of the two; a crop to the NAO's field of view, which would need the webcam's own `hfov` in the config, is open question 6. A webcam is also a **fixed** camera: it does not turn with the head, so a client that tracks a face by turning the head never sees the face move. That is the client's business.
+- **Captured on its own thread, the newest frame served.** Each capture reads its camera continuously on a thread of its own, keeping the newest raw frame; the video input's render thread takes it at each slot of the camera's `fps`, cropped, scaled and converted then (once per captured frame, so two cameras sharing a webcam convert it once). A camera faster than `fps` drops frames; one slower than `fps` serves its newest frame again. A slot with no frame to serve (the capture not delivering yet, or none for 5 s) is skipped and counted in `missed_by_camera`, never logged per slot.
+- **Checked at start, never fatal after.** Step 1 of `start()` opens each configured `device` and reads one frame, then releases it, failing with `DeviceUnavailableError` naming the device when it cannot: no camera at that index, or, on macOS, no camera permission for the application that started naoqi-sim (the terminal or editor; System Settings > Privacy & Security > Camera, which the error says). Once running, a camera that stops delivering (unplugged, taken by another application) is logged once at error level and reopened every 5 s, a recovery logged at info level; the robot and the other camera carry on, NAOqi serving the camera's last frame meanwhile, and its key stays `webcam`.
+- **The indicator** is the terminal one of [devices.md](devices.md) ("Off unless asked"), as for the microphone: an info-level log when a webcam starts capturing (`webcam 0 is live: 1280x720 (AVFOUNDATION)`) and when it stops. An indicator in the sim window waits for naoqi-viewer to offer one.
+- **Started before the video input, stopped after it**, by `NaoqiSim` at step 6; a webcam does not need the viewer, so a webcam-only config runs headless with no `viewer` extra.
+
 ### In a running `NaoqiSim`
 
-- The device runs in-process on its own threads, with its own qi session (`stack.connect`, one attempt), started by `NaoqiSim.start()` once the robot is ready **and, for `render`, once the viewer is launched**; `stop()` stops it before the viewer ([api.md](../runtime/api.md), "Lifecycle").
+- The device runs in-process on its own threads, with its own qi session (`stack.connect`, one attempt), started by `NaoqiSim.start()` once the robot is ready **and, for `render`, once the viewer is launched** (for `webcam`, once its captures run); `stop()` stops it before the viewer and the captures ([api.md](../runtime/api.md), "Lifecycle").
 - **The window closed by the user** with a rendered camera: the next `camera_frame` raises `ViewerClosed`. The device drops every camera that source fed, writes their keys and the summary back (`none` once nothing is fed) and logs once, at warning level, that those cameras have no frames any more; NAOqi keeps serving their last frame. A camera fed by another source carries on; when none is left, the device stops. The robot keeps running, as for the window alone ([api.md](../runtime/api.md), "Lifecycle").
 - A failing `putImage` or render (anything but `ViewerClosed`) is logged and the device carries on with the next slot; a run of failures is logged once, not once per frame.
 
@@ -79,10 +95,12 @@ Oct 16, 2026, both cameras rendered (plan [202610161135_video-input-both-cameras
 
 ## Open questions
 
-Deferrals; none blocks the render source.
+Deferrals; none blocks the render or the webcam source.
 
 1. **30 fps on both cameras.** Two renders per slot cap the bottom camera at 15 to 17 per second when both ask for 30 ("As measured"). The lever is naoqi-viewer's: one `camera_frame` call returning both cameras' frames from one tick, which the device would take instead of two calls. Until a client needs 30 on both, 30 on the top and 10 to 15 on the bottom is the figure.
 2. **Resolution and subscribers.** 4VGA on 2.1, or rendering a camera only while a client subscribes to it (which would need to tell NAOqi's own subscribers apart), if the fixed VGA streams prove wasteful or too small. Two cameras doubled the viewer's load, so this is the first lever if a small machine or CI's software renderer cannot hold the rate.
-3. **Webcam selection.** An index (`device: 0`) is what OpenCV takes, but indices are not stable across reboots or USB changes; a name match may be needed.
-4. **The webcam dependency.** `opencv-python-headless` as a runtime dependency, or behind a `webcam` extra so a CI or server install stays small.
+3. **Webcam selection.** An index (`device: 0`) is what OpenCV takes, but indices are not stable across reboots or USB changes, and OpenCV gives no names to match; a name match (through the platform's own device list) may be needed.
+4. ~~**The webcam dependency.**~~ Decided Oct 16, 2026: `opencv-python-headless` behind the `webcam` extra ("The webcam source").
 5. **NAO V6 cameras.** The render uses naoqi-viewer's V5 model (47.64° vertical field of view). Whether 2.8 (NAO V6) needs its own geometry is open on the naoqi-viewer side.
+6. **The webcam's field of view.** Frames keep the webcam's own; cropping them to the NAO's 60.97° × 47.64° would make NAOqi's angles right for a client turning pixels into angles, at the cost of an `hfov` field per camera block (the webcam's own field of view, which OpenCV cannot read) and nothing to do for a webcam narrower than the NAO's. Until a client needs it, the 4:3 centre crop is the figure.
+7. **The webcam in the sim window.** An indicator while it captures, and perhaps the frames themselves, wait for naoqi-viewer to offer an overlay.

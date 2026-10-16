@@ -12,7 +12,7 @@ tests:
 
 # Project
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -63,7 +63,7 @@ naoqi-sim is distributed through its GitHub repository, not PyPI: another projec
 - **The wheel** a git install builds holds `naoqi_sim` and, as its package data, the container recipes under `naoqi_sim/docker/`: everything under `docker/` but `image-data/` and Python caches (compose; `naoqi/`: the Dockerfiles and their ignore files, entrypoints, healthcheck and `services/`, the Python 2.7 and C++ sources of our NAOqi modules; `tts-engine/`), none of it an Aldebaran file. Hatch maps `src/naoqi_sim` and `docker` into the package (`only-include` and `sources`) and excludes `docker/image-data`, so even a wheel built from a checkout holding the suites carries none; `dev-mode-dirs = ["src"]` keeps the editable install of a checkout working, since hatch cannot make an editable install from a remapped path. The sdist is the repository's tracked files, which never include the image data either.
 - **Where the files are** ([api.md](runtime/api.md), "Files on disk"): an installed naoqi-sim reads its recipes from the package and keeps the image data in the user data directory; a checkout uses `docker/` and `docker/image-data/` as today. Both build the images the same way, and compute the same `io.naoqi-sim.recipes` digest from the same recipes.
 - **naoqi-viewer behind the extra** needs nothing more: its model and scenes are its package data, its meshes live in its own user data directory (`platformdirs.user_data_dir("naoqi-viewer")/meshes`), so one `fetch-meshes` serves every project and checkout on the machine, and its `naoqi-viewer` command and MuJoCo's `mjpython` (the macOS window) are installed in the depending project's environment with it.
-- **Runtime dependencies**: `numpy`, `qi`, `sounddevice`, `platformdirs`; the `viewer` extra adds naoqi-viewer. The webcam's OpenCV is decided with [video-input.md](host/video-input.md).
+- **Runtime dependencies**: `numpy`, `qi`, `sounddevice`, `platformdirs`; the `viewer` extra adds naoqi-viewer, the `webcam` extra `opencv-python-headless` ([video-input.md](host/video-input.md), "The webcam source"). The `dev` group takes both extras, so the fast tier tests the webcam's frame conversion with the real OpenCV.
 - **Versions**: a depending project pins a commit or tag in its `[tool.uv.sources]` and moves it on purpose. The package version is baked into the images (`io.naoqi-sim.version`, `NaoqiSim/Version`) next to the recipes digest, which is what tells a commit's images from another's: moving to a commit that changed `docker/` makes `start()` ask for a rebuild, and one that did not reuses the images. The version is bumped by hand, with a tag, when a change is worth naming; the README carries the compatibility of naoqi-sim, naoqi-viewer and the NAOqi versions.
 - **Tested** by the live tier (`tests-e2e/test_install_live.py`): a scratch project, declaring only `requires-python`, the dependency and its source, installs this checkout as the wheel a git dependency builds, and runs `naoqi-sim run` from it on each version.
 

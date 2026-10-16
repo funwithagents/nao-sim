@@ -42,6 +42,7 @@ uv run naoqi-sim fetch-and-build-images   # fetch, build and verify the 2.1 and 
 uv run naoqi-sim run                      # NAOqi 2.1 with the sim window, speech on the loudspeaker; Ctrl-C stops it
 uv run naoqi-sim run --config examples/configs/2.8.json       # or NAOqi 2.8; headless.json: no window, silent
 uv run naoqi-sim run --config examples/configs/mic.json       # the robot hears through your microphone
+uv run naoqi-sim run --config examples/configs/webcam.json    # its top camera sees through your webcam (macOS: Camera access for the terminal)
 uv run naoqi-sim status                   # from another terminal: the containers and the robot's state
 uv run naoqi-sim logs --follow            # the containers' logs
 uv run naoqi-sim cleanup                  # after a run that died without stopping
@@ -57,7 +58,7 @@ In the project's `pyproject.toml`:
 ```toml
 [project]
 requires-python = ">=3.12,<3.14"            # naoqi-sim's range
-dependencies = ["naoqi-sim[viewer]"]          # or "naoqi-sim": no window, no render camera
+dependencies = ["naoqi-sim[viewer]"]          # or "naoqi-sim": no window, no render camera; add "webcam" for the webcam source
 
 [tool.uv.sources]
 naoqi-sim = { git = "https://github.com/funwithagents/naoqi-sim", rev = "<commit or tag>" }

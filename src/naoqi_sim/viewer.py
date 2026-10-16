@@ -37,6 +37,7 @@ def viewer_config(settings: ViewerSettings, url: str) -> Any:
         return naoqi_viewer.NaoqiViewerConfig(
             mode="sim",
             headless=settings.headless,
+            cameras_display=settings.cameras_display,
             naoqi=naoqi_viewer.NaoqiSettings(url=url),
             world=naoqi_viewer.WorldSettings(
                 scene=settings.scene,

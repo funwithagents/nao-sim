@@ -12,7 +12,7 @@ tests:
 
 # Viewer: the simulated world
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -36,7 +36,9 @@ naoqi-viewer is a kinematic mirror, not a physics simulation: it reads joint ang
 
 ### Configuration
 
-naoqi-sim's `viewer` block ([config.md](../runtime/config.md), "The viewer and the video input") is its own subset, `{headless, scene, variant}`, not an embedded `NaoqiViewerConfig`. naoqi-sim builds `NaoqiViewerConfig(mode="sim", headless=viewer.headless, naoqi.url=sim.url, world={scene, variant})`: the mode and the URL follow from running naoqi-sim, so they are not settings; naoqi-viewer's other fields keep its defaults.
+naoqi-sim's `viewer` block ([config.md](../runtime/config.md), "The viewer and the video input") is its own subset, `{headless, scene, variant, cameras_display}`, not an embedded `NaoqiViewerConfig`. naoqi-sim builds `NaoqiViewerConfig(mode="sim", headless=viewer.headless, cameras_display=viewer.cameras_display, naoqi.url=sim.url, world={scene, variant})`: the mode and the URL follow from running naoqi-sim, so they are not settings; naoqi-viewer's other fields keep its defaults.
+
+`viewer.cameras_display` (off by default, refused with `headless`) turns on naoqi-viewer's camera display, pinned from its commit `8f3976f`: both head cameras as pictures in the window's top-right corner (F10 toggles them), read back from `ALVideoDevice` over qi as any client reads them. On naoqi-sim that is what the video input injected, render or webcam, so the pictures check the camera path end to end and go stale if it stalls; a camera not fed shows NAOqi's placeholder or nothing. Its one QVGA subscription at 10 fps is ignored by the video input, which never looks at subscribers ([video-input.md](video-input.md), "Frames").
 
 ### Which viewer runs
 
