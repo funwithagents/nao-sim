@@ -142,13 +142,17 @@ def test_late_wake_ups_do_not_drift_the_mix(memory, monkeypatch, lateness):
     dues: list[float] = []
     memory.output.listeners.append(lambda chunk, rate, channels, at: dues.append(at))
 
-    took = memory.play(0.5, stream="speech")
+    memory.play(0.5, stream="speech")
+    ended = time.monotonic()
 
     assert np.diff(dues) == pytest.approx(TICK_S)  # one tick apart, every one
     assert dues[-1] + TICK_S - dues[0] == pytest.approx(0.5, abs=TICK_S)
-    # The late wake-ups don't add up (they would add 30 ms a tick); the play may still end one of
-    # this machine's own late wake-ups late, on top of the injected 30 ms.
-    assert took == pytest.approx(0.5, abs=0.15 + lateness())
+    # The late wake-ups don't add up (they would add 30 ms a tick): from its first tick, the play
+    # ends half a second later, give or take one of this machine's own late wake-ups on top of
+    # the injected 30 ms. Timed from the first tick, not from the connection: a runner that
+    # stalls as the stream starts (0.3 s once on GitHub's Windows runner) delays the whole play
+    # without stretching it.
+    assert ended - dues[0] == pytest.approx(0.5, abs=0.15 + lateness())
 
 
 def test_play_records_the_stream_as_received_paced_in_real_time(memory):
@@ -283,8 +287,17 @@ def test_a_stop_without_a_name_stops_every_stream_and_tells_the_listeners(memory
 
 
 def test_set_changes_volume_and_pan_from_the_next_tick(memory):
+    heard = threading.Event()  # the stream's audio is in the mix
+    memory.output.listeners.append(
+        lambda chunk, rate, channels, at: (
+            np.frombuffer(chunk, "<i2").any() and heard.set()
+        )
+    )
     done = memory.play_async(pcm=tone(1.0, level=1000), stream="player:1")
-    time.sleep(0.3)
+    # Once its audio is being mixed, not a fixed time after the play: a runner that stalls as the
+    # stream starts (0.3 s once on GitHub's Windows runner) would get the set before any of it.
+    assert heard.wait(3)
+    time.sleep(0.2)
     memory.send({"cmd": "set", "stream": "player:1", "volume": 0.5, "pan": -1.0})
     wait_for(lambda: done)
 
