@@ -213,11 +213,27 @@ def test_preferences_apply_at_the_next_subscribe(device):
     assert dev.subscribers() == {"Front": FRONT}  # the refused call changed nothing
 
 
-def test_subscribing_a_missing_service_raises(device):
+def test_subscribing_a_missing_service_raises(device, monkeypatch):
+    monkeypatch.setattr(core, "EXISTS_WAIT_S", 0.2)
     dev, _, _ = device
+    started = time.monotonic()
     with pytest.raises(RuntimeError, match="NoSuchModule"):
         dev.subscribe("NoSuchModule")
+    assert time.monotonic() - started >= 0.2  # given its chance to appear first
     assert dev.subscribers() == {}
+
+
+def test_a_service_registered_an_instant_before_can_subscribe(device):
+    """A client registers its service and subscribes at once; NAOqi 2.1's broker sees the
+    service a moment later (a live-tier failure on CI): the subscription waits for it."""
+    dev, host, _ = device
+    visible_at = time.monotonic() + 0.3
+    dev._exists = lambda name: name == "Late" and time.monotonic() >= visible_at
+    dev.set_preferences("Late", 16000, 3, 0)
+    dev.subscribe("Late")
+
+    assert dev.subscribers() == {"Late": FRONT}
+    host.wait_need(lambda n: n["formats"] == [core.format_header(FRONT)])
 
 
 def test_each_buffer_reaches_exactly_its_formats_subscribers_unchanged(device):

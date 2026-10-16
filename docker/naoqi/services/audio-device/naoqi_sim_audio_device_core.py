@@ -37,6 +37,10 @@ QUEUE_SIZE = 4  # buffers waiting for one subscriber; the oldest is dropped beyo
 FAILURES = 3  # consecutive failed deliveries that unsubscribe a subscriber...
 FAILING_S = 2.0  # ...once they span this long (a new subscriber may not be reachable at once)
 RETRY_S = 1.0  # between attempts to reach the host
+# How long subscribe() waits for a service just registered to become visible: on 2.1 a qi
+# service registered an instant before is not yet reachable through the broker's ALProxy.
+EXISTS_WAIT_S = 1.0
+EXISTS_POLL_S = 0.05
 
 _LENGTHS = struct.Struct(">II")
 
@@ -179,10 +183,20 @@ class AudioDevice(object):
         with self._lock:
             self._preferences[name] = fmt  # taken into account at the next subscribe
 
+    def _wait_exists(self, name):
+        """Whether a service `name` is registered, giving one registered an instant before
+        (a client subscribing right after registering) EXISTS_WAIT_S to become visible."""
+        end = time.time() + EXISTS_WAIT_S
+        while not self._exists(name):
+            if time.time() >= end:
+                return False
+            time.sleep(EXISTS_POLL_S)
+        return True
+
     def subscribe(self, name):
         with self._lock:
             subscribed = name in self._subscribers
-        if not subscribed and not self._exists(name):
+        if not subscribed and not self._wait_exists(name):
             raise RuntimeError("ALAudioDevice.subscribe: no module or service named %r" % name)
         # Whoever holds the name now gets the buffers: a client may have registered it again
         # (after an unsubscribe, or after dying without one), and the relay's proxy would still
