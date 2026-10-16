@@ -15,6 +15,7 @@ Implements [audio-input.md](../specs/host/audio-input.md) ("On the host link", "
 - `tests/test_host_link.py` — messages sent before the handler reach it, the newest of each type, in order
 - `tests/test_audio_device_core.py` — the fixture waits for the host to have read the hello (`Host.wait_connected`)
 - `specs/host/audio-input.md`, `specs/host/devices.md` — the two guarantees
+- `tests/test_video_input.py`, `specs/testing/testing.md` — added after `main`'s first CI run post PR #7 failed the macOS fast tier: the two 30 fps tests' "no burst" gap check (two frames of a camera over a millisecond apart) broke when a frame woken 33 ms late landed right before the next slot's, and the slow-source test ran out of frames to compare; both now rely on the schedule bound (frames put plus missed within the slots elapsed), which already forbids made-up frames; the gap check stays at 10 fps only
 
 ## Verification
 
