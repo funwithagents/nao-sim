@@ -18,7 +18,7 @@ How the repository is built and laid out.
 
 | Spec | Description | Status |
 |---|---|---|
-| [project.md](project.md) | Project structure and tooling: Python version, packaging with uv, layout conventions; distribution as a uv git dependency (recipes as package data in the wheel, image data in the user data directory, the `viewer` extra, versions); `qi` from the libqi fork's package index; macOS arm64, Linux x86_64, Windows x64 | Implemented |
+| [project.md](project.md) | Project structure and tooling: Python version, packaging with uv, layout conventions; distribution as a uv git dependency (recipes as package data in the wheel, image data in the user data directory, the `viewer` and `webcam` extras, versions); `qi` from the libqi fork's package index; macOS arm64, Linux x86_64, Windows x64 | Updated |
 
 ### Runtime: `runtime/`
 
@@ -26,8 +26,8 @@ The host-side front door: the config, the `NaoqiSim` object and the `naoqi-sim` 
 
 | Spec | Description | Status |
 |---|---|---|
-| [config.md](runtime/config.md) | `NaoqiSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with a block per head camera and its frame rate, viewer with its scene and variant), loaders (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embeddable as a block of another program's config, JSON | Implemented |
-| [api.md](runtime/api.md) | The `NaoqiSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and any Python caller | Implemented |
+| [config.md](runtime/config.md) | `NaoqiSimConfig`: which NAOqi version and which host devices (speech engine, `audio_output`, `audio_input`, `video_input` with a block per head camera and its frame rate, viewer with its scene, variant and camera display), loaders (`from_dict`/`from_json`/`from_json_file`, `ConfigError` with key paths), embeddable as a block of another program's config, JSON | Updated |
+| [api.md](runtime/api.md) | The `NaoqiSim` object: built from a config, `start()`/`stop()`/`with` lifecycle over the containers, host devices and simulated world, `url` and `status()`, errors, `fetch_and_build_images` and `check_images`, `read_status` and `cleanup` for other terminals; the one implementation behind the CLI, the live tests and any Python caller | Updated |
 | [cli.md](runtime/cli.md) | The `naoqi-sim` command: `fetch-and-build-images`, foreground `run --config`, `cleanup`, `status`, `logs` as a thin shell over the API, exit codes; `probe` deferred | Implemented |
 
 ### Containers: `container/`
@@ -61,9 +61,9 @@ The simulated robot's inputs and outputs on the host, owned by a running `NaoqiS
 | [devices.md](host/devices.md) | The contract every host device follows (owned by `NaoqiSim`, config block named after the device, pluggable edge, CI-testable end first, `Source` key, real time, qi when qi suffices) and the host link (port 9563, containers connect out, toolkit framing) | Implemented |
 | [audio-output.md](host/audio-output.md) | The robot's loudspeakers, as a NAO's sound server: TCP PCM protocol with named streams (newest wins within a name; `stop`, `set`, `pause`/`resume`), a mixer at 48 kHz stereo with volume and pan, the `AudioSink` seam receiving the mix (device, null, WAV, memory with each stream kept), playing state, listeners (the fake room hears the mix) | Implemented |
 | [audio-input.md](host/audio-input.md) | The robot's microphones: the fake source tests play sounds into and the host microphone, every format produced on the host, mono policy, 85 ms chunks (provisional), the robot hearing itself (no gate), messages on the host link, loopback tests | Implemented |
-| [video-input.md](host/video-input.md) | The robot's head cameras: naoqi-viewer render then webcam, VGA frames of `CameraTop` and `CameraBottom` injected with `putImage` at a fixed `fps` per camera whoever subscribes, NAOqi converting per subscriber; measured on both versions | Implemented |
+| [video-input.md](host/video-input.md) | The robot's head cameras: naoqi-viewer render and the host webcam (OpenCV behind the `webcam` extra, centre-cropped to 4:3), VGA frames of `CameraTop` and `CameraBottom` injected with `putImage` at a fixed `fps` per camera whoever subscribes, NAOqi converting per subscriber; measured on both versions | Updated |
 | [touch-input.md](host/touch-input.md) | The robot's touch sensors: clicks in the sim window and an API for tests, written to ALMemory | Draft |
-| [viewer.md](host/viewer.md) | The simulated world: naoqi-viewer's sim mode driven through its public API, which viewer runs, the `viewer` extra, the window closed by the user, headless with the render camera in the live tier and CI | Implemented |
+| [viewer.md](host/viewer.md) | The simulated world: naoqi-viewer's sim mode driven through its public API, which viewer runs, the `viewer` extra, the window closed by the user, the camera display (both head cameras from `ALVideoDevice` in the window), headless with the render camera in the live tier and CI | Updated |
 
 ### Testing: `testing/`
 

@@ -24,7 +24,7 @@ from naoqi_sim.audio_output import (
     WavSink,
 )
 from naoqi_sim.config import NaoqiSettings, NaoqiSimConfig, NaoqiVersion
-from naoqi_sim.errors import DeviceNotBuiltError, NaoqiSimError, NotRunningError
+from naoqi_sim.errors import NaoqiSimError, NotRunningError
 from naoqi_sim.host_link import HostLink
 from naoqi_sim.stack import (
     AUDIO_OUTPUT_PORT,
@@ -33,8 +33,9 @@ from naoqi_sim.stack import (
     URL,
     NaoqiSimStatus,
 )
-from naoqi_sim.video_input import RenderSource, VideoInput
+from naoqi_sim.video_input import FrameSource, RenderSource, VideoInput
 from naoqi_sim.viewer import SimWorld, needs_viewer, viewer_config
+from naoqi_sim.webcam import Webcam, check_webcam
 
 log = logging.getLogger(__name__)
 
@@ -124,13 +125,14 @@ class NaoqiSim:
             abort = threading.Event()
             try:
                 world_config = await self._step(abort, self._check)
+                self._check_webcams()
                 await self._step(abort, self._start_audio_output)
                 await self._step(abort, self._start_containers)
                 await self._step(abort, stack.wait_ready, self._config, abort)
                 world = None
                 if world_config is not None:
                     world = await self._step(abort, self._start_world, world_config)
-                if self._config.video_input.cameras("render"):
+                if any(s != "none" for s in self._config.video_input.sources.values()):
                     await self._step(abort, self._start_video_input, world)
                 if self._config.audio_input.source != "none":
                     await self._step(abort, self._start_audio_input)
@@ -181,23 +183,6 @@ class NaoqiSim:
         world_config = (
             viewer_config(config.viewer, URL) if needs_viewer(config) else None
         )
-        for device, key, source, built in (
-            (
-                "audio input",
-                "audio_input",
-                config.audio_input.source,
-                ("none", "mic", "fake"),
-            ),
-            *(
-                ("video input", f"video_input.{camera}", source, ("none", "render"))
-                for camera, source in config.video_input.sources.items()
-            ),
-        ):
-            if source not in built:
-                raise DeviceNotBuiltError(
-                    f"{key}.source {source!r}: the {device} is not built yet for it; "
-                    "set it to 'none'"
-                )
         if config.audio_input.source == "mic":
             check_mic()
         docker_images.require_free(NAOQI_PORT)
@@ -205,6 +190,20 @@ class NaoqiSim:
         if config.audio_input.source != "none":
             docker_images.require_free(HOST_LINK_PORT)
         return world_config
+
+    def _webcams(self) -> dict[int, list[str]]:
+        """Each webcam device the cameras' sources name, with the config keys naming it."""
+        webcams: dict[int, list[str]] = {}
+        for camera in self._config.video_input.cameras("webcam"):
+            device = getattr(self._config.video_input, camera).device
+            webcams.setdefault(device, []).append(f"video_input.{camera}")
+        return webcams
+
+    def _check_webcams(self) -> None:
+        """Step 1, on the calling thread rather than a step's: on macOS, OpenCV can only ask the
+        user for the camera permission from the main thread."""
+        for device, keys in self._webcams().items():
+            check_webcam(device, keys)
 
     def _start_audio_output(self) -> None:
         self._audio_output = AudioOutput(self._sink)
@@ -245,12 +244,21 @@ class NaoqiSim:
         return world
 
     def _start_video_input(self, world: SimWorld | None) -> None:
-        """The cameras the config feeds, each from its source (today: the render only)."""
-        assert world is not None  # needs_viewer() launched it for a rendered camera
-        sources = {
-            camera: RenderSource(world, camera)
-            for camera in self._config.video_input.cameras("render")
-        }
+        """The cameras the config feeds, each from its source: the viewer's render, or a webcam
+        (one capture per device, which both cameras can share), captures started first."""
+        sources: dict[str, FrameSource] = {}
+        for camera in self._config.video_input.cameras("render"):
+            assert world is not None  # needs_viewer() launched it for a rendered camera
+            sources[camera] = RenderSource(world, camera)
+        webcams: dict[int, Webcam] = {}
+        for camera in self._config.video_input.cameras("webcam"):
+            index = getattr(self._config.video_input, camera).device
+            if index not in webcams:
+                webcams[index] = Webcam(index)
+                # Registered before the video input's, so the teardown stops it after.
+                self._undo.append((f"webcam {index}", webcams[index].stop))
+                webcams[index].start()
+            sources[camera] = webcams[index]
         device = VideoInput(sources, self._config.video_input.rates)
         # Registered after the viewer's, so the teardown stops it first.
         self._undo.append(("video input", device.stop))

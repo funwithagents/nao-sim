@@ -53,7 +53,15 @@ def test_the_viewer_runs_in_sim_mode_on_naoqi_sims_naoqi():
     assert config.mode == "sim" and config.headless
     assert config.naoqi.url == "tcp://127.0.0.1:9559"
     assert (config.world.scene, config.world.variant) == ("table", "placeholder")
+    assert config.cameras_display is False
     assert config.ghost is False  # naoqi-viewer's other fields keep its defaults
+
+
+def test_the_window_shows_the_cameras_when_asked():
+    config = viewer.viewer_config(
+        ViewerSettings(cameras_display=True), "tcp://127.0.0.1:9559"
+    )
+    assert config.cameras_display and not config.headless
 
 
 def test_an_unknown_scene_is_a_config_error_on_viewer_scene():

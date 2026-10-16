@@ -27,7 +27,7 @@ Each device is named after its role on the robot, not after what implements it: 
 | --- | --- | --- | --- | --- |
 | Audio output | [audio-output.md](audio-output.md) | The robot's voice and sounds, out | Its own TCP protocol, fed by the `tts` engine and later [`ALAudioPlayer`](../services/audio-player.md) | Built, with its audio sinks; mixing specified |
 | Audio input | [audio-input.md](audio-input.md) | Microphone, or sounds played from code, in | The host link, into the [`ALAudioDevice`](../services/audio-device.md) replacement | Built, with the fake source and the host microphone |
-| Video input | [video-input.md](video-input.md) | Head cameras (naoqi-viewer render or webcam), in | qi: `ALVideoDevice.putImage` | Built, with the render source feeding both cameras |
+| Video input | [video-input.md](video-input.md) | Head cameras (naoqi-viewer render or webcam), in | qi: `ALVideoDevice.putImage` | Built, with the render and the webcam sources |
 | Touch input | [touch-input.md](touch-input.md) | Head, hand, foot and chest sensors, in | qi: ALMemory | Planned |
 
 This spec holds what every device shares: the contract below and the host link. The simulated world ([viewer.md](viewer.md)) is not a device, but it lives on the host too: the video input's render source and the touch input's clicks come from it.

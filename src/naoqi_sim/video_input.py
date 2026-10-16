@@ -1,8 +1,8 @@
 """The video input: the robot's head cameras, fed into `ALVideoDevice` (specs/host/video-input.md).
 
 An ordinary qi client: at each camera's `fps` it takes a 640x480 RGB frame of that camera from
-its source (the viewer's render of `CameraTop` and `CameraBottom`; back to back at the same pose
-when their rates are equal) and injects it with the public `putImage` into the camera's index,
+its source (the viewer's render of `CameraTop` and `CameraBottom`, back to back at the same pose
+when their rates are equal; or a host webcam's newest frame, `naoqi_sim.webcam`) and injects it with the public `putImage` into the camera's index,
 whoever subscribes. NAOqi serves every subscriber of a camera from that one frame, in the
 subscriber's own resolution and colorspace. Rendering and injecting run on separate threads,
 the newest frame of each camera winning, so a `putImage` never makes the next render miss the
@@ -39,13 +39,19 @@ def camera_key(camera: str) -> str:
 JOIN_TIMEOUT_S = 1.0
 
 
+class NoFrame(Exception):
+    """A source has no frame for this slot (a webcam not delivering): the slot is skipped,
+    counted as missed and not logged; the source says itself what is wrong."""
+
+
 class FrameSource(Protocol):
     """Where one camera's frames come from; `name` is what its `NaoqiSim/Camera/*/Source` says."""
 
     name: str
 
     def frame(self) -> np.ndarray:
-        """A (480, 640, 3) uint8 RGB image; `WorldClosed` when there will be no more."""
+        """A (480, 640, 3) uint8 RGB image; `NoFrame` when there is none for now, `WorldClosed`
+        when there will be no more."""
         ...
 
 
@@ -147,6 +153,8 @@ class VideoInput:
                     continue  # not this camera's slot
                 try:
                     images[CAMERAS[camera]] = source.frame()
+                except NoFrame:
+                    self.missed_by_camera[camera] += 1
                 except WorldClosed:
                     if self._stopping.is_set():
                         return

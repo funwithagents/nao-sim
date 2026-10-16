@@ -22,7 +22,7 @@ tests:
 
 # API: the simulated NAO (`NaoqiSim`)
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -56,12 +56,13 @@ The API is **async**: `await sim.start()`, `await sim.stop()`, `async with Naoqi
    - the `viewer` extra is installed when the config needs it (`headless = false`, or `render` on either camera of `video_input`; the error names the extra), and the `NaoqiViewerConfig` built from the `viewer` block is valid (naoqi-viewer's own check of the scene, re-raised as a `ConfigError` with key `viewer.scene`);
    - every configured source is built (see [config.md](config.md), "Sources not built yet");
    - the audio input's source can run ([audio-input.md](../host/audio-input.md), "Sources"): for `mic`, `sounddevice` imports and a default input device exists (`DeviceUnavailableError`);
+   - each webcam a camera's source names can run ([video-input.md](../host/video-input.md), "The webcam source"): the `webcam` extra is installed (`MissingExtraError` naming it), and the `device` opens and gives a frame (`DeviceUnavailableError` naming the device, with the macOS camera permission hint);
    - ports 9559, 9562 and, when the audio input has a source, the host link's 9563 are free (another naoqi-sim, a hand-started stack or audio output).
 2. **Audio output and host link**: start the audio output ([audio-output.md](../host/audio-output.md)) in-process, feeding the sink, and, when the audio input has a source, open the host link ([devices.md](../host/devices.md), "The host link") so the containers find it when they boot.
 3. **Containers**: `docker compose up -d` (no build) for the `tts` service and the version's NAOqi service, with the environment generated from the config (`NAOQI_SIM_TTS_ENGINE` = `speech.engine`, the version's profile, `2.1` or `2.8`). The compose project is always `naoqi-sim`.
 4. **Ready**: wait until the NAOqi container is `healthy` ([status-service.md](../container/status-service.md), "Healthcheck"), up to `naoqi.ready_timeout_s`. A container that exits or turns `unhealthy` fails the start at once, with the end of its log in the error. Verified images can still fail here (a volume, the host), so this wait happens on every start.
 5. **Simulated world**: when the config calls for it ([viewer.md](../host/viewer.md), "Which viewer runs"), build a `NaoqiViewer` in sim mode from the `viewer` block and `url`, and `launch()` it (in `asyncio.to_thread`; naoqi-viewer's API is synchronous). Its `LaunchError` fails the start like any other step.
-6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer. Each writes its `NaoqiSim/*/Source` key. The audio input serves the host link from then on; a fake source also listens to the audio output, so the robot hears its own voice ([audio-input.md](../host/audio-input.md), "The robot hears itself").
+6. **Host devices**: the video input and the audio input, as the config's sources ask ([video-input.md](../host/video-input.md), [audio-input.md](../host/audio-input.md)), after the simulated world because the render camera draws its frames from the viewer; a webcam's capture starts just before the video input and stops just after it. Each writes its `NaoqiSim/*/Source` key. The audio input serves the host link from then on; a fake source also listens to the audio output, so the robot hears its own voice ([audio-input.md](../host/audio-input.md), "The robot hears itself").
 
 **The window closed by the user** stops the viewer only: the robot keeps running, as a NAO does when nobody watches it, so an application or a test that owns the `NaoqiSim` never loses its robot to a click. A `NaoqiSim` notices it from a thread waiting on the viewer (`NaoqiViewer.wait()`) and logs it once, at warning level, saying the robot is still running; it does not reopen the window. What the render camera does then is the video input's business ([video-input.md](../host/video-input.md)).
 
@@ -126,7 +127,7 @@ Both check Docker first (`DockerUnavailableError`).
 | --- | --- |
 | `NaoqiSimError(RuntimeError)` | The base of naoqi-sim's own errors; raised as such for lifecycle misuse (a double `start()`) |
 | `NotRunningError(NaoqiSimError)` | `url` or `status()` when not running |
-| `DockerUnavailableError`, `ImagesMissingError`, `ImagesOutdatedError`, `MissingExtraError`, `DeviceNotBuiltError`, `DeviceUnavailableError`, `PortInUseError` (each a `NaoqiSimError`) | Step 1 of `start()`, each naming what to do (start Docker, run `naoqi-sim fetch-and-build-images`, `pip install naoqi-sim[viewer]`, which device is missing, which host device or library is unavailable (no PortAudio, no default input device), which port is taken) |
+| `DockerUnavailableError`, `ImagesMissingError`, `ImagesOutdatedError`, `MissingExtraError`, `DeviceNotBuiltError`, `DeviceUnavailableError`, `PortInUseError` (each a `NaoqiSimError`) | Step 1 of `start()`, each naming what to do (start Docker, run `naoqi-sim fetch-and-build-images`, `naoqi-sim[viewer]` or `naoqi-sim[webcam]`, which device is missing, which host device or library is unavailable (no PortAudio, no default input device, a webcam that does not open), which port is taken) |
 | `BootError(NaoqiSimError)` | The NAOqi container exited, turned `unhealthy` or was not `healthy` within `ready_timeout_s` (at start or at verification); carries the end of its log |
 | `FetchError(NaoqiSimError)`, `ImageBuildError(NaoqiSimError)` | `fetch_and_build_images`: a download or hash failure (naming the file), a failed `docker build` (with the end of its output) |
 

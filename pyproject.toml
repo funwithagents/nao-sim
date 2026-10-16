@@ -15,6 +15,8 @@ dependencies = [
 [project.optional-dependencies]
 # The sim window and the render camera (specs/host/viewer.md).
 viewer = ["naoqi-viewer"]
+# The webcam source of the video input (specs/host/video-input.md, "The webcam source").
+webcam = ["opencv-python-headless"]
 
 [project.scripts]
 naoqi-sim = "naoqi_sim.cli:main"
@@ -38,7 +40,9 @@ dev-mode-dirs = ["src"]
 
 [dependency-groups]
 dev = [
-    "naoqi-sim[viewer]",  # the viewer code type-checks against naoqi-viewer's real API
+    # the viewer code type-checks against naoqi-viewer's real API; the fast tier converts webcam
+    # frames with the real OpenCV
+    "naoqi-sim[viewer,webcam]",
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "pytest-xdist>=3.8.0",
@@ -63,7 +67,7 @@ explicit = true  # only the packages pinned to it below come from it
 [tool.uv.sources]
 qi = { index = "libqi" }
 # naoqi-viewer is not on PyPI yet (specs/project.md, open question 1): its repository, pinned.
-naoqi-viewer = { git = "https://github.com/funwithagents/naoqi-viewer", rev = "9964bc00df11194757251fe22c256cce3f740fe4" }
+naoqi-viewer = { git = "https://github.com/funwithagents/naoqi-viewer", rev = "8f3976f4d153297ff8ed9897fb36f70c163747f7" }
 
 [tool.ruff]
 target-version = "py312"  # keep in sync with requires-python

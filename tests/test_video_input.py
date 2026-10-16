@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from naoqi_sim import video_input
-from naoqi_sim.video_input import VideoInput
+from naoqi_sim.video_input import NoFrame, VideoInput
 from naoqi_sim.viewer import WorldClosed
 
 
@@ -354,6 +354,38 @@ def test_a_camera_whose_render_fails_does_not_starve_the_other(naoqi, caplog):
     assert [r.getMessage() for r in caplog.records] == [
         "video input: render bottom failed: no bottom render"
     ]
+
+
+def test_a_source_with_no_frame_skips_its_slots_quietly_and_counts_them(naoqi, caplog):
+    """A webcam not delivering: its camera gets nothing and nothing is logged per slot, its
+    slots are counted as missed, and the other camera carries on."""
+    world = Frames()
+    waiting = threading.Event()  # set: the top camera's source has a frame again
+
+    class Webcam:
+        name = "webcam"
+
+        def frame(self):
+            if not waiting.is_set():
+                raise NoFrame("no frame yet")
+            return world.frame("top")
+
+    with caplog.at_level(logging.WARNING, logger="naoqi_sim.video_input"):
+        device = VideoInput(
+            {"top": Webcam(), "bottom": world.source("bottom")},
+            {"top": 20, "bottom": 20},
+            connect=lambda: naoqi,
+        )
+        device.start()
+        wait_until(lambda: len(puts_into(naoqi, 1)) >= 3)
+        assert puts_into(naoqi, 0) == []
+        assert device.missed_by_camera["top"] >= 3
+        waiting.set()
+        wait_until(lambda: len(puts_into(naoqi, 0)) >= 1)
+        device.stop()
+
+    assert puts_into(naoqi, 0)[0][0] == 1  # its first frame, once there is one
+    assert caplog.records == []
 
 
 def test_refused_frames_warn_once_and_injection_resumes(naoqi, caplog):
