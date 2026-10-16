@@ -19,8 +19,8 @@ class WorldClosed(Exception):
 
 
 def needs_viewer(config: NaoqiSimConfig) -> bool:
-    """A window, or a headless viewer for the render camera (viewer.md, "Which viewer runs")."""
-    return not config.viewer.headless or config.video_input.source == "render"
+    """A window, or a headless viewer for a rendered camera (viewer.md, "Which viewer runs")."""
+    return not config.viewer.headless or "render" in config.video_input.sources.values()
 
 
 def viewer_config(settings: ViewerSettings, url: str) -> Any:

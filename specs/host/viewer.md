@@ -42,11 +42,11 @@ naoqi-sim's `viewer` block ([config.md](../runtime/config.md), "The viewer and t
 
 `viewer.headless` decides the window; the video input decides whether a headless run needs the viewer at all:
 
-| `viewer.headless` | `video_input.source` | Viewer | Needs `naoqi-sim[viewer]` |
+| `viewer.headless` | The cameras' `source` | Viewer | Needs `naoqi-sim[viewer]` |
 | --- | --- | --- | --- |
 | `false` | any | `NaoqiViewer` in sim mode, with its window | Yes |
-| `true` | `render` | `NaoqiViewer` in sim mode, headless (offscreen renders, no display; Mesa's EGL on Linux) | Yes |
-| `true` | `none` or `webcam` | None | No |
+| `true` | `render` on either camera | `NaoqiViewer` in sim mode, headless (offscreen renders, no display; Mesa's EGL on Linux) | Yes |
+| `true` | neither camera rendered (`none` or `webcam`) | None | No |
 
 When the extra is needed and missing, `NaoqiSim.start()` fails before starting anything, with a message naming the extra ([api.md](../runtime/api.md), "Lifecycle").
 
@@ -69,13 +69,13 @@ Through the `naoqi-sim[viewer]` extra, which pulls naoqi-viewer and with it MuJo
 
 ### In the live tier and CI
 
-The live tier runs the viewer from the start, headless, with the render camera and the placeholder variant: `{"viewer": {"headless": true, "variant": "placeholder", "scene": "tests-e2e/scenes/camera-target.xml"}, "video_input": {"source": "render"}}`. That tests the whole camera loop (a client subscribes, the viewer renders, `putImage` injects, the client reads the frame back) on a runner with no display ([ci.md](../testing/ci.md)). The scene is the empty one plus a red pillar 1.5 m ahead of the scene's origin, so a test checks that the camera sees it where the top camera's world pose says it should (`ALMotion.getPosition("CameraTop", FRAME_WORLD, True)`, a pinhole with 60.97° across), with the head aimed at it and 0.25 rad either side, and loses it when the head turns 1.2 rad away. The test aims relative to the pillar, not to the scene, because naoqi-viewer places the robot at NAOqi's world pose, which is odometry: -0.133 rad from boot on both versions, and further after gestures (about -0.25 after one wave). Placing the robot at the scene's origin at start is a naoqi-viewer change, to come. The placeholder visuals are enough to assert frames, and CI never accepts the meshes' license.
+The live tier runs the viewer from the start, headless, with the render camera and the placeholder variant: `{"viewer": {"headless": true, "variant": "placeholder", "scene": "tests-e2e/scenes/camera-target.xml"}, "video_input": {"top": {"source": "render"}, "bottom": {"source": "render", "fps": 5}}}`. That tests the whole camera loop (a client subscribes, the viewer renders, `putImage` injects, the client reads the frame back) on a runner with no display ([ci.md](../testing/ci.md)). The scene is the empty one plus a red pillar 1.5 m ahead of the scene's origin, so a test checks that the camera sees it where the top camera's world pose says it should (`ALMotion.getPosition("CameraTop", FRAME_WORLD, True)`, a pinhole with 60.97° across), with the head aimed at it and 0.25 rad either side, and loses it when the head turns 1.2 rad away. The test aims relative to the pillar, not to the scene, because naoqi-viewer places the robot at NAOqi's world pose, which is odometry: -0.133 rad from boot on both versions, and further after gestures (about -0.25 after one wave). Placing the robot at the scene's origin at start is a naoqi-viewer change, to come. The placeholder visuals are enough to assert frames, and CI never accepts the meshes' license.
 
 The window itself needs a display and is checked by a live test that skips without one.
 
 ### As built
 
-Both viewers are built: `NaoqiSim` launches the viewer for `headless = false` or `video_input.source = "render"`, before the video input, which renders the top camera through `SimWorld.camera_frame` ([video-input.md](video-input.md)); `stop()` stops the video input, then closes the viewer; a window closed by the user is logged, and the video input stops with it. The live tier runs the headless viewer with the render camera on both versions.
+Both viewers are built: `NaoqiSim` launches the viewer for `headless = false` or `render` on either camera of `video_input`, before the video input, which renders both head cameras through `SimWorld.camera_frame` ([video-input.md](video-input.md)); `stop()` stops the video input, then closes the viewer; a window closed by the user is logged, and the video input stops with it. The live tier runs the headless viewer with the render camera on both versions.
 
 ## Open questions
 

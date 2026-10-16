@@ -19,6 +19,7 @@ from naoqi_sim.audio_output import MemorySink
 from naoqi_sim.config import (
     AudioInputSettings,
     AudioOutputSettings,
+    CameraSettings,
     NaoqiSettings,
     NaoqiSimConfig,
     SpeechSettings,
@@ -38,6 +39,9 @@ from naoqi_sim.errors import (
 from naoqi_sim.host_link import encode, read_message
 
 HEADLESS = ViewerSettings(headless=True)
+RENDER = VideoInputSettings(
+    top=CameraSettings(source="render"), bottom=CameraSettings(source="render")
+)
 
 
 def listening(port: int) -> bool:
@@ -77,19 +81,20 @@ class Viewer:
 
 
 class Naoqi:
-    """The qi session the video input opens: records frames and ALMemory writes into the
-    viewer stand-in's event list, so their order against the viewer's lifecycle shows."""
+    """The qi session the video input opens: records each camera's first frame and the
+    ALMemory writes into the viewer stand-in's event list, so their order against the viewer's
+    lifecycle shows."""
 
     def __init__(self, events: list[str]):
         self.events = events
-        self.frames = 0
+        self.cameras_fed: set[int] = set()
 
     def service(self, name):
         return self
 
     def putImage(self, camera, width, height, data):
-        self.frames += 1
-        if self.frames == 1:
+        if camera not in self.cameras_fed:
+            self.cameras_fed.add(camera)
             self.events.append(f"frame {camera} {width}x{height}")
         return True
 
@@ -197,21 +202,24 @@ def test_the_window_runs_the_viewer_and_stop_closes_it(env):
 
 
 def test_the_render_camera_runs_after_the_viewer_and_stops_before_it(env):
-    config = NaoqiSimConfig(
-        video_input=VideoInputSettings(source="render"), viewer=HEADLESS
-    )
+    config = NaoqiSimConfig(video_input=RENDER, viewer=HEADLESS)
     naoqisim = sim.NaoqiSim(config, sink=MemorySink())
     asyncio.run(naoqisim.start())
     deadline = time.monotonic() + 2
-    while "frame 0 640x480" not in env.viewer.events:
+    while "frame 1 640x480" not in env.viewer.events:
         assert time.monotonic() < deadline, env.viewer.events
         time.sleep(0.01)
     asyncio.run(naoqisim.stop())
 
     assert env.viewer.events == [
-        "launch viewer-config",  # headless, but the render camera needs the viewer
+        "launch viewer-config",  # headless, but the render cameras need the viewer
+        "NaoqiSim/Camera/Top/Source = render",
+        "NaoqiSim/Camera/Bottom/Source = render",
         "NaoqiSim/Camera/Source = render",
-        "frame 0 640x480",
+        "frame 0 640x480",  # the top camera, then the bottom one
+        "frame 1 640x480",
+        "NaoqiSim/Camera/Top/Source = none",
+        "NaoqiSim/Camera/Bottom/Source = none",
         "NaoqiSim/Camera/Source = none",
         "close",
     ]
@@ -219,9 +227,7 @@ def test_the_render_camera_runs_after_the_viewer_and_stops_before_it(env):
 
 def test_a_viewer_that_cannot_launch_never_starts_the_camera(env):
     env.viewer.launch_fails = True
-    config = NaoqiSimConfig(
-        video_input=VideoInputSettings(source="render"), viewer=HEADLESS
-    )
+    config = NaoqiSimConfig(video_input=RENDER, viewer=HEADLESS)
     with pytest.raises(RuntimeError, match="no display"):
         asyncio.run(sim.NaoqiSim(config, sink=MemorySink()).start())
     assert env.viewer.events == ["launch viewer-config", "close"]
@@ -232,9 +238,10 @@ def test_a_viewer_that_cannot_launch_never_starts_the_camera(env):
     [
         (
             NaoqiSimConfig(
-                video_input=VideoInputSettings(source="webcam"), viewer=HEADLESS
+                video_input=VideoInputSettings(bottom=CameraSettings(source="webcam")),
+                viewer=HEADLESS,
             ),
-            "video_input.source 'webcam'",
+            "video_input.bottom.source 'webcam'",
         ),
     ],
 )
@@ -298,7 +305,7 @@ def test_the_fake_audio_input_serves_the_link_from_boot_to_stop(env, monkeypatch
     monkeypatch.setattr(stack, "up", recording_up)
     config = NaoqiSimConfig(
         viewer=HEADLESS,
-        video_input=VideoInputSettings(source="render"),
+        video_input=RENDER,
         audio_input=AudioInputSettings(source="fake", mono="silence"),
     )
     naoqisim = sim.NaoqiSim(config, sink=MemorySink())
@@ -320,11 +327,15 @@ def test_the_fake_audio_input_serves_the_link_from_boot_to_stop(env, monkeypatch
     events = env.viewer.events
     keys = [e for e in events if e.startswith("NaoqiSim/")]
     assert keys == [
+        "NaoqiSim/Camera/Top/Source = render",
+        "NaoqiSim/Camera/Bottom/Source = render",
         "NaoqiSim/Camera/Source = render",
         "NaoqiSim/Audio/Source = fake",
         "NaoqiSim/Audio/Channels = silence",
         "NaoqiSim/Audio/Source = none",  # the audio input stops first
         "NaoqiSim/Audio/Channels = none",
+        "NaoqiSim/Camera/Top/Source = none",
+        "NaoqiSim/Camera/Bottom/Source = none",
         "NaoqiSim/Camera/Source = none",
     ]
     assert events[-1] == "close"

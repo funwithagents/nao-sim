@@ -33,7 +33,7 @@ This config is the **host-level** description. The container keeps its own inter
   "speech": { "engine": "piper" },
   "audio_output": { "mode": "play", "record": null },
   "audio_input": { "source": "none", "mono": "duplicate" },
-  "video_input": { "source": "none", "fps": 15, "device": 0 },
+  "video_input": { "top": { "source": "none", "fps": 15, "device": 0 }, "bottom": { "source": "none", "fps": 15, "device": 0 } },
   "viewer": { "headless": false, "scene": "empty", "variant": "auto" }
 }
 ```
@@ -84,15 +84,23 @@ class AudioInputSettings:
 
 
 @dataclass
-class VideoInputSettings:
-    """The video input, injected into ALVideoDevice (video-input.md)."""
+class CameraSettings:
+    """What feeds one head camera (video-input.md, "Sources")."""
 
     # "none" | "render" | "webcam"
     source: VideoInputSource = "none"
-    # frames injected per second into CameraTop, 1 to 30
+    # frames injected per second into this camera, 1 to 30
     fps: int = 15
     # webcam index, used by "webcam"
     device: int = 0
+
+
+@dataclass
+class VideoInputSettings:
+    """The video input, injected into ALVideoDevice (video-input.md): a block per head camera."""
+
+    top: CameraSettings = field(default_factory=CameraSettings)
+    bottom: CameraSettings = field(default_factory=CameraSettings)
 
 
 @dataclass
@@ -117,20 +125,28 @@ class ViewerSettings:
 - Every config class has the same three constructors: `from_dict(data)`, `from_json(text)` (parses, then calls `from_dict`), and `from_json_file(path)` (reads, then calls `from_json`; an invalid-JSON error names the path). All three share one validation path.
 - Errors raise `ConfigError(ValueError)`, with a message that names the offending key path (e.g. `audio_output.record`). A block's own checks raise `ConfigError(message, key=<field>)`, and each enclosing loader prefixes `key` with its own path; the message is never parsed to find the key.
 - **Unknown keys are errors**, so a typo fails when the config loads.
-- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; `video_input.fps` is an integer from 1 to 30 (a NAO camera's maximum); `device` is a non-negative integer; `viewer.scene` is a non-empty string.
+- **Type and range checks:** each `Literal` field takes one of its values; `ready_timeout_s` is a positive, finite number; a camera's `fps` is an integer from 1 to 30 (a NAO camera's maximum) and its `device` a non-negative integer; `viewer.scene` is a non-empty string.
 - **Cross-field checks at load:** `audio_output.mode = "record"` needs `audio_output.record`. Other fields that do not apply (`device` without a webcam, `record` with `play`) are validated but not applied, so switching a source is a one-word change.
 - **Environment checks are not config checks.** Whether the `viewer` extra is installed, Docker answers, the images are built and verified, a webcam or a microphone exists: `NaoqiSim.start()` checks these ([api.md](api.md)), so a config file stays valid on any machine.
 - `config.py` imports neither `qi`, nor `naoqi_viewer`, nor `sounddevice`.
 
+### The video input: one block per camera
+
+A NAO has two head cameras, and what feeds each one is a config choice: `video_input.top` and `video_input.bottom` are two `CameraSettings`, each with its `source` (`none`, `render`, `webcam`), its `fps` and, for a webcam, its `device`. So the render can feed both cameras (the live tier, `ci.json`), or one of them to spare a small machine half the renders; and once the webcam is built, a laptop's webcam can feed the top camera with the bottom one rendered or unfed, or two webcams the two cameras. A camera on `none` is not fed: a client subscribing to it gets NAOqi's placeholder for a camera never fed ([video-input.md](../host/video-input.md), "As measured").
+
+`fps` is per camera, each on its own schedule: a fast top camera and a slow bottom one spare bandwidth to the clients and keep the viewer within its render budget (30 frames on the top camera and 10 on the bottom one are 40 renders per second, under its ceiling of 60, where 30 on both is not; [video-input.md](../host/video-input.md), "Frames"). Both default to 15. Two cameras at the same `fps` share their slots, so a client reading both sees the same moment.
+
+The block's shape changed on Oct 16, 2026 from one `source`/`fps`/`device` for the whole device to one per camera: a file with the old `video_input.source` or `video_input.fps` fails at load with an unknown key, naming it.
+
 ### The viewer and the video input
 
-`viewer.headless` and `video_input.source` together decide whether the simulated world runs ([viewer.md](../host/viewer.md), "Which viewer runs"):
+`viewer.headless` and the cameras' sources together decide whether the simulated world runs ([viewer.md](../host/viewer.md), "Which viewer runs"):
 
-| `viewer.headless` | `video_input.source` | Sim process | Needs `naoqi-sim[viewer]` |
+| `viewer.headless` | Cameras' `source` | Sim process | Needs `naoqi-sim[viewer]` |
 | --- | --- | --- | --- |
 | `false` | any | `NaoqiViewer` in sim mode, with its window | Yes |
-| `true` | `render` | `NaoqiViewer` in sim mode, headless | Yes |
-| `true` | `none` or `webcam` | None | No |
+| `true` | `render` on either camera | `NaoqiViewer` in sim mode, headless | Yes |
+| `true` | neither camera rendered (`none` or `webcam`) | None | No |
 
 So a server config is `{"viewer": {"headless": true}}`, and it needs no extra; CI runs a headless viewer with the render camera instead ([ci.md](../testing/ci.md)).
 
@@ -158,7 +174,7 @@ JSON: a naoqi-sim file is pasted into another program's JSON config unchanged, a
 - `default.json`: 2.1, window, speech only;
 - `2.8.json`: the same on 2.8;
 - `headless.json`: 2.1, no window, silent audio output (servers);
-- `ci.json`: 2.1, headless viewer with the placeholder variant, `video_input.source = "render"`, silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
+- `ci.json`: 2.1, headless viewer with the placeholder variant, both cameras on `render` (the bottom one at 5 fps: a runner rendering in software has little CPU to spare), silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
 - `mic.json`: 2.1, window, speech on the loudspeaker, `audio_input.source = "mic"`: the robot hears the room, its own voice included, as a NAO does.
 
 ## Open questions

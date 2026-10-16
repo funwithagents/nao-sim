@@ -1,6 +1,6 @@
 {
   "viewer": { "headless": true, "variant": "placeholder" },
-  "video_input": { "source": "render" },
+  "video_input": { "top": { "source": "render" }, "bottom": { "source": "render", "fps": 5 } },
   "audio_output": { "mode": "silent" },
   "audio_input": { "source": "fake" }
 }

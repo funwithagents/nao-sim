@@ -255,11 +255,11 @@ class AudioInputSettings(_Loaders):
 
 
 @dataclass(frozen=True)
-class VideoInputSettings(_Loaders):
-    """The video input, injected into ALVideoDevice (specs/host/video-input.md)."""
+class CameraSettings(_Loaders):
+    """What feeds one head camera (specs/host/video-input.md, "Sources")."""
 
     source: VideoInputSource = "none"
-    fps: int = 15  # frames injected per second into CameraTop
+    fps: int = 15  # frames injected per second into this camera
     device: int = 0  # webcam index, used by "webcam"
 
     def __post_init__(self) -> None:
@@ -277,6 +277,41 @@ class VideoInputSettings(_Loaders):
     def parse(cls, data: Any, path: str) -> Self:
         return _parse_block(
             cls, data, path, {"source": _as_str, "fps": _as_int, "device": _as_int}
+        )
+
+
+@dataclass(frozen=True)
+class VideoInputSettings(_Loaders):
+    """The video input, injected into ALVideoDevice (specs/host/video-input.md): a block per
+    head camera."""
+
+    top: CameraSettings = field(default_factory=CameraSettings)
+    bottom: CameraSettings = field(default_factory=CameraSettings)
+
+    @property
+    def sources(self) -> dict[str, VideoInputSource]:
+        """Each camera's source, by camera name, in NAOqi's camera order."""
+        return {"top": self.top.source, "bottom": self.bottom.source}
+
+    @property
+    def rates(self) -> dict[str, int]:
+        """Each camera's `fps`, by camera name."""
+        return {"top": self.top.fps, "bottom": self.bottom.fps}
+
+    def cameras(self, source: VideoInputSource) -> tuple[str, ...]:
+        """The cameras fed by `source`."""
+        return tuple(c for c, s in self.sources.items() if s == source)
+
+    @classmethod
+    def parse(cls, data: Any, path: str) -> Self:
+        return _parse_block(
+            cls,
+            data,
+            path,
+            {
+                "top": lambda d: CameraSettings.parse(d, _join(path, "top")),
+                "bottom": lambda d: CameraSettings.parse(d, _join(path, "bottom")),
+            },
         )
 
 

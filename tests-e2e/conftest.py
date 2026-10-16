@@ -33,6 +33,7 @@ from naoqi_sim import FakeAudioSource, MemorySink, NaoqiSim
 from naoqi_sim.config import (
     AudioInputSettings,
     AudioOutputSettings,
+    CameraSettings,
     NaoqiSettings,
     NaoqiSimConfig,
     VideoInputSettings,
@@ -77,7 +78,12 @@ def live_config(version: str, **blocks) -> NaoqiSimConfig:
         "viewer": ViewerSettings(
             headless=True, scene=str(SCENE), variant="placeholder"
         ),
-        "video_input": VideoInputSettings(source="render"),
+        # The bottom camera slow: a CI runner renders in software, and its renders are what
+        # the live tier's timing tests compete with for the CPU (ci.md).
+        "video_input": VideoInputSettings(
+            top=CameraSettings(source="render"),
+            bottom=CameraSettings(source="render", fps=5),
+        ),
         "audio_input": AudioInputSettings(source="fake"),
         **blocks,
     }
