@@ -55,7 +55,7 @@ The device injects frames on its own schedule, **independently of `ALVideoDevice
 
 ### The webcam source
 
-Built Oct 16, 2026 (plan [202610161600_webcam-source.md](../../plans/202610161600_webcam-source.md)), in `src/naoqi_sim/webcam.py`.
+Built Oct 16, 2026 (plan [202610161851_webcam-source.md](../../plans/202610161851_webcam-source.md)), in `src/naoqi_sim/webcam.py`.
 
 - **OpenCV, behind the `webcam` extra.** `cv2.VideoCapture(device)` on the platform's own backend (AVFoundation on macOS, V4L2 on Linux, Media Foundation on Windows), from `opencv-python-headless`, which wheels cover on the three platforms with no system install. It comes with `naoqi-sim[webcam]`, imported only when a camera's source is `webcam`, so a CI or server install stays small; a config asking for a webcam without the extra fails at step 1 with `MissingExtraError` naming it ([api.md](../runtime/api.md), "Lifecycle").
 - **`device` is an index**, OpenCV's (0 for the default camera). OpenCV gives no camera names, so the log names the index, the backend and the resolution the camera opened at; matching by name is open question 3.
