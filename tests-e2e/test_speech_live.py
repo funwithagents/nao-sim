@@ -92,8 +92,9 @@ def test_stop_all_during_synthesis(nao):
 
     done = last(nao.container.speech_log(), "say-done")
     assert done["interrupted"] is True
-    # Synthesis plus the stop, not the ~15 s of audio; synthesis alone varies on a shared runner.
-    assert returned < 3.0
+    # The stop at 0.15 s, not the synthesis (about 3 s for this text on a GitHub runner, which
+    # say() no longer waits for) nor the ~15 s of audio.
+    assert returned < 1.0
     # A moment of audio at most, or none when the stop came before the first of it.
     assert nao.played_if_any(mark) < 0.3
 

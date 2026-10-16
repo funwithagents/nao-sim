@@ -25,6 +25,7 @@ except ImportError:  # Python 3, for the host-side tests
 
 TTS_URL = os.environ.get("NAOQI_SIM_TTS_URL", "http://tts:8080")
 FALLBACK_SECONDS_PER_TOKEN = 0.3
+ENGINE_POLL_S = 0.02  # how often a say() waiting for the engine looks for a stop
 # Ids for the calls the front makes blocking (no task id): above any task id the broker hands out.
 FIRST_OWN_ID = 1000000
 # The installed languages: getAvailableLanguages, getSupportedLanguages and what setLanguage and
@@ -101,17 +102,44 @@ class Speaker(object):
             return self._own_id
 
     # -- engine --------------------------------------------------------------
-    def _engine_say(self, items, rate, pitch, language):
-        body = json.dumps({"language": language, "rate": rate, "pitch": pitch, "items": items}).encode("utf-8")
+    def _engine_say(self, items, rate, pitch, language, sid):
+        body = json.dumps({"id": sid, "language": language, "rate": rate, "pitch": pitch, "items": items}).encode("utf-8")
         req = urllib2.Request(TTS_URL + "/say", body, {"Content-Type": "application/json"})
         resp = urllib2.urlopen(req, timeout=30)
         return json.loads(resp.read())
 
-    def _engine_stop(self):
+    def _engine_stop(self, sid=None):
+        """Stops the engine's say `sid` (synthesizing, about to play or playing) and the audio."""
+        body = json.dumps({"id": sid}).encode("utf-8")
         try:
-            urllib2.urlopen(urllib2.Request(TTS_URL + "/stop", b"{}", {"Content-Type": "application/json"}), timeout=5).read()
+            urllib2.urlopen(urllib2.Request(TTS_URL + "/stop", body, {"Content-Type": "application/json"}), timeout=5).read()
         except Exception as e:  # noqa: BLE001
             self.log(method="engine-stop-failed", error=repr(e))
+
+    def _engine_call(self, items, rate, pitch, language, sid):
+        """The engine's reply to /say, or None when the call was stopped while the engine was
+        still synthesizing: the engine is told to stop that say, and say() does not wait for a
+        reply that is seconds away on a slow machine (the synthesis of a long text)."""
+        result = {}
+        done = threading.Event()
+
+        def call():
+            try:
+                result["reply"] = self._engine_say(items, rate, pitch, language, sid)
+            except Exception as e:  # noqa: BLE001
+                result["error"] = e
+            done.set()
+
+        t = threading.Thread(target=call, name="engine-say-%s" % sid)
+        t.daemon = True
+        t.start()
+        while not done.wait(ENGINE_POLL_S):
+            if self._stop.is_set():
+                self._engine_stop(sid)
+                return None
+        if "error" in result:
+            raise result["error"]
+        return result["reply"]
 
     # -- NAOqi side ------------------------------------------------------------
     def _wait_turn(self, sid):
@@ -156,12 +184,20 @@ class Speaker(object):
         ev("ALTextToSpeech/Status", [sid, "enqueued"])
         ev("ALTextToSpeech/TextStarted", 1)
         ev("ALTextToSpeech/TextDone", 0)
+        stopped_in_synthesis = False
         try:
-            r = self._engine_say(items, rate, pitch, language)
+            r = self._engine_call(items, rate, pitch, language, sid)
             t0 = time.time()
-            duration = float(r.get("duration", 0.0))
-            marks = sorted((float(off), int(k)) for k, off in r.get("marks", {}).items())
-            engine = r.get("engine", "?")
+            if r is None or r.get("stopped"):
+                # Stopped before any audio: by this call (r is None) or, when the stop reached
+                # the engine first, by the engine, which then plays nothing.
+                stopped_in_synthesis = True
+                duration, marks = 0.0, []
+                engine = r.get("engine", "?") if r else "stopped"
+            else:
+                duration = float(r.get("duration", 0.0))
+                marks = sorted((float(off), int(k)) for k, off in r.get("marks", {}).items())
+                engine = r.get("engine", "?")
         except Exception as e:  # noqa: BLE001
             t0 = time.time()
             self.log(method="engine-unreachable", error=repr(e))
@@ -178,16 +214,18 @@ class Speaker(object):
         ev("ALTextToSpeech/Status", [sid, "started"])
         ev("ALTextToSpeech/CurrentSentence", text)
         self.signal("_started", text)
-        interrupted = False
-        for off, mk in marks:
-            if self._stop.wait(max(0.0, t0 + off - time.time())):
+        interrupted = stopped_in_synthesis
+        if not interrupted:
+            for off, mk in marks:
+                if self._stop.wait(max(0.0, t0 + off - time.time())):
+                    interrupted = True
+                    break
+                ev("ALTextToSpeech/CurrentBookMark", mk)
+            if not interrupted and self._stop.wait(max(0.0, t0 + duration - time.time())):
                 interrupted = True
-                break
-            ev("ALTextToSpeech/CurrentBookMark", mk)
-        if not interrupted and self._stop.wait(max(0.0, t0 + duration - time.time())):
-            interrupted = True
+            if interrupted:
+                self._engine_stop(sid)
         if interrupted:
-            self._engine_stop()
             ev("ALTextToSpeech/TextInterrupted", 1)
         ev("ALTextToSpeech/Status", [sid, "done"])
         ev("ALTextToSpeech/CurrentSentence", "")
