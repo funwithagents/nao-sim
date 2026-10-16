@@ -130,7 +130,7 @@ class NaoqiSim:
                 world = None
                 if world_config is not None:
                     world = await self._step(abort, self._start_world, world_config)
-                if world is not None and self._config.video_input.source == "render":
+                if self._config.video_input.cameras("render"):
                     await self._step(abort, self._start_video_input, world)
                 if self._config.audio_input.source != "none":
                     await self._step(abort, self._start_audio_input)
@@ -181,14 +181,22 @@ class NaoqiSim:
         world_config = (
             viewer_config(config.viewer, URL) if needs_viewer(config) else None
         )
-        for device, source, built in (
-            ("audio_input", config.audio_input.source, ("none", "mic", "fake")),
-            ("video_input", config.video_input.source, ("none", "render")),
+        for device, key, source, built in (
+            (
+                "audio input",
+                "audio_input",
+                config.audio_input.source,
+                ("none", "mic", "fake"),
+            ),
+            *(
+                ("video input", f"video_input.{camera}", source, ("none", "render"))
+                for camera, source in config.video_input.sources.items()
+            ),
         ):
             if source not in built:
                 raise DeviceNotBuiltError(
-                    f"{device}.source {source!r}: the {device.replace('_', ' ')} is not "
-                    "built yet; set it to 'none'"
+                    f"{key}.source {source!r}: the {device} is not built yet for it; "
+                    "set it to 'none'"
                 )
         if config.audio_input.source == "mic":
             check_mic()
@@ -236,8 +244,14 @@ class NaoqiSim:
         world.launch()
         return world
 
-    def _start_video_input(self, world: SimWorld) -> None:
-        device = VideoInput(RenderSource(world), self._config.video_input.fps)
+    def _start_video_input(self, world: SimWorld | None) -> None:
+        """The cameras the config feeds, each from its source (today: the render only)."""
+        assert world is not None  # needs_viewer() launched it for a rendered camera
+        sources = {
+            camera: RenderSource(world, camera)
+            for camera in self._config.video_input.cameras("render")
+        }
+        device = VideoInput(sources, self._config.video_input.fps)
         # Registered after the viewer's, so the teardown stops it first.
         self._undo.append(("video input", device.stop))
         device.start()

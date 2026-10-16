@@ -57,10 +57,10 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | `NaoqiSimConfig`, `NaoqiSim` object, CLI | Built and tested: `naoqi-sim run`/`status`/`cleanup`/`logs`, the live tier runs through `NaoqiSim` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md)) |
 | Host link | Built and tested, with the audio input ([devices.md](host/devices.md)) |
 | Audio input, `ALAudioDevice` replacement | Built and tested on both versions: `ALAudioDevice` with its native relay, the fake source tests play into, the host microphone, the robot hearing its own voice; on CI over a virtual audio loopback ([audio-input.md](host/audio-input.md), [audio-device.md](services/audio-device.md)) |
-| Video input | Built and tested with the render source on both versions: VGA `CameraTop` frames at `video_input.fps`, NAOqi converting per subscriber; the webcam and the bottom camera are next ([video-input.md](host/video-input.md)) |
+| Video input | Built and tested with the render source on both versions: VGA frames of both head cameras at `video_input.fps`, NAOqi converting per subscriber; the webcam is next ([video-input.md](host/video-input.md)) |
 | Touch input | Draft ([touch-input.md](host/touch-input.md)) |
 | `ALAudioPlayer` replacement | Built and tested on both versions: a NAO's API, WAV/OGG through the suite's libsndfile, mixed with speech, a C++ front for `stop(id)` ([audio-player.md](services/audio-player.md)) |
-| Simulated world (naoqi-viewer sim mode) | Built and tested: the window, and the headless viewer rendering the top camera for the video input, in the live tier and CI ([viewer.md](host/viewer.md)) |
+| Simulated world (naoqi-viewer sim mode) | Built and tested: the window, and the headless viewer rendering both head cameras for the video input, in the live tier and CI ([viewer.md](host/viewer.md)) |
 | Distribution (uv git dependency: wheel with the recipes, user data directory) | Implemented ([project.md](project.md), "Distribution") |
 | CI | Implemented ([ci.md](testing/ci.md)) |
 | Capability probe | Spike scripts only; deferred (see [below](#capability-probe)) |
@@ -123,7 +123,7 @@ Specified in [devices.md](host/devices.md): the simulated robot's inputs and out
 Specified in [viewer.md](host/viewer.md). naoqi-viewer is a separate package (its own repository) that owns the NAO MuJoCo model, the license-gated meshes and the 3D rendering, a kinematic mirror rather than a physics simulation. naoqi-sim drives its **sim mode** through its public API (`NaoqiViewer(config).launch()`, `camera_frame`, `status()`, `close()`), from its own `viewer` block (`{headless, scene, variant}`), behind the `naoqi-sim[viewer]` extra:
 
 - a window showing the robot posed from naoqi-sim's NAOqi in a scene (`empty` by default);
-- the head-camera renders the video input injects into `ALVideoDevice` (`video_input.source = "render"`), which close the loop: NAOqi moves the head, the viewer renders what that camera sees;
+- the head-camera renders the video input injects into `ALVideoDevice` (`source = "render"` on a camera of the `video_input` block), which close the loop: NAOqi moves the head, the viewer renders what that camera sees;
 - later, clicks on the robot that the touch input turns into touches.
 
 The viewer process only reads NAOqi; everything NAOqi-specific stays in naoqi-sim. Without the extra, naoqi-sim runs with no window and no render camera, and every NAOqi API still works. The live tier and CI run it headless with the render camera from the start ([ci.md](testing/ci.md)).
@@ -148,7 +148,7 @@ Clients get camera images and microphone audio through the standard NAOqi servic
 
 | | NAOqi side | Host side |
 | --- | --- | --- |
-| Video | `ALVideoDevice` as shipped (`VideoDevice.xml` already selects the simulator), fed with the public `putImage`: no module | [video-input.md](host/video-input.md): naoqi-viewer render first, webcam after; VGA `CameraTop` frames at a fixed rate, NAOqi converting per subscriber |
+| Video | `ALVideoDevice` as shipped (`VideoDevice.xml` already selects the simulator), fed with the public `putImage`: no module | [video-input.md](host/video-input.md): naoqi-viewer render first, webcam after; VGA frames of both head cameras at a fixed rate, NAOqi converting per subscriber |
 | Audio in | A replacement `ALAudioDevice`, [audio-device.md](services/audio-device.md) | [audio-input.md](host/audio-input.md): the fake source first, host microphone after; the robot hears itself |
 | Sound files | A replacement `ALAudioPlayer`, mixed with speech in the audio output, [audio-player.md](services/audio-player.md) | [audio-output.md](host/audio-output.md) |
 

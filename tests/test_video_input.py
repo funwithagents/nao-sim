@@ -42,24 +42,47 @@ class FakeNaoqi:
 
 
 class Frames:
-    """A source of numbered frames: frame n has every pixel at n % 256."""
-
-    name = "render"
+    """A world of numbered frames for both cameras: the top camera's frame n has every pixel
+    at n % 128, the bottom camera's at 128 + n % 128. `source(camera)` is that camera's
+    `FrameSource`."""
 
     def __init__(self, delay: float = 0.0):
         self.delay = delay
-        self.count = 0
+        self.count = {"top": 0, "bottom": 0}
         self.closed = False
+        self.failing: str | None = None  # a camera whose render raises
         self.block = threading.Event()
 
-    def frame(self):
+    def frame(self, camera):
         if self.closed:
             raise WorldClosed("the viewer is closed")
         if self.block.is_set():
             time.sleep(10)
+        if camera == self.failing:
+            raise RuntimeError(f"no {camera} render")
         time.sleep(self.delay)
-        self.count += 1
-        return np.full((480, 640, 3), self.count % 256, np.uint8)
+        self.count[camera] += 1
+        offset = 128 if camera == "bottom" else 0
+        return np.full((480, 640, 3), offset + self.count[camera] % 128, np.uint8)
+
+    def source(self, camera: str):
+        world = self
+
+        class Source:
+            name = "render"
+
+            def frame(self):
+                return world.frame(camera)
+
+        return Source()
+
+    def sources(self, *cameras: str):
+        return {camera: self.source(camera) for camera in cameras}
+
+
+def puts_into(naoqi, camera: int):
+    """The frames put into one camera: (value of the first pixel, time)."""
+    return [(data[0], at) for index, _, _, data, at in naoqi.puts if index == camera]
 
 
 @pytest.fixture
@@ -67,8 +90,8 @@ def naoqi():
     return FakeNaoqi()
 
 
-def running(source, naoqi, fps=10) -> VideoInput:
-    device = VideoInput(source, fps, connect=lambda: naoqi)
+def running(world, naoqi, fps=10, cameras=("top", "bottom")) -> VideoInput:
+    device = VideoInput(world.sources(*cameras), fps, connect=lambda: naoqi)
     device.start()
     return device
 
@@ -80,16 +103,24 @@ def wait_until(predicate, timeout=2.0):
         time.sleep(0.01)
 
 
-def test_injects_the_sources_frames_into_the_top_camera_at_vga(naoqi):
+def test_injects_each_cameras_frames_into_its_index_at_vga(naoqi):
     device = running(Frames(), naoqi)
-    wait_until(lambda: len(naoqi.puts) >= 2)
+    wait_until(lambda: len(naoqi.puts) >= 4)
     device.stop()
 
-    camera, width, height, data, _ = naoqi.puts[0]
-    assert (camera, width, height) == (0, 640, 480)
-    image = np.frombuffer(data, np.uint8).reshape(480, 640, 3)
-    assert (image == 1).all()  # the source's first frame, as it gave it
-    assert np.frombuffer(naoqi.puts[1][3], np.uint8)[0] == 2
+    # Each slot: the top camera's frame, then the bottom camera's, both at VGA.
+    assert [put[:3] for put in naoqi.puts[:4]] == [
+        (0, 640, 480),
+        (1, 640, 480),
+        (0, 640, 480),
+        (1, 640, 480),
+    ]
+    top = np.frombuffer(naoqi.puts[0][3], np.uint8).reshape(480, 640, 3)
+    assert (top == 1).all()  # the source's first top frame, as it gave it
+    bottom = np.frombuffer(naoqi.puts[1][3], np.uint8).reshape(480, 640, 3)
+    assert (bottom == 129).all()  # the source's first bottom frame
+    assert [value for value, _ in puts_into(naoqi, 0)[:2]] == [1, 2]
+    assert [value for value, _ in puts_into(naoqi, 1)[:2]] == [129, 130]
 
 
 class Ran:
@@ -119,6 +150,11 @@ class Ran:
         fewest = (self.t2 - self.t1 - 2 * lateness) * self.fps - 2
         return fewest, (self.t3 - self.t0) * self.fps + 1
 
+    def frames(self, lateness: float) -> tuple[float, float]:
+        """The fewest and most frames of the schedule in that time: one per camera per slot."""
+        fewest, most = self.slots(lateness)
+        return fewest * 2, most * 2
+
 
 def test_paces_at_the_configured_rate(naoqi, lateness):
     ran = Ran(fps=10)
@@ -126,19 +162,22 @@ def test_paces_at_the_configured_rate(naoqi, lateness):
     time.sleep(1.0)
     ran.stop(device)
 
-    # Each slot puts its frame, or is missed (a render or an injection stalled past it, as on a
-    # loaded machine), never caught up with a second frame.
-    fewest, most = ran.slots(lateness())
+    # Each slot puts a frame per camera, or is missed (a render or an injection stalled past
+    # it, as on a loaded machine), never caught up with a second frame.
+    fewest, most = ran.frames(lateness())
     assert len(naoqi.puts) <= most
     assert fewest <= len(naoqi.puts) + device.missed <= most
-    gaps = np.diff([put[4] for put in naoqi.puts])
-    # Never a burst: missed slots made up would put frames back to back (well under a
-    # millisecond apart), where a frame woken late still lands before the next slot's.
+    assert (
+        abs(len(puts_into(naoqi, 0)) - len(puts_into(naoqi, 1))) <= 1
+    )  # the same rate
+    gaps = np.diff([at for _, at in puts_into(naoqi, 0)])
+    # Never a burst: missed slots made up would put a camera's frames back to back (well under
+    # a millisecond apart), where a frame woken late still lands before the next slot's.
     assert gaps.min() > 0.001
 
 
 def test_a_slow_source_skips_slots_and_never_catches_up(naoqi, lateness):
-    source = Frames(delay=0.08)  # slower than 30 fps' 33 ms
+    source = Frames(delay=0.08)  # slower than 30 fps' 33 ms, per camera
     ran = Ran(fps=30)
     device = ran.start(source, naoqi)
     time.sleep(0.6)
@@ -146,23 +185,62 @@ def test_a_slow_source_skips_slots_and_never_catches_up(naoqi, lateness):
     time.sleep(0.4)
     ran.stop(device)
 
-    times = [put[4] for put in naoqi.puts]
+    times = [at for _, at in puts_into(naoqi, 0)]
     late = [t for t in times if t > times[0] + 0.65]
-    fewest, most = ran.slots(lateness())
-    assert device.missed >= 5  # a frame every 80 ms missed slots of 33 ms
-    assert fewest <= len(times) + device.missed <= most  # missed, not lost
+    fewest, most = ran.frames(lateness())
+    assert (
+        device.missed >= 10
+    )  # a slot every 160 ms missed slots of 33 ms, two frames each
+    assert fewest <= len(naoqi.puts) + device.missed <= most  # missed, not lost
     # Back on the 30 fps schedule: a burst would put the missed frames back to back (well under
     # a millisecond apart), where a frame woken late still lands before the next slot's.
     assert np.diff(late).min() > 0.001
 
 
-def test_publishes_its_source_while_it_runs(naoqi):
+def test_publishes_each_cameras_source_and_their_summary_while_it_runs(naoqi):
     device = running(Frames(), naoqi)
-    assert naoqi.memory["NaoqiSim/Camera/Source"] == "render"
+    assert naoqi.memory == {
+        "NaoqiSim/Camera/Top/Source": "render",
+        "NaoqiSim/Camera/Bottom/Source": "render",
+        "NaoqiSim/Camera/Source": "render",
+    }
     device.stop()
 
-    assert naoqi.memory["NaoqiSim/Camera/Source"] == "none"
+    assert set(naoqi.memory.values()) == {"none"}
+    assert naoqi.memory_log[-1] == "none"  # the summary is written last
     assert naoqi.closed
+
+
+def test_feeds_only_the_cameras_it_is_given(naoqi):
+    device = running(Frames(), naoqi, cameras=("bottom",))
+    wait_until(lambda: len(naoqi.puts) >= 2)
+    assert naoqi.memory["NaoqiSim/Camera/Top/Source"] == "none"
+    assert naoqi.memory["NaoqiSim/Camera/Bottom/Source"] == "render"
+    assert naoqi.memory["NaoqiSim/Camera/Source"] == "render"  # the one source in use
+    device.stop()
+
+    assert {put[0] for put in naoqi.puts} == {1}
+
+
+def test_the_summary_says_mixed_when_the_cameras_sources_differ(naoqi):
+    world = Frames()
+    webcam = world.source("top")
+    webcam.name = "webcam"
+    device = VideoInput(
+        {"top": webcam, "bottom": world.source("bottom")}, 10, connect=lambda: naoqi
+    )
+    device.start()
+    assert naoqi.memory["NaoqiSim/Camera/Top/Source"] == "webcam"
+    assert naoqi.memory["NaoqiSim/Camera/Bottom/Source"] == "render"
+    assert naoqi.memory["NaoqiSim/Camera/Source"] == "mixed"
+    device.stop()
+
+
+def test_refuses_an_unknown_camera_or_none_at_all(naoqi):
+    with pytest.raises(ValueError, match="cameras must be among"):
+        VideoInput({"left": Frames().source("top")}, 10, connect=lambda: naoqi)
+    with pytest.raises(ValueError, match="cameras must be among"):
+        VideoInput({}, 10, connect=lambda: naoqi)
 
 
 def test_a_closed_viewer_stops_the_camera_and_says_so_once(naoqi, caplog):
@@ -179,7 +257,56 @@ def test_a_closed_viewer_stops_the_camera_and_says_so_once(naoqi, caplog):
 
     assert len(naoqi.puts) == put  # nothing more injected
     assert [r.getMessage() for r in caplog.records] == [
-        "the viewer is closed: the robot's camera gets no more frames"
+        "the viewer is closed: the robot's top and bottom cameras get no more frames"
+    ]
+
+
+def test_a_closed_source_drops_its_cameras_and_the_others_carry_on(naoqi, caplog):
+    """A webcam on the top camera keeps feeding when the viewer rendering the bottom one
+    closes (the webcam is not built; the device is ready for it)."""
+    viewer, webcam_world = Frames(), Frames()
+    webcam = webcam_world.source("top")
+    webcam.name = "webcam"
+    device = VideoInput(
+        {"top": webcam, "bottom": viewer.source("bottom")}, 30, connect=lambda: naoqi
+    )
+    with caplog.at_level(logging.WARNING, logger="naoqi_sim.video_input"):
+        device.start()
+        wait_until(lambda: len(puts_into(naoqi, 1)) >= 1)
+        viewer.closed = True
+        wait_until(lambda: naoqi.memory["NaoqiSim/Camera/Bottom/Source"] == "none")
+        bottom = len(puts_into(naoqi, 1))
+        top = len(puts_into(naoqi, 0))
+        wait_until(lambda: len(puts_into(naoqi, 0)) >= top + 3)
+        device.stop()
+
+    assert len(puts_into(naoqi, 1)) <= bottom + 1  # at most the frame in flight
+    assert (
+        naoqi.memory_log.count("none") >= 2
+    )  # written when the viewer closed, and at stop
+    assert [r.getMessage() for r in caplog.records] == [
+        "the viewer is closed: the robot's bottom camera gets no more frames"
+    ]
+    # While it ran on the webcam alone, the summary said so.
+    assert "webcam" in naoqi.memory_log
+
+
+def test_a_camera_whose_render_fails_does_not_starve_the_other(naoqi, caplog):
+    source = Frames()
+    source.failing = "bottom"
+    with caplog.at_level(logging.WARNING, logger="naoqi_sim.video_input"):
+        device = running(source, naoqi, fps=30)
+        wait_until(lambda: len(puts_into(naoqi, 0)) >= 3)
+        source.failing = None
+        wait_until(lambda: len(puts_into(naoqi, 1)) >= 1)
+        device.stop()
+
+    # The top camera's frames kept coming, in order, while the bottom render failed...
+    assert [value for value, _ in puts_into(naoqi, 0)[:3]] == [1, 2, 3]
+    # ...and the bottom camera's first frame is its first render, once the render works.
+    assert puts_into(naoqi, 1)[0][0] == 129
+    assert [r.getMessage() for r in caplog.records] == [
+        "video input: render bottom failed: no bottom render"
     ]
 
 

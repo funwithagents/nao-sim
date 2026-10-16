@@ -1,6 +1,7 @@
-"""The render camera on each NAOqi version, as a vision client sees it: it subscribes to
+"""The render cameras on each NAOqi version, as a vision client sees them: it subscribes to
 `ALVideoDevice` and reads frames with `getImageRemote`, which naoqi-viewer rendered and the video
-input injected (the live tier runs it: headless viewer, placeholder variant, 15 fps)."""
+input injected into both head cameras (the live tier runs it: headless viewer, placeholder
+variant, 15 fps)."""
 
 import math
 import time
@@ -51,14 +52,17 @@ def next_frame(video, handle, after: float, timeout: float = 2.0) -> np.ndarray:
     pytest.fail("no new frame")
 
 
-def test_the_robot_says_its_camera_is_the_render(nao):
-    assert nao.service("ALMemory").getData("NaoqiSim/Camera/Source") == "render"
+def test_the_robot_says_its_cameras_are_the_render(nao):
+    memory = nao.service("ALMemory")
+    assert memory.getData("NaoqiSim/Camera/Top/Source") == "render"
+    assert memory.getData("NaoqiSim/Camera/Bottom/Source") == "render"
+    assert memory.getData("NaoqiSim/Camera/Source") == "render"  # the summary
 
 
 def test_a_client_reads_rendered_frames_at_the_configured_rate(camera):
     """Never faster than `fps`, and frames keep coming. Not exactly `fps`: a CI runner renders
-    in software (Mesa, no GPU) and reaches about 9 VGA frames per second on 2.8, where a
-    Mac holds 30."""
+    in software (Mesa, no GPU) and reached about 9 VGA frames per second on 2.8 with one camera,
+    where a Mac holds 30; with both cameras rendered each slot, about half that per camera."""
     video, subscribe = camera
     handle = subscribe(resolution=QVGA)
 
@@ -75,7 +79,7 @@ def test_a_client_reads_rendered_frames_at_the_configured_rate(camera):
     # NAOqi scaled the VGA frame to the subscriber's resolution.
     assert image.shape == (240, 320, 3)
     assert image.std() > 1  # a render of the scene, not a flat placeholder
-    assert 4 <= rate <= FPS + 1.5, f"{rate:.1f} frames per second"
+    assert 2 <= rate <= FPS + 1.5, f"{rate:.1f} frames per second"
 
 
 def test_each_subscriber_gets_its_own_colorspace(camera):
@@ -104,10 +108,15 @@ HALF_FOV = math.radians(60.97) / 2  # a NAO head camera's horizontal field of vi
 WORLD = 1  # ALMotion's FRAME_WORLD
 
 
-def target_columns(image: np.ndarray) -> np.ndarray:
-    """The columns of the red pillar's pixels in an RGB image."""
+def target_pixels(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The rows and columns of the red pillar's pixels in an RGB image."""
     red = (image[..., 0] > 150) & (image[..., 1] < 80) & (image[..., 2] < 80)
-    return np.nonzero(red)[1]
+    rows, columns = np.nonzero(red)
+    return rows, columns
+
+
+def target_columns(image: np.ndarray) -> np.ndarray:
+    return target_pixels(image)[1]
 
 
 def bearing_to_target(motion) -> float:
@@ -161,15 +170,76 @@ def test_the_camera_sees_what_the_head_faces(nao, camera):
         motion.angleInterpolation("HeadYaw", 0.0, 0.5, True)
 
 
-def test_the_bottom_camera_gets_no_frames(camera):
+def test_the_bottom_camera_gets_frames_with_the_top_ones(camera):
+    """Both cameras are fed each slot, back to back, so a client reading both sees the same
+    moment: two timestamps a `putImage` apart, not a slot."""
     video, subscribe = camera
-    handle = subscribe(index=BOTTOM, resolution=QVGA)
+    top = subscribe(index=TOP, resolution=QVGA)
+    bottom = subscribe(index=BOTTOM, resolution=QVGA)
 
-    image, stamp = read(video, handle)
-    time.sleep(0.5)
-    _, later = read(video, handle)
-
-    # NAOqi's placeholder for a camera never fed (video-input.md, "As measured").
+    image, stamp = read(video, bottom)
     assert image.shape == (240, 320, 3)
-    assert len(np.unique(image.reshape(-1, 3), axis=0)) <= 2
-    assert later == stamp
+    assert image.std() > 1  # a render, not the placeholder of a camera never fed
+    next_frame(video, bottom, after=stamp)  # and the frames keep coming
+
+    for _ in range(
+        20
+    ):  # the two reads can straddle an injection: retry until they match
+        _, top_stamp = read(video, top)
+        _, bottom_stamp = read(video, bottom)
+        if abs(top_stamp - bottom_stamp) < 0.02:
+            break
+    else:
+        pytest.fail("the two cameras' frames are never from the same slot")
+
+
+VERTICAL_HALF_FOV = (
+    math.radians(47.64) / 2
+)  # a NAO head camera's vertical field of view
+FRONT = TARGET[0] - 0.1  # the pillar's front face (a 0.2 m box)
+
+
+def foot_row(motion, camera_name: str, height: int) -> float:
+    """Where a pinhole camera at `camera_name`'s pose sees the pillar's foot (the front face
+    meeting the floor): past `height` when it is below the camera's view."""
+    x, y, z, _, pitch, _ = motion.getPosition(camera_name, WORLD, True)
+    distance = math.hypot(FRONT - x, TARGET[1] - y)
+    below = (
+        math.atan2(z, distance) - pitch
+    )  # the foot, below the camera's axis (positive)
+    return height / 2 * (1 + math.tan(below) / math.tan(VERTICAL_HALF_FOV))
+
+
+def test_the_bottom_camera_looks_down_at_the_pillars_foot(nao, camera):
+    """The bottom camera tilts 39.7° further down than the top one, as on a NAO. With the head
+    raised so the pillar's foot sits well inside the bottom camera's view, the foot is on the
+    row the camera's pose predicts (a pinhole 47.64° tall) and the pillar runs out of the
+    frame's top edge, while the top camera sees it run out of its bottom edge and never sees
+    the foot."""
+    video, subscribe = camera
+    motion = nao.service("ALMotion")
+    top = subscribe(index=TOP, resolution=QVGA)
+    bottom = subscribe(index=BOTTOM, resolution=QVGA)
+    height = 240
+    motion.setStiffnesses("Head", 1.0)
+    try:
+        look(motion, 0.0)
+        aim = bearing_to_target(motion)
+        motion.angleInterpolation(["HeadYaw", "HeadPitch"], [aim, -0.3], 0.8, True)
+        time.sleep(0.5)  # the viewer follows the pose at 50 Hz
+        bottom_rows, _ = target_pixels(
+            next_frame(video, bottom, after=read(video, bottom)[1])
+        )
+        top_rows, _ = target_pixels(next_frame(video, top, after=read(video, top)[1]))
+
+        assert bottom_rows.size > 100, "the pillar is not in the bottom camera's view"
+        assert bottom_rows.min() <= 2  # out of the top edge
+        expected = foot_row(motion, "CameraBottom", height)
+        assert abs(bottom_rows.max() - expected) < 15, f"foot at row {expected:.0f}"
+        assert top_rows.size > 100, "the pillar is not in the top camera's view"
+        assert top_rows.max() >= height - 3  # out of the bottom edge
+        assert (
+            foot_row(motion, "CameraTop", height) > height
+        )  # the foot is below its view
+    finally:
+        motion.angleInterpolation(["HeadYaw", "HeadPitch"], [0.0, 0.0], 0.5, True)

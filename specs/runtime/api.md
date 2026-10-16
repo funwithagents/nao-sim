@@ -53,7 +53,7 @@ The API is **async**: `await sim.start()`, `await sim.stop()`, `async with Naoqi
 1. **Environment checks**, before anything starts, each failing with its own error (see "Errors"):
    - Docker answers;
    - the images are there: the version's NAOqi image and the `tts` image exist, carry the installed naoqi-sim version (image label `io.naoqi-sim.version`), were built from the recipes as they are now (`io.naoqi-sim.recipes`) and were verified by `fetch_and_build_images` (see "Images"). `start()` never downloads or builds;
-   - the `viewer` extra is installed when the config needs it (`headless = false`, or `video_input.source = "render"`; the error names the extra), and the `NaoqiViewerConfig` built from the `viewer` block is valid (naoqi-viewer's own check of the scene, re-raised as a `ConfigError` with key `viewer.scene`);
+   - the `viewer` extra is installed when the config needs it (`headless = false`, or `render` on either camera of `video_input`; the error names the extra), and the `NaoqiViewerConfig` built from the `viewer` block is valid (naoqi-viewer's own check of the scene, re-raised as a `ConfigError` with key `viewer.scene`);
    - every configured source is built (see [config.md](config.md), "Sources not built yet");
    - the audio input's source can run ([audio-input.md](../host/audio-input.md), "Sources"): for `mic`, `sounddevice` imports and a default input device exists (`DeviceUnavailableError`);
    - ports 9559, 9562 and, when the audio input has a source, the host link's 9563 are free (another naoqi-sim, a hand-started stack or audio output).

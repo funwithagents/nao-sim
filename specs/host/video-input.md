@@ -26,33 +26,33 @@ No NAOqi service is replaced: `ALVideoDevice.putImage(camera, width, height, rgb
 
 ### Sources
 
-The `video_input` block of [config.md](../runtime/config.md) picks one:
+The `video_input` block of [config.md](../runtime/config.md) ("The video input: one block per camera") has one block per head camera, `top` and `bottom`, each picking its `source`, so what feeds each camera is a config choice:
 
-| `source` | Frames | Built |
+| `source` | Frames for that camera | Built |
 | --- | --- | --- |
-| `none` (default) | Nothing; `NaoqiSim/Camera/Source` stays `none` | — |
-| `render` | `CameraTop` rendered by naoqi-viewer at the robot's current pose ([viewer.md](viewer.md)) | First: the only source CI can test |
-| `webcam` | The host webcam `video_input.device`, as `CameraTop` | After `render` |
+| `none` (default) | Nothing; the camera's key stays `none` and NAOqi serves its placeholder (see "As measured") | — |
+| `render` | The camera as naoqi-viewer renders it at the robot's current pose ([viewer.md](viewer.md)) | First: the only source CI can test. Top camera Oct 9, 2026; either camera Oct 16 |
+| `webcam` | The host webcam `device`, cropped to the camera | After `render` |
 
-- **Render** closes the loop: NAOqi moves the head, naoqi-viewer renders what the top camera sees (`NaoqiViewer.camera_frame("top", 640, 480)`, RGB), the device injects it, NAOqi serves it. It needs the viewer, so `source = "render"` makes the viewer run, windowed or headless ([viewer.md](viewer.md), "Which viewer runs").
-- **Webcam**: OpenCV capture, cropped to the NAO camera's aspect and field of view (60.97° × 47.64°) and scaled to VGA. Off unless the config says `webcam`, with the indicator of [devices.md](devices.md) ("Off unless asked"); while the source is on, the webcam captures.
-- The device publishes `NaoqiSim/Camera/Source` (`render`, `webcam`) when it starts and `none` when it stops.
+- **Render** closes the loop: NAOqi moves the head, naoqi-viewer renders what the camera sees (`NaoqiViewer.camera_frame(camera, 640, 480)`, RGB), the device injects it, NAOqi serves it. It needs the viewer, so `render` on either camera makes the viewer run, windowed or headless ([viewer.md](viewer.md), "Which viewer runs").
+- **Webcam**: OpenCV capture, cropped to the NAO camera's aspect and field of view (60.97° × 47.64°) and scaled to VGA. Off unless a camera's block says `webcam`, with the indicator of [devices.md](devices.md) ("Off unless asked"); while the source is on, the webcam captures. Each block names its own `device`, so a laptop's one webcam feeds the top camera (the bottom one rendered or unfed), or two webcams feed the two cameras.
+- The device publishes each camera's key, `NaoqiSim/Camera/Top/Source` and `NaoqiSim/Camera/Bottom/Source` (`render`, `webcam`, or `none` for a camera not fed), then the summary `NaoqiSim/Camera/Source` that `status()` reads (`none` when no camera is fed, the one source feeding them, `mixed` when they differ) when it starts, and `none` everywhere when it stops ([status-service.md](../container/status-service.md), which seeds all three at boot).
 
-### Frames: fixed rate, VGA, top camera, whoever subscribes
+### Frames: fixed rate, VGA, both cameras, whoever subscribes
 
 The device injects frames on its own schedule, **independently of `ALVideoDevice`'s subscribers**: it never reads `getSubscribers()` and never converts a frame.
 
-- **Rate**: `video_input.fps` frames per second (an integer from 1 to 30, default 15), on a fixed schedule from the device's start. A frame that misses its slot is skipped, never caught up, so the rate never exceeds `fps`. `VideoInput.missed` counts the slots that put no frame into NAOqi: skipped by a render that ran past its slot, or replaced by the next frame before injection; frames put plus `missed` is the schedule, which the fast tier checks against the time the device actually ran (measured around `start()` and `stop()`), rather than a frame count in a fixed second a loaded machine can't hold.
+- **Rate**: `video_input.fps` frames per second **per camera** (an integer from 1 to 30, default 15), on a fixed schedule from the device's start: each slot calls for one frame of each camera. A slot that is missed is skipped, never caught up, so no camera's rate exceeds `fps`. `VideoInput.missed` counts the frames of the schedule that never reached NAOqi: a slot skipped by a render that ran past it misses one frame per camera, a frame replaced by the next one before injection misses one; frames put plus `missed` is the schedule (slots times cameras), which the fast tier checks against the time the device actually ran (measured around `start()` and `stop()`), rather than a frame count in a fixed second a loaded machine can't hold.
 - **Size and format**: one RGB frame of 640×480 (VGA) per slot, the largest size both versions accept: 2.8's `putImage` refuses anything above VGA and silently downgrades a 4VGA subscription to QVGA; 2.1 accepts up to 4VGA. Odd sizes are refused erratically on both, so the device sends VGA only.
-- **One camera**: `CameraTop` (index 0) only. `CameraBottom` gets no frames from either source for now; a client subscribing to it gets what NAOqi serves for a camera never fed (see "As measured").
+- **Both cameras, each from its source**: each slot takes a frame of every fed camera from that camera's source, `CameraTop` (index 0) then `CameraBottom` (index 1), back to back so both show the same pose, and injects each into its own index. A client subscribing to a fed camera gets frames, as on a NAO, and a client reading both sees the same moment (two timestamps a `putImage` apart). Two renders per slot is what the viewer pays when both render: at the default 15 fps, 30 renders per second, half naoqi-viewer's ceiling of one per 60 Hz tick, and 15 holds exactly; at 30 fps the two renders fill the slot, so slots get missed (skipped, never caught up) and each camera gets 15 to 20 frames per second, the two falling together rather than drifting apart (see "As measured"). The maximum stays 30, a NAO camera's, which one rendered camera reaches; two reach it only once naoqi-viewer renders both cameras in one tick (open question 1).
 - **NAOqi does the rest.** One injected RGB frame serves every subscriber of that camera at its own resolution and colorspace (RGB, BGR, YUV422, Y...), scaled up or down, with a timestamp NAOqi sets at `putImage`. A client asking for more than `fps` gets the last frame again, as `getImageRemote` returns it immediately with the same timestamp.
 - NAOqi's own subscribers (`FrameGetter/*` on both versions; on 2.8 also people perception's `VideoDevice_TopCamera<QVGA>`, the depth camera's and `ALBasicAwareness`'s) need no special case: the device does not look at subscribers.
-- **Render and inject run on separate threads**, the newest rendered frame winning, so a `putImage` (1–5 ms under emulation) never makes the next render miss naoqi-viewer's 60 Hz tick: 30 fps holds on both versions.
+- **Render and inject run on separate threads**, the newest rendered frame of each camera winning, so a `putImage` (1–5 ms under emulation) never makes the next render miss naoqi-viewer's 60 Hz tick: 30 fps held on both versions with one camera; with two, see "As measured".
 
 ### In a running `NaoqiSim`
 
 - The device runs in-process on its own threads, with its own qi session (`stack.connect`, one attempt), started by `NaoqiSim.start()` once the robot is ready **and, for `render`, once the viewer is launched**; `stop()` stops it before the viewer ([api.md](../runtime/api.md), "Lifecycle").
-- **The window closed by the user** with `source = "render"`: the next `camera_frame` raises `ViewerClosed`. The device stops, writes `NaoqiSim/Camera/Source` back to `none` and logs once, at warning level, that the camera has no frames any more; NAOqi keeps serving the last frame. The robot keeps running, as for the window alone ([api.md](../runtime/api.md), "Lifecycle").
+- **The window closed by the user** with a rendered camera: the next `camera_frame` raises `ViewerClosed`. The device drops every camera that source fed, writes their keys and the summary back (`none` once nothing is fed) and logs once, at warning level, that those cameras have no frames any more; NAOqi keeps serving their last frame. A camera fed by another source carries on; when none is left, the device stops. The robot keeps running, as for the window alone ([api.md](../runtime/api.md), "Lifecycle").
 - A failing `putImage` or render (anything but `ViewerClosed`) is logged and the device carries on with the next slot; a run of failures is logged once, not once per frame.
 
 ### The image side
@@ -66,14 +66,20 @@ Spike of Oct 9, 2026 (`spike/RESULTS.md`, "Video input"), both versions, OrbStac
 - Per-subscriber conversion: six subscribers on `CameraTop` (QQVGA/QVGA/VGA RGB, QVGA BGR, YUV422, Y), one RGB `putImage`, each served correctly in its own format with one timestamp.
 - `putImage` sizes: 2.1 accepts 80×60 to 1280×960; 2.8 accepts 80×60 to 640×480; 4VGA on 2.8, 2560×1920 on both and odd sizes return `False` and drop the frame.
 - `camera_frame` runs at 58–60 per second at any resolution (one answer per tick of naoqi-viewer's render loop); `putImage` takes 0.8–1.8 ms at VGA; a serial render-then-inject loop reaches 30–32 VGA frames per second.
-- A `CameraBottom` subscriber on a fresh stack, nothing ever injected (measured with the plan that builds this spec): `getImageRemote` answers at once with a constant placeholder at the requested size and colorspace, (0, 154, 0) green and black in RGB/BGR, all zeros in Y, timestamp 0 on 2.1 and the current time on 2.8. No error, so the device feeds nothing there.
+- A `CameraBottom` subscriber on a fresh stack, nothing ever injected (measured with the plan that built the top camera, before the bottom one was fed): `getImageRemote` answers at once with a constant placeholder at the requested size and colorspace, (0, 154, 0) green and black in RGB/BGR, all zeros in Y, timestamp 0 on 2.1 and the current time on 2.8. No error. This is what a client sees on `CameraBottom` with the webcam source, and on either camera with `source = "none"`.
+
+Oct 16, 2026, both cameras rendered (plan [202610161135_video-input-both-cameras.md](../../plans/202610161135_video-input-both-cameras.md)), same machine:
+
+- Both cameras at `fps = 15`: 15.0 frames per second on each camera, on 2.1 and 2.8, read by a QVGA subscriber of each (`getImageRemote` polled, distinct timestamps counted over 4 s).
+- Both cameras at `fps = 30`: 19.5 (top) and 17.5 (bottom) per second on 2.1, 15.0 and 15.0 on 2.8. Two renders at one per 60 Hz tick take the whole 33 ms slot, so the slightest overhead runs past it and the next slot is skipped: with both cameras rendered, the rate per camera is 15 to 20, not 30. The two cameras stay within a slot of each other, as designed.
+- The live tier's pinhole test of the bottom camera (`test_the_bottom_camera_looks_down_at_the_pillars_foot`) passes on both versions with its 15-row tolerance at QVGA: the viewer's `CameraBottom` pose and NAOqi's `getPosition("CameraBottom")` agree.
 
 ## Open questions
 
 Deferrals; none blocks the render source.
 
-1. **The bottom camera.** Rendering `CameraBottom` too (alternating renders, at most 30 fps each within naoqi-viewer's 60 per second), once a client needs it.
-2. **Resolution and subscribers.** 4VGA on 2.1, or rendering only while a client subscribes (which would need to tell NAOqi's own subscribers apart), if the fixed VGA stream proves wasteful or too small.
+1. **30 fps on both cameras.** Two renders per slot cap each camera at 15 to 20 per second ("As measured"). The lever is naoqi-viewer's: one `camera_frame` call returning both cameras' frames from one tick, which the device would take instead of two calls. Until a client needs 30 on both, 15 is the figure.
+2. **Resolution and subscribers.** 4VGA on 2.1, or rendering a camera only while a client subscribes to it (which would need to tell NAOqi's own subscribers apart), if the fixed VGA streams prove wasteful or too small. Two cameras doubled the viewer's load, so this is the first lever if a small machine or CI's software renderer cannot hold the rate.
 3. **Webcam selection.** An index (`device: 0`) is what OpenCV takes, but indices are not stable across reboots or USB changes; a name match may be needed.
 4. **The webcam dependency.** `opencv-python-headless` as a runtime dependency, or behind a `webcam` extra so a CI or server install stays small.
 5. **NAO V6 cameras.** The render uses naoqi-viewer's V5 model (47.64° vertical field of view). Whether 2.8 (NAO V6) needs its own geometry is open on the naoqi-viewer side.

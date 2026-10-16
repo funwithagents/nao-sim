@@ -52,7 +52,8 @@ The module writes these at load. All values are plain strings except `NaoqiSim/R
 | `NaoqiSim/Version` | naoqi-sim version | Nobody |
 | `NaoqiSim/NaoqiVersion` | `2.1.4.13` or `2.8.7.4` | Nobody |
 | `NaoqiSim/Ready` | `0`; `1` after `setReady()`. Raised as an event, so a client can wait on it | The entrypoint, through `setReady()` |
-| `NaoqiSim/Camera/Source` | `none` | The video input (`render`, `webcam`), [video-input.md](../host/video-input.md) |
+| `NaoqiSim/Camera/Top/Source`, `NaoqiSim/Camera/Bottom/Source` | `none` | The video input: what feeds each head camera (`render`, `webcam`), [video-input.md](../host/video-input.md) |
+| `NaoqiSim/Camera/Source` | `none` | The video input: the two cameras' keys summarized, for `status()` and a client that only wants to know whether the robot sees: `none` when no camera is fed, the one source feeding them, `mixed` when they differ |
 | `NaoqiSim/Audio/Source` | `none` | The audio input (`fake`, `mic`), [audio-input.md](../host/audio-input.md) |
 | `NaoqiSim/Audio/Channels` | `none` | The audio input's mono policy (`duplicate`, `silence`), [audio-input.md](../host/audio-input.md) |
 

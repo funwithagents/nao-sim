@@ -8,6 +8,7 @@ import pytest
 from naoqi_sim.config import (
     AudioInputSettings,
     AudioOutputSettings,
+    CameraSettings,
     ConfigError,
     NaoqiSettings,
     NaoqiSimConfig,
@@ -32,7 +33,11 @@ def test_an_empty_config_is_the_defaults():
     assert config.speech.engine == "piper"
     assert config.audio_output.mode == "play"
     assert config.audio_input.source == "none"
-    assert config.video_input == VideoInputSettings(source="none", fps=15, device=0)
+    assert config.video_input == VideoInputSettings(
+        top=CameraSettings(source="none", device=0),
+        bottom=CameraSettings(source="none", device=0),
+        fps=15,
+    )
     assert config.viewer == ViewerSettings(
         headless=False, scene="empty", variant="auto"
     )
@@ -54,7 +59,11 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
             "speech": {"engine": "espeak"},
             "audio_output": {"mode": "record", "record": str(tmp_path / "out.wav")},
             "audio_input": {"source": "fake", "mono": "silence"},
-            "video_input": {"source": "webcam", "fps": 30, "device": 1},
+            "video_input": {
+                "top": {"source": "webcam", "device": 1},
+                "bottom": {"source": "render"},
+                "fps": 30,
+            },
             "viewer": {"headless": True, "scene": "table", "variant": "placeholder"},
         }
     )
@@ -74,8 +83,14 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
         ({"speech": {"engine": "festival"}}, "speech.engine"),
         ({"audio_output": {"mode": "loud"}}, "audio_output.mode"),
         ({"audio_input": {"mono": "left"}}, "audio_input.mono"),
-        ({"video_input": {"device": -1}}, "video_input.device"),
-        ({"video_input": {"device": 1.5}}, "video_input.device"),
+        ({"video_input": {"top": {"device": -1}}}, "video_input.top.device"),
+        ({"video_input": {"bottom": {"device": 1.5}}}, "video_input.bottom.device"),
+        ({"video_input": {"bottom": {"source": "lidar"}}}, "video_input.bottom.source"),
+        ({"video_input": {"top": "render"}}, "video_input.top"),
+        (
+            {"video_input": {"source": "render"}},
+            "video_input",
+        ),  # the old shape: per camera now
         ({"video_input": {"fps": 0}}, "video_input.fps"),
         ({"video_input": {"fps": 31}}, "video_input.fps"),
         ({"video_input": {"fps": 12.5}}, "video_input.fps"),
@@ -187,7 +202,8 @@ def test_the_example_files_load():
     assert headless.viewer.headless and headless.audio_output.mode == "silent"
     ci = NaoqiSimConfig.from_json_file(EXAMPLES / "ci.json")
     assert ci.viewer == ViewerSettings(headless=True, variant="placeholder")
-    assert ci.video_input.source == "render" and ci.audio_output.mode == "silent"
+    assert ci.video_input.sources == {"top": "render", "bottom": "render"}
+    assert ci.audio_output.mode == "silent"
     assert ci.audio_input.source == "fake"
     mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")
     assert mic == NaoqiSimConfig(audio_input=AudioInputSettings(source="mic"))

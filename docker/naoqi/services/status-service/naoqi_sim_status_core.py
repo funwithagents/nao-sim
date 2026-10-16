@@ -12,7 +12,8 @@ import os
 SERVICE = "NaoqiSim"
 PREFIX = "NaoqiSim/"
 NONE = "none"  # no host device attached to that service
-DEVICES = ("Camera", "Audio")
+# "Camera" summarizes the two cameras' keys (specs/host/video-input.md)
+DEVICES = ("Camera", "Camera/Top", "Camera/Bottom", "Audio")
 DEFAULT_VERSION = "dev"
 UNKNOWN = "unknown"
 

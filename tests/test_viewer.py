@@ -12,6 +12,7 @@ import pytest
 
 from naoqi_sim import viewer
 from naoqi_sim.config import (
+    CameraSettings,
     ConfigError,
     NaoqiSimConfig,
     VideoInputSettings,
@@ -23,17 +24,21 @@ from naoqi_sim.errors import MissingExtraError
 @pytest.mark.parametrize(
     ("headless", "source", "needed"),
     [
-        (False, "none", True),
-        (False, "webcam", True),
-        (True, "render", True),
-        (True, "none", False),
-        (True, "webcam", False),
+        (False, ("none", "none"), True),
+        (False, ("webcam", "none"), True),
+        (True, ("render", "render"), True),
+        (True, ("none", "render"), True),  # either camera rendered needs the viewer
+        (True, ("none", "none"), False),
+        (True, ("webcam", "webcam"), False),
     ],
 )
 def test_which_configs_need_the_viewer(headless, source, needed):
+    top, bottom = source
     config = NaoqiSimConfig(
         viewer=ViewerSettings(headless=headless),
-        video_input=VideoInputSettings(source=source),
+        video_input=VideoInputSettings(
+            top=CameraSettings(source=top), bottom=CameraSettings(source=bottom)
+        ),
     )
     assert viewer.needs_viewer(config) is needed
 
