@@ -8,7 +8,7 @@ import math
 import time
 
 import pytest
-from support import DESKTOP_FACTS, known_issue
+from support import DESKTOP_FACTS
 
 SPEED = 0.8
 
@@ -33,10 +33,26 @@ def sensed(motion, names) -> list[float]:
     return motion.getAngles(names, True)
 
 
-def test_wake_up_and_rest(request, nao):
-    known_issue(
-        request, nao, f"2.1 says Standing in Crouch ({DESKTOP_FACTS})", ("2.1",)
-    )
+def settles(read, value, timeout: float = 1.0) -> bool:
+    """Whether `read()` answers `value` within `timeout`: ALMotion applies its setters on its next
+    cycle, so a getter follows about 30 ms later, on a real NAO 2.1 as on the desktop (measured
+    Oct 16, 2026, naoqi-fidelity.md)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        if read() == value:
+            return True
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.02)
+
+
+def crouch_family(nao) -> str:
+    """What getPostureFamily() answers in Crouch: a NAO 2.1 says "Standing", as a real one
+    does (naoqi-fidelity.md, "Desktop NAOqi facts"); 2.8 says "Crouching"."""
+    return "Standing" if nao.version.name == "2.1" else "Crouching"
+
+
+def test_wake_up_and_rest(nao):
     motion = nao.service("ALMotion")
     motion.wakeUp()
     assert motion.robotIsWakeUp()
@@ -47,7 +63,7 @@ def test_wake_up_and_rest(request, nao):
     assert max(motion.getStiffnesses("Body")) < 0.1
     posture = nao.service("ALRobotPosture")
     assert posture.getPosture() == "Crouch"
-    assert posture.getPostureFamily() == "Crouching"
+    assert posture.getPostureFamily() == crouch_family(nao)
 
 
 def test_set_stiffness(standing):
@@ -100,17 +116,13 @@ def test_move_toward_walks_until_stopped(standing):
 
 @pytest.mark.parametrize(
     "target, family",
-    [("Crouch", "Crouching"), ("StandInit", "Standing"), ("Stand", "Standing")],
+    [("Crouch", None), ("StandInit", "Standing"), ("Stand", "Standing")],
 )
-def test_go_to_posture(request, nao, standing, target, family):
-    if target == "Crouch":
-        known_issue(
-            request, nao, f"2.1 says Standing in Crouch ({DESKTOP_FACTS})", ("2.1",)
-        )
+def test_go_to_posture(nao, standing, target, family):
     posture = nao.service("ALRobotPosture")
     assert posture.goToPosture(target, SPEED)
     assert posture.getPosture() == target
-    assert posture.getPostureFamily() == family
+    assert posture.getPostureFamily() == (family or crouch_family(nao))
 
 
 def test_sit_down(nao, standing):
@@ -132,25 +144,32 @@ def test_apply_posture(nao, standing):
     assert posture.getPosture() == "StandZero"
 
 
-def test_self_collision_protection_toggles(request, nao, standing):
-    """The Set Self Anti-Collision box: set on "Arms", read per arm (the getter takes LArm or RArm)."""
-    known_issue(request, nao, f"self-collision protection stays on ({DESKTOP_FACTS})")
+def test_self_collision_protection_toggles(standing):
+    """The Set Self Anti-Collision box: set on "Arms", read per arm (the getter takes LArm or RArm),
+    as a real NAO 2.1 answers (naoqi-fidelity.md, measured Oct 16, 2026)."""
     standing.setCollisionProtectionEnabled("Arms", False)
     try:
-        assert not standing.getCollisionProtectionEnabled("LArm")
+        assert settles(lambda: standing.getCollisionProtectionEnabled("LArm"), False)
         assert not standing.getCollisionProtectionEnabled("RArm")
     finally:
         standing.setCollisionProtectionEnabled("Arms", True)
-    assert standing.getCollisionProtectionEnabled("LArm")
+    assert settles(lambda: standing.getCollisionProtectionEnabled("LArm"), True)
 
 
-def test_external_collision_protection_reads_back(request, nao, standing):
-    """The Set External Anti-Collision box, with its default body part."""
-    known_issue(
-        request, nao, f"external collision protection reads off ({DESKTOP_FACTS})"
+def test_external_collision_protection_reads_back(standing):
+    """The Set External Anti-Collision box on "Move", the one external protection a NAO has: on a
+    real NAO 2.1 "Arms" (the box's default) reads false whatever is set, "All" sets "Move"
+    (naoqi-fidelity.md, measured Oct 16, 2026)."""
+    standing.setExternalCollisionProtectionEnabled("Move", True)
+    try:
+        assert settles(
+            lambda: standing.getExternalCollisionProtectionEnabled("Move"), True
+        )
+    finally:
+        standing.setExternalCollisionProtectionEnabled("Move", False)
+    assert settles(
+        lambda: standing.getExternalCollisionProtectionEnabled("Move"), False
     )
-    standing.setExternalCollisionProtectionEnabled("Arms", True)
-    assert standing.getExternalCollisionProtectionEnabled("Arms")
 
 
 def test_fall_manager_reads_back(standing):
