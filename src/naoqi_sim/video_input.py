@@ -94,10 +94,15 @@ class VideoInput:
         self._frames: dict[int, np.ndarray] = {}  # by camera index, awaiting injection
         self._failing: set[str] = set()
         self._threads: list[threading.Thread] = []
-        # Frames of the schedule (one per fed camera per slot) that never reached NAOqi: a slot
-        # skipped by a render that ran late misses one per camera, a frame replaced by the next
-        # one before injection misses one. Frames put + missed = the schedule.
-        self.missed = 0
+        # Frames of each camera's schedule that never reached NAOqi: a slot skipped by a render
+        # that ran late, or a frame replaced by the next one before injection. Frames put +
+        # missed = the schedule, per camera.
+        self.missed_by_camera: dict[str, int] = dict.fromkeys(sources, 0)
+
+    @property
+    def missed(self) -> int:
+        """The frames of every schedule that never reached NAOqi."""
+        return sum(self.missed_by_camera.values())
 
     def start(self) -> None:
         self._session = self._connect()
@@ -159,14 +164,16 @@ class VideoInput:
                 late = time.monotonic() - due[camera]
                 if late >= 0:  # this camera's next slot is already past: skipped
                     skipped = int(late / period) + 1
-                    self.missed += skipped
+                    self.missed_by_camera[camera] += skipped
                     due[camera] += skipped * period
             if images:
                 with self._ready:
-                    for index, image in images.items():
-                        if index in self._frames:  # not injected yet: replaced
-                            self.missed += 1
-                        self._frames[index] = image
+                    for camera, source in self._cameras:
+                        index = CAMERAS[camera]
+                        if index in images:
+                            if index in self._frames:  # not injected yet: replaced
+                                self.missed_by_camera[camera] += 1
+                            self._frames[index] = images[index]
                     self._ready.notify_all()
 
     def _closed(self, name: str) -> None:

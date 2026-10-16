@@ -180,12 +180,15 @@ def test_each_camera_keeps_its_own_rate(naoqi, lateness):
     ran.stop(device)
 
     top, bottom = len(puts_into(naoqi, 0)), len(puts_into(naoqi, 1))
-    fewest30, most30 = ran.slots(lateness())
-    fewest10, most10 = ran.slots(lateness(), fps=10)
-    # Every slot of both schedules put its frame or was missed, never caught up.
-    assert fewest30 + fewest10 <= top + bottom + device.missed <= most30 + most10
-    assert top <= most30 and fewest10 - 1 <= bottom <= most10
-    assert top > 2 * bottom  # three times as many, give or take the missed slots
+    missed = device.missed_by_camera
+    # Every slot of each camera's schedule put its frame or was missed, never caught up: the
+    # top camera's slots are three times the bottom camera's, however many a loaded machine
+    # (a CI runner waking late) misses.
+    fewest, most = ran.slots(lateness())
+    assert top <= most and fewest <= top + missed["top"] <= most
+    fewest, most = ran.slots(lateness(), fps=10)
+    assert bottom <= most and fewest <= bottom + missed["bottom"] <= most
+    assert device.missed == missed["top"] + missed["bottom"]
     # The top camera's own slots are never bunched up.
     assert np.diff([at for _, at in puts_into(naoqi, 0)]).min() > 0.001
 

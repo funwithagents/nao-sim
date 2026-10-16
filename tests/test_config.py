@@ -202,6 +202,7 @@ def test_the_example_files_load():
     ci = NaoqiSimConfig.from_json_file(EXAMPLES / "ci.json")
     assert ci.viewer == ViewerSettings(headless=True, variant="placeholder")
     assert ci.video_input.sources == {"top": "render", "bottom": "render"}
+    assert ci.video_input.rates == {"top": 15, "bottom": 5}
     assert ci.audio_output.mode == "silent"
     assert ci.audio_input.source == "fake"
     mic = NaoqiSimConfig.from_json_file(EXAMPLES / "mic.json")

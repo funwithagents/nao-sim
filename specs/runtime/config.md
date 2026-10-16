@@ -174,7 +174,7 @@ JSON: a naoqi-sim file is pasted into another program's JSON config unchanged, a
 - `default.json`: 2.1, window, speech only;
 - `2.8.json`: the same on 2.8;
 - `headless.json`: 2.1, no window, silent audio output (servers);
-- `ci.json`: 2.1, headless viewer with the placeholder variant, both cameras on `render`, silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
+- `ci.json`: 2.1, headless viewer with the placeholder variant, both cameras on `render` (the bottom one at 5 fps: a runner rendering in software has little CPU to spare), silent audio output, `audio_input.source = "fake"`: the live tier's settings, which add a test scene from `tests-e2e/` ([viewer.md](../host/viewer.md), "In the live tier and CI");
 - `mic.json`: 2.1, window, speech on the loudspeaker, `audio_input.source = "mic"`: the robot hears the room, its own voice included, as a NAO does.
 
 ## Open questions

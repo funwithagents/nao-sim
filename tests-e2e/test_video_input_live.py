@@ -1,7 +1,7 @@
 """The render cameras on each NAOqi version, as a vision client sees them: it subscribes to
 `ALVideoDevice` and reads frames with `getImageRemote`, which naoqi-viewer rendered and the video
 input injected into both head cameras (the live tier runs it: headless viewer, placeholder
-variant, 15 fps)."""
+variant, the top camera at 15 fps and the bottom one at 5)."""
 
 import math
 import time
@@ -12,7 +12,7 @@ import pytest
 TOP, BOTTOM = 0, 1
 QVGA, VGA = 1, 2
 RGB, BGR = 11, 13
-FPS = 15  # VideoInputSettings' default, which the live tier keeps
+FPS = 15  # the top camera's rate in the live tier (CameraSettings' default)
 
 
 @pytest.fixture
@@ -170,9 +170,10 @@ def test_the_camera_sees_what_the_head_faces(nao, camera):
         motion.angleInterpolation("HeadYaw", 0.0, 0.5, True)
 
 
-def test_the_bottom_camera_gets_frames_with_the_top_ones(camera):
-    """Both cameras are fed each slot, back to back, so a client reading both sees the same
-    moment: two timestamps a `putImage` apart, not a slot."""
+def test_the_bottom_camera_gets_rendered_frames_too(camera):
+    """Both cameras are fed, each from its render, and both keep coming. (That two cameras at
+    the same rate share their slots is the fast tier's to pin: on a CI runner rendering in
+    software, a render outlasts a slot and the two schedules drift apart.)"""
     video, subscribe = camera
     top = subscribe(index=TOP, resolution=QVGA)
     bottom = subscribe(index=BOTTOM, resolution=QVGA)
@@ -180,17 +181,9 @@ def test_the_bottom_camera_gets_frames_with_the_top_ones(camera):
     image, stamp = read(video, bottom)
     assert image.shape == (240, 320, 3)
     assert image.std() > 1  # a render, not the placeholder of a camera never fed
-    next_frame(video, bottom, after=stamp)  # and the frames keep coming
-
-    for _ in range(
-        20
-    ):  # the two reads can straddle an injection: retry until they match
-        _, top_stamp = read(video, top)
-        _, bottom_stamp = read(video, bottom)
-        if abs(top_stamp - bottom_stamp) < 0.02:
-            break
-    else:
-        pytest.fail("the two cameras' frames are never from the same slot")
+    later = next_frame(video, bottom, after=stamp)  # and the frames keep coming
+    assert later.std() > 1
+    next_frame(video, top, after=read(video, top)[1])  # the top camera's too
 
 
 VERTICAL_HALF_FOV = (
