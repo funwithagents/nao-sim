@@ -16,7 +16,7 @@ tests:
 
 # Video input
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 

@@ -15,7 +15,7 @@ tests:
 
 # Configuration
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
