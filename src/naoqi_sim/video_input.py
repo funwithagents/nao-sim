@@ -1,8 +1,8 @@
 """The video input: the robot's head cameras, fed into `ALVideoDevice` (specs/host/video-input.md).
 
-An ordinary qi client: at `fps` frames per second it takes a 640x480 RGB frame of each fed
-camera from that camera's source (the viewer's render of `CameraTop` and `CameraBottom`, back to
-back at the same pose) and injects it with the public `putImage` into the camera's index,
+An ordinary qi client: at each camera's `fps` it takes a 640x480 RGB frame of that camera from
+its source (the viewer's render of `CameraTop` and `CameraBottom`; back to back at the same pose
+when their rates are equal) and injects it with the public `putImage` into the camera's index,
 whoever subscribes. NAOqi serves every subscriber of a camera from that one frame, in the
 subscriber's own resolution and colorspace. Rendering and injecting run on separate threads,
 the newest frame of each camera winning, so a `putImage` never makes the next render miss the
@@ -63,14 +63,14 @@ class RenderSource:
 
 
 class VideoInput:
-    """Injects each camera's source's frames into that camera at `fps`, from `start()` to
-    `stop()`. `sources` maps camera names (`top`, `bottom`) to their sources; a camera left out
-    is not fed."""
+    """Injects each camera's source's frames into that camera at that camera's `fps`, from
+    `start()` to `stop()`. `sources` maps camera names (`top`, `bottom`) to their sources and
+    `fps` to their rates; a camera left out is not fed."""
 
     def __init__(
         self,
         sources: Mapping[str, FrameSource],
-        fps: int,
+        fps: Mapping[str, int],
         connect: Callable[[], Any] | None = None,
     ):
         unknown = set(sources) - set(CAMERAS)
@@ -78,11 +78,13 @@ class VideoInput:
             raise ValueError(
                 f"cameras must be among {list(CAMERAS)}, got {list(sources)}"
             )
+        if missing := set(sources) - set(fps):
+            raise ValueError(f"no fps for {sorted(missing)}")
         # In injection order; the render thread drops a camera whose source is closed.
         self._cameras = [
             (camera, sources[camera]) for camera in CAMERAS if camera in sources
         ]
-        self._period = 1.0 / fps
+        self._periods = {camera: 1.0 / fps[camera] for camera in sources}
         self._connect = connect or (lambda: stack.connect())  # a qi session
         self._session: Any = None
         self._video: Any = None
@@ -126,12 +128,18 @@ class VideoInput:
             self._ready.notify_all()
 
     def _render(self) -> None:
-        """Takes each camera's frame per slot of a fixed schedule; a missed slot is skipped, not
-        caught up."""
-        due = time.monotonic()
-        while not self._stopping.wait(max(0.0, due - time.monotonic())):
+        """Takes each camera's frame per slot of that camera's fixed schedule, all the schedules
+        starting together; a missed slot is skipped, not caught up."""
+        due = dict.fromkeys(self._periods, time.monotonic())
+        while True:
+            next_due = min(due[camera] for camera, _ in self._cameras)
+            if self._stopping.wait(max(0.0, next_due - time.monotonic())):
+                return
+            now = time.monotonic()
             images: dict[int, np.ndarray] = {}
             for camera, source in list(self._cameras):
+                if due[camera] > now:
+                    continue  # not this camera's slot
                 try:
                     images[CAMERAS[camera]] = source.frame()
                 except WorldClosed:
@@ -141,10 +149,18 @@ class VideoInput:
                     if not self._cameras:
                         self._halt()
                         return
+                    continue
                 except Exception as e:  # noqa: BLE001 (a bad frame must not end the device)
                     self._failed(f"render {camera}", e)
                 else:
                     self._succeeded(f"render {camera}")
+                period = self._periods[camera]
+                due[camera] += period
+                late = time.monotonic() - due[camera]
+                if late >= 0:  # this camera's next slot is already past: skipped
+                    skipped = int(late / period) + 1
+                    self.missed += skipped
+                    due[camera] += skipped * period
             if images:
                 with self._ready:
                     for index, image in images.items():
@@ -152,12 +168,6 @@ class VideoInput:
                             self.missed += 1
                         self._frames[index] = image
                     self._ready.notify_all()
-            due += self._period
-            late = time.monotonic() - due
-            if late >= 0:
-                skipped = int(late / self._period) + 1
-                self.missed += skipped * len(self._cameras)
-                due += skipped * self._period
 
     def _closed(self, name: str) -> None:
         """A source has no more frames (the viewer's window closed): every camera it fed is

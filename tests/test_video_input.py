@@ -90,8 +90,15 @@ def naoqi():
     return FakeNaoqi()
 
 
+def rates(fps, cameras=("top", "bottom")):
+    """`fps` for every camera, or a dict as given."""
+    return fps if isinstance(fps, dict) else dict.fromkeys(cameras, fps)
+
+
 def running(world, naoqi, fps=10, cameras=("top", "bottom")) -> VideoInput:
-    device = VideoInput(world.sources(*cameras), fps, connect=lambda: naoqi)
+    device = VideoInput(
+        world.sources(*cameras), rates(fps, cameras), connect=lambda: naoqi
+    )
     device.start()
     return device
 
@@ -142,18 +149,45 @@ class Ran:
         device.stop()
         self.t3 = time.monotonic()
 
-    def slots(self, lateness: float) -> tuple[float, float]:
-        """The fewest and most slots of the schedule in that time. A machine that wakes threads
-        `lateness` seconds late (a CI virtual machine) loses slots at both ends: before the
-        device's thread first runs, and after the last slot it handled when `stop()` finds it
-        sleeping late, besides the frame in flight (specs/testing/testing.md, "Platforms")."""
-        fewest = (self.t2 - self.t1 - 2 * lateness) * self.fps - 2
-        return fewest, (self.t3 - self.t0) * self.fps + 1
+    def slots(self, lateness: float, fps: int | None = None) -> tuple[float, float]:
+        """The fewest and most slots of a schedule at `fps` (the device's, by default) in that
+        time. A machine that wakes threads `lateness` seconds late (a CI virtual machine) loses
+        slots at both ends: before the device's thread first runs, and after the last slot it
+        handled when `stop()` finds it sleeping late, besides the frame in flight
+        (specs/testing/testing.md, "Platforms")."""
+        fps = fps or self.fps
+        fewest = (self.t2 - self.t1 - 2 * lateness) * fps - 2
+        return fewest, (self.t3 - self.t0) * fps + 1
 
     def frames(self, lateness: float) -> tuple[float, float]:
-        """The fewest and most frames of the schedule in that time: one per camera per slot."""
+        """The fewest and most frames of the schedules in that time: one per camera per slot."""
         fewest, most = self.slots(lateness)
         return fewest * 2, most * 2
+
+
+def test_each_camera_keeps_its_own_rate(naoqi, lateness):
+    """A fast top camera and a slow bottom one (bandwidth, or the viewer's render budget)."""
+    ran = Ran(fps=30)
+    ran.t0 = time.monotonic()
+    device = VideoInput(
+        Frames().sources("top", "bottom"),
+        {"top": 30, "bottom": 10},
+        connect=lambda: naoqi,
+    )
+    device.start()
+    ran.t1 = time.monotonic()
+    time.sleep(1.0)
+    ran.stop(device)
+
+    top, bottom = len(puts_into(naoqi, 0)), len(puts_into(naoqi, 1))
+    fewest30, most30 = ran.slots(lateness())
+    fewest10, most10 = ran.slots(lateness(), fps=10)
+    # Every slot of both schedules put its frame or was missed, never caught up.
+    assert fewest30 + fewest10 <= top + bottom + device.missed <= most30 + most10
+    assert top <= most30 and fewest10 - 1 <= bottom <= most10
+    assert top > 2 * bottom  # three times as many, give or take the missed slots
+    # The top camera's own slots are never bunched up.
+    assert np.diff([at for _, at in puts_into(naoqi, 0)]).min() > 0.001
 
 
 def test_paces_at_the_configured_rate(naoqi, lateness):
@@ -227,7 +261,9 @@ def test_the_summary_says_mixed_when_the_cameras_sources_differ(naoqi):
     webcam = world.source("top")
     webcam.name = "webcam"
     device = VideoInput(
-        {"top": webcam, "bottom": world.source("bottom")}, 10, connect=lambda: naoqi
+        {"top": webcam, "bottom": world.source("bottom")},
+        rates(10),
+        connect=lambda: naoqi,
     )
     device.start()
     assert naoqi.memory["NaoqiSim/Camera/Top/Source"] == "webcam"
@@ -238,9 +274,15 @@ def test_the_summary_says_mixed_when_the_cameras_sources_differ(naoqi):
 
 def test_refuses_an_unknown_camera_or_none_at_all(naoqi):
     with pytest.raises(ValueError, match="cameras must be among"):
-        VideoInput({"left": Frames().source("top")}, 10, connect=lambda: naoqi)
+        VideoInput(
+            {"left": Frames().source("top")}, {"left": 10}, connect=lambda: naoqi
+        )
     with pytest.raises(ValueError, match="cameras must be among"):
-        VideoInput({}, 10, connect=lambda: naoqi)
+        VideoInput({}, {}, connect=lambda: naoqi)
+    with pytest.raises(ValueError, match="no fps for"):
+        VideoInput(
+            Frames().sources("top", "bottom"), {"top": 10}, connect=lambda: naoqi
+        )
 
 
 def test_a_closed_viewer_stops_the_camera_and_says_so_once(naoqi, caplog):
@@ -268,7 +310,9 @@ def test_a_closed_source_drops_its_cameras_and_the_others_carry_on(naoqi, caplog
     webcam = webcam_world.source("top")
     webcam.name = "webcam"
     device = VideoInput(
-        {"top": webcam, "bottom": viewer.source("bottom")}, 30, connect=lambda: naoqi
+        {"top": webcam, "bottom": viewer.source("bottom")},
+        rates(30),
+        connect=lambda: naoqi,
     )
     with caplog.at_level(logging.WARNING, logger="naoqi_sim.video_input"):
         device.start()

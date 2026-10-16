@@ -251,7 +251,7 @@ class NaoqiSim:
             camera: RenderSource(world, camera)
             for camera in self._config.video_input.cameras("render")
         }
-        device = VideoInput(sources, self._config.video_input.fps)
+        device = VideoInput(sources, self._config.video_input.rates)
         # Registered after the viewer's, so the teardown stops it first.
         self._undo.append(("video input", device.stop))
         device.start()

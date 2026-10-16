@@ -259,10 +259,15 @@ class CameraSettings(_Loaders):
     """What feeds one head camera (specs/host/video-input.md, "Sources")."""
 
     source: VideoInputSource = "none"
+    fps: int = 15  # frames injected per second into this camera
     device: int = 0  # webcam index, used by "webcam"
 
     def __post_init__(self) -> None:
         _check_choice(self.source, VideoInputSource, "source")
+        if not 1 <= self.fps <= MAX_FPS:
+            raise ConfigError(
+                f"must be an integer from 1 to {MAX_FPS}, got {self.fps!r}", key="fps"
+            )
         if self.device < 0:
             raise ConfigError(
                 f"must be a non-negative integer, got {self.device!r}", key="device"
@@ -270,28 +275,28 @@ class CameraSettings(_Loaders):
 
     @classmethod
     def parse(cls, data: Any, path: str) -> Self:
-        return _parse_block(cls, data, path, {"source": _as_str, "device": _as_int})
+        return _parse_block(
+            cls, data, path, {"source": _as_str, "fps": _as_int, "device": _as_int}
+        )
 
 
 @dataclass(frozen=True)
 class VideoInputSettings(_Loaders):
     """The video input, injected into ALVideoDevice (specs/host/video-input.md): a block per
-    head camera, and one frame rate for both."""
+    head camera."""
 
     top: CameraSettings = field(default_factory=CameraSettings)
     bottom: CameraSettings = field(default_factory=CameraSettings)
-    fps: int = 15  # frames injected per second into each fed camera
-
-    def __post_init__(self) -> None:
-        if not 1 <= self.fps <= MAX_FPS:
-            raise ConfigError(
-                f"must be an integer from 1 to {MAX_FPS}, got {self.fps!r}", key="fps"
-            )
 
     @property
     def sources(self) -> dict[str, VideoInputSource]:
         """Each camera's source, by camera name, in NAOqi's camera order."""
         return {"top": self.top.source, "bottom": self.bottom.source}
+
+    @property
+    def rates(self) -> dict[str, int]:
+        """Each camera's `fps`, by camera name."""
+        return {"top": self.top.fps, "bottom": self.bottom.fps}
 
     def cameras(self, source: VideoInputSource) -> tuple[str, ...]:
         """The cameras fed by `source`."""
@@ -306,7 +311,6 @@ class VideoInputSettings(_Loaders):
             {
                 "top": lambda d: CameraSettings.parse(d, _join(path, "top")),
                 "bottom": lambda d: CameraSettings.parse(d, _join(path, "bottom")),
-                "fps": _as_int,
             },
         )
 

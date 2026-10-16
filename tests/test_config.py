@@ -34,9 +34,8 @@ def test_an_empty_config_is_the_defaults():
     assert config.audio_output.mode == "play"
     assert config.audio_input.source == "none"
     assert config.video_input == VideoInputSettings(
-        top=CameraSettings(source="none", device=0),
-        bottom=CameraSettings(source="none", device=0),
-        fps=15,
+        top=CameraSettings(source="none", fps=15, device=0),
+        bottom=CameraSettings(source="none", fps=15, device=0),
     )
     assert config.viewer == ViewerSettings(
         headless=False, scene="empty", variant="auto"
@@ -60,9 +59,8 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
             "audio_output": {"mode": "record", "record": str(tmp_path / "out.wav")},
             "audio_input": {"source": "fake", "mono": "silence"},
             "video_input": {
-                "top": {"source": "webcam", "device": 1},
-                "bottom": {"source": "render"},
-                "fps": 30,
+                "top": {"source": "webcam", "fps": 30, "device": 1},
+                "bottom": {"source": "render", "fps": 5},
             },
             "viewer": {"headless": True, "scene": "table", "variant": "placeholder"},
         }
@@ -91,10 +89,11 @@ def test_to_dict_reads_back_to_an_equal_config(tmp_path):
             {"video_input": {"source": "render"}},
             "video_input",
         ),  # the old shape: per camera now
-        ({"video_input": {"fps": 0}}, "video_input.fps"),
-        ({"video_input": {"fps": 31}}, "video_input.fps"),
-        ({"video_input": {"fps": 12.5}}, "video_input.fps"),
-        ({"video_input": {"fps": "15"}}, "video_input.fps"),
+        ({"video_input": {"top": {"fps": 0}}}, "video_input.top.fps"),
+        ({"video_input": {"bottom": {"fps": 31}}}, "video_input.bottom.fps"),
+        ({"video_input": {"top": {"fps": 12.5}}}, "video_input.top.fps"),
+        ({"video_input": {"top": {"fps": "15"}}}, "video_input.top.fps"),
+        ({"video_input": {"fps": 15}}, "video_input"),  # per camera now
         ({"viewer": {"headless": "yes"}}, "viewer.headless"),
         ({"viewer": {"scene": ""}}, "viewer.scene"),
         ({"viewer": {"variant": "shiny"}}, "viewer.variant"),
@@ -107,9 +106,9 @@ def test_a_bad_value_names_its_key_path(data, key):
 
 @pytest.mark.parametrize("fps", [1, 30])
 def test_the_frame_rate_takes_a_nao_cameras_range(fps):
-    assert (
-        NaoqiSimConfig.from_dict({"video_input": {"fps": fps}}).video_input.fps == fps
-    )
+    assert NaoqiSimConfig.from_dict(
+        {"video_input": {"bottom": {"fps": fps}}}
+    ).video_input.rates == {"top": 15, "bottom": fps}
 
 
 def test_unknown_keys_are_errors_naming_them():
