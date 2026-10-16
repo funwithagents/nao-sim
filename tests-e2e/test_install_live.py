@@ -205,4 +205,3 @@ def test_naoqi_sim_run_from_the_project(project, nao, tmp_path):
             run.kill()
             run.wait()
             project.run("naoqi-sim", "cleanup", env=shared)
-        nao.start()
