@@ -18,7 +18,7 @@ tests:
 
 # NaoqiSim status service and healthcheck
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 

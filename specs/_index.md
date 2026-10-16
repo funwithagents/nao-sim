@@ -36,10 +36,10 @@ The Docker images and what makes them a NAO: the NAOqi image, how override modul
 
 | Spec | Description | Status |
 |---|---|---|
-| [container.md](container/container.md) | NAOqi 2.1 and 2.8 images, suite and `animations` package download, package store volume, single-port network layout, compose, the entrypoint's configuration interface, the `io.naoqi-sim.version` image label; the entrypoint's autoload copy, with our modules in place of the built-ins; the build files (C++ SDKs, libqi, boost) and the native build stage | Updated |
+| [container.md](container/container.md) | NAOqi 2.1 and 2.8 images, suite and `animations` package download, package store volume, single-port network layout, compose, the entrypoint's configuration interface, the `io.naoqi-sim.version` image label; the entrypoint's autoload copy, with our modules in place of the built-ins; the build files (C++ SDKs, libqi, boost) and the native build stage | Implemented |
 | [service-replacement.md](container/service-replacement.md) | Loading override modules into NAOqi, `ALModule` vs qi service per version, replacing a built-in, calling host-registered services (measured on both versions), the native relay for binary arguments, a C++ front for callers that stop by task id (`post`/`pCall`/`wait`/`stop(id)`, qi signals on it, measured on both versions) | Implemented |
 | [naoqi-fidelity.md](container/naoqi-fidelity.md) | How each image compares with a NAO of the same version: the modules it runs (the built-ins the 2.1 suite ships but does not load, added), and every difference of the desktop NAOqi, each classified as by design, patched, patchable (with its lever) or a limitation (with its workaround); the levers, cheapest first; a stand-in DCM to investigate | Implemented |
-| [status-service.md](container/status-service.md) | `NaoqiSim` status service: identity of a naoqi-sim target (versions, device sources, readiness) as a service and ALMemory keys, the entrypoint's readiness guarantees, the Docker healthcheck | Updated |
+| [status-service.md](container/status-service.md) | `NaoqiSim` status service: identity of a naoqi-sim target (versions, device sources, readiness) as a service and ALMemory keys, the entrypoint's readiness guarantees, the Docker healthcheck | Implemented |
 | [tts-engine.md](container/tts-engine.md) | Speech engine container: `POST /say` items to audio with exact marker offsets (Piper, eSpeak NG), streamed to the audio output as its `speech` stream | Implemented |
 
 ### NAOqi services: `services/`
@@ -71,7 +71,7 @@ How naoqi-sim is verified, locally and in CI.
 
 | Spec | Description | Status |
 |---|---|---|
-| [testing.md](testing/testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, a live tier that drives its own stack per NAOqi version | Updated |
+| [testing.md](testing/testing.md) | Testing strategy: two-tier `tests/`/`tests-e2e/` split, functional-test philosophy, a live tier that drives its own stack per NAOqi version | Implemented |
 | [ci.md](testing/ci.md) | GitHub Actions on hosted runners: `check`, `fast-tier`, an `e2e-sim` matrix over 2.1 and 2.8 that builds and caches its images, `NAOQI_SIM_E2E_VERSION` turning skips into failures, a headless viewer; a PulseAudio loopback for the audio tests; the Python 2.7 check | Implemented |
 
 [_overview.md](_overview.md) is the overview of naoqi-sim (goals, architecture, licensing, NAOqi 2.1/2.8 differences, every concept with its state, milestones, open questions). It is reference material without a status; concept specs are extracted from it as work on each concept starts, and the overview section then summarizes and points to the spec. Still only in the overview: the capability probe and the asset guard (both deferred), and the perception measurements kept for clients.
