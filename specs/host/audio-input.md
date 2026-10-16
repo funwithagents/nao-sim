@@ -96,6 +96,7 @@ The audio input's messages on the host link ([devices.md](devices.md), "The host
 - `need` is sent whenever the set of formats or the energy flag changes, and again after every reconnect; `{"formats": [], "energy": false}` means nothing is needed. The host opens the microphone only while something is needed; the fake source's sounds run on the wall clock either way.
 - A `need` that arrives before the device has started (step 6 of `NaoqiSim.start()`) is kept and served once it starts.
 - The container stamps each chunk with its own clock on arrival ([audio-device.md](../services/audio-device.md), "Delivery").
+- **Nothing is sent after the need ends.** An empty `need`, a disconnect or the device's `stop()` halts the producer and waits for it (up to a second), and a block being read when the halt comes is dropped, not sent: once `stop()` has returned, no `pcm` or `energy` message follows. The producer reads the connection and the need as one snapshot the handlers publish, never taking the device's lock, so the stop that joins it under that lock cannot wait on it (a chunk after `stop()`, seen once on a loaded CI runner).
 
 ### In the live tier and CI
 

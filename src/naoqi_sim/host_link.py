@@ -113,6 +113,10 @@ class HostLink:
     def __init__(self, port: int, host: str = "0.0.0.0"):
         self._handlers: dict[str, Handler] = {}
         self._current: dict[str, Connection] = {}
+        # Messages of a service nobody serves yet, the newest of each type in arrival order,
+        # replayed to its handler when it registers (the containers connect before NaoqiSim
+        # step 6 registers the audio input, and a `need` sent at boot must not be lost).
+        self._pending: dict[str, dict[str, tuple[dict, bytes]]] = {}
         self._lock = threading.RLock()
         self._closing = False
         link = self
@@ -133,12 +137,16 @@ class HostLink:
         self._thread.start()
 
     def register(self, service: str, handler: Handler) -> None:
-        """Serve `service`'s connections with `handler` (one already open is handed over now)."""
+        """Serve `service`'s connections with `handler`: one already open is handed over now,
+        then the newest message of each type it sent meanwhile."""
         with self._lock:
             self._handlers[service] = handler
             conn = self._current.get(service)
+            pending = self._pending.pop(service, {})
             if conn is not None:
                 handler.connected(conn)
+                for header, payload in pending.values():
+                    handler.message(conn, header, payload)
 
     def close(self) -> None:
         """Stop listening and drop every connection."""
@@ -178,6 +186,7 @@ class HostLink:
             ):  # a second hello for the service replaces the older connection
                 old.close()
             self._current[service] = conn
+            self._pending.pop(service, None)  # the older connection's, if any
             handler = self._handlers.get(service)
             if old is not None and handler is not None:
                 handler.disconnected(old)
@@ -189,9 +198,15 @@ class HostLink:
                 with (
                     self._lock
                 ):  # so a replaced connection's message never follows its end
+                    if self._current.get(service) is not conn:
+                        continue
                     handler = self._handlers.get(service)
-                    if handler is not None and self._current.get(service) is conn:
+                    if handler is not None:
                         handler.message(conn, *msg)
+                    else:  # nobody serves it yet: the newest of each type, in order
+                        kept = self._pending.setdefault(service, {})
+                        kept.pop(msg[0].get("type", ""), None)
+                        kept[msg[0].get("type", "")] = msg
         except (LinkError, OSError) as e:
             log.warning("host link: %s: %s", service, e)
         finally:
@@ -199,6 +214,7 @@ class HostLink:
             with self._lock:
                 if self._current.get(service) is conn:
                     del self._current[service]
+                    self._pending.pop(service, None)
                     handler = self._handlers.get(service)
                     if handler is not None:
                         handler.disconnected(conn)

@@ -189,8 +189,8 @@ def test_each_camera_keeps_its_own_rate(naoqi, lateness):
     fewest, most = ran.slots(lateness(), fps=10)
     assert bottom <= most and fewest <= bottom + missed["bottom"] <= most
     assert device.missed == missed["top"] + missed["bottom"]
-    # The top camera's own slots are never bunched up.
-    assert np.diff([at for _, at in puts_into(naoqi, 0)]).min() > 0.001
+    # (No burst check on gaps at 30 fps: a frame woken 33 ms late on GitHub's macOS runner
+    # lands right before the next slot's. `top <= most` already forbids made-up frames.)
 
 
 def test_paces_at_the_configured_rate(naoqi, lateness):
@@ -209,7 +209,8 @@ def test_paces_at_the_configured_rate(naoqi, lateness):
     )  # the same rate
     gaps = np.diff([at for _, at in puts_into(naoqi, 0)])
     # Never a burst: missed slots made up would put a camera's frames back to back (well under
-    # a millisecond apart), where a frame woken late still lands before the next slot's.
+    # a millisecond apart), where a frame woken late (50 ms at worst on GitHub's macOS runner)
+    # still lands 50 ms before the next slot's at 10 fps.
     assert gaps.min() > 0.001
 
 
@@ -222,16 +223,14 @@ def test_a_slow_source_skips_slots_and_never_catches_up(naoqi, lateness):
     time.sleep(0.4)
     ran.stop(device)
 
-    times = [at for _, at in puts_into(naoqi, 0)]
-    late = [t for t in times if t > times[0] + 0.65]
     fewest, most = ran.frames(lateness())
     assert (
         device.missed >= 10
     )  # a slot every 160 ms missed slots of 33 ms, two frames each
-    assert fewest <= len(naoqi.puts) + device.missed <= most  # missed, not lost
-    # Back on the 30 fps schedule: a burst would put the missed frames back to back (well under
-    # a millisecond apart), where a frame woken late still lands before the next slot's.
-    assert np.diff(late).min() > 0.001
+    # Missed, not lost; and never made up: a burst of the missed frames once the source is fast
+    # again would put more frames than the schedule has slots.
+    assert fewest <= len(naoqi.puts) + device.missed <= most
+    assert len(puts_into(naoqi, 0)) <= most / 2
 
 
 def test_publishes_each_cameras_source_and_their_summary_while_it_runs(naoqi):

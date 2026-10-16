@@ -156,6 +156,27 @@ def test_a_connection_that_came_before_the_handler_is_handed_over(link):
     assert client.read() == ({"type": "pong", "n": 3}, b"")
 
 
+def test_messages_sent_before_the_handler_reach_it_newest_of_each_type(link):
+    """The container's service says hello and its need at boot, before NaoqiSim registers the
+    device: the handler gets the connection, then what was sent meanwhile, the newest of each
+    type (a need replaces the one before), in arrival order."""
+    client = Client(link.port)
+    client.send({"type": "need", "n": 1})
+    client.send({"type": "ping", "n": 2}, b"x")
+    client.send({"type": "need", "n": 3})
+    time.sleep(0.2)  # all received, nobody serving them yet
+    device = Recorder()
+    link.register("ALAudioDevice", device)
+
+    calls = device.wait(3)
+    assert [c[0] for c in calls] == ["connected", "message", "message"]
+    assert [c[2:] for c in calls[1:]] == [
+        ({"type": "ping", "n": 2}, b"x"),
+        ({"type": "need", "n": 3}, b""),  # the newest need, at its arrival's place
+    ]
+    assert client.read() == ({"type": "pong", "n": 2}, b"x")  # answered at the replay
+
+
 def test_close_ends_every_connection(link):
     device = Recorder()
     link.register("ALAudioDevice", device)

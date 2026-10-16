@@ -301,6 +301,60 @@ def test_a_need_before_start_is_served_after_it_and_stop_resets_the_keys(device)
     assert session.closed
 
 
+class BlockingSource:
+    """A silent source whose `read` blocks while `gate` is clear, the way a microphone's
+    could on a stalled machine; `reading` is set once a read has blocked."""
+
+    name = "fake"
+
+    def __init__(self):
+        self.gate = threading.Event()
+        self.gate.set()
+        self.reading = threading.Event()
+
+    def open(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    def read(self, start: float, frames: int) -> np.ndarray:
+        if not self.gate.is_set():
+            self.reading.set()
+            self.gate.wait()
+        return np.zeros((frames, 4), np.int16)
+
+
+def test_nothing_is_sent_after_stop_returns_even_with_a_block_in_flight(
+    device, monkeypatch
+):
+    """A stop while the producer is mid-block: the stop waits for it (up to the join timeout)
+    and the block is dropped, never sent after `stop()` returned. The failure this pins was
+    seen once on a loaded CI runner: a chunk after `stop()`, when the producer was waiting on
+    the device's lock that the stop held while joining it."""
+    monkeypatch.setattr(audio_input, "JOIN_TIMEOUT_S", 0.3)
+    source = BlockingSource()
+    dev, conn, _ = device(source)
+    dev.start()
+    dev.message(conn, need(FRONT), b"")
+    deadline = time.monotonic() + 2
+    while not conn.pcm(FRONT):
+        assert time.monotonic() < deadline, "no chunk"
+        time.sleep(0.01)
+    source.gate.clear()
+    assert source.reading.wait(1.0)  # the producer is now inside read()
+
+    started = time.monotonic()
+    dev.stop()
+    took = time.monotonic() - started
+    sent = len(conn.sent)
+    source.gate.set()  # the read returns now, into a halted producer
+    time.sleep(0.3)
+
+    assert 0.25 <= took < 1.0  # waited for the join timeout, no longer
+    assert len(conn.sent) == sent  # the block in flight was dropped
+
+
 def test_an_empty_need_stops_production_and_a_new_one_resumes(device):
     dev, conn, _ = device()
     dev.start()
