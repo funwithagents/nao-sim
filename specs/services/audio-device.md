@@ -71,7 +71,7 @@ The host cuts the buffers ([audio-input.md](../host/audio-input.md), "Chunks"); 
 
 ## As measured
 
-Oct 10, 2026, both versions, a libqi 3 host client registering a service with `processRemote` (`spike/RESULTS.md`, "Audio input: host callbacks, binary buffers, the native relay"):
+Oct 10, 2026, both versions, a libqi 3 host client registering a service with `processRemote`:
 
 - **Callbacks reach the host on both versions**: 2.1 through the broker, 2.8 through the gateway from the module's own session. A call costs 0.4 to 1.3 ms per chunk.
 - **Python 2.7 cannot send a binary** on either version: `str` and `bytearray` travel as a qi string (the host gets a `str`, mangled when not UTF-8, so `bytes(inputBuffer)` fails), and `ALProxy` turns a `bytearray` into `None`. A C++ `ALValue` binary arrives as a `bytearray`. Hence the relay.
@@ -80,6 +80,6 @@ Oct 10, 2026, both versions, a libqi 3 host client registering a service with `p
 
 ## Open questions
 
-1. **Chunk size and cadence.** The samples per `processRemote` a NAO delivers are the reference: about 85 ms as reported by clients, 170 ms in the 2.1 docs. To measure on a robot; a constant on the host ([audio-input.md](../host/audio-input.md), open question 1).
-2. **Output volume and output buffers.** Whether `setOutputVolume` drives the audio output's volume ([audio-output.md](../host/audio-output.md), open question 1), and whether `sendRemoteBufferToOutput` (a client playing its own PCM through the robot) is served, by streaming to the audio output.
-3. **Other methods and formats.** The rest of the NAO's `ALAudioDevice` (`setParameter`, `muteAudioOut`, `flushAudioOutputs`, `setFileAsInput`, recording, `startMicrophonesRecording`/`stopMicrophonesRecording`, which the Record Sound box calls, and `ALAudioRecorder`), and four channels at 16 kHz, which later NAOqi versions may accept, are out of v1 unless a client needs them.
+1. ~~**Chunk size and cadence.**~~ Closed: a real NAO 2.1 delivers 4096 samples per channel at 48 kHz and 1365 at 16 kHz every 85.3 ms, interleaved left, right, front, rear, which is what the device sends ([audio-input.md](../host/audio-input.md), open question 1, measured Oct 16, 2026).
+2. **Output volume and output buffers.** Whether `setOutputVolume` drives the audio output's volume ([audio-output.md](../host/audio-output.md), open question 1), and whether `sendRemoteBufferToOutput` (a client playing its own PCM through the robot) is served, by streaming to the audio output. The reference, measured on a real NAO 2.1 (2.1.4.13) on Oct 16, 2026: `setOutputVolume` scales the loudspeakers (the robot's own voice reaches its microphones at 0.28 times the RMS at volume 30 and 3.4 times at volume 80, relative to volume 50); `sendRemoteBufferToOutput(nbOfFrames, buffer)` takes 48 kHz interleaved stereo 16-bit little-endian, returns true after 23 ms for 0.4 s of audio (buffered, not blocking), and `playSine(frequency, gain, pan, duration)` returns at once too.
+3. **Other methods and formats.** The rest of the NAO's `ALAudioDevice` (`setParameter`, `muteAudioOut`, `flushAudioOutputs`, `setFileAsInput`, recording, `startMicrophonesRecording`/`stopMicrophonesRecording`, which the Record Sound box calls, and `ALAudioRecorder`), and four channels at 16 kHz, are out of v1 unless a client needs them. A real NAO 2.1 does accept all four channels at 16 kHz (`setClientPreferences(name, 16000, 0, 0)` gives chunks of 1365 samples by 4 channels, measured Oct 16, 2026), so that format is a gap of ours, not a later version's. The robot's `ALAudioDevice` has 15 public methods ours lacks and a `speakersPlaying` signal ([naoqi-fidelity.md](../container/naoqi-fidelity.md), "Measured against a real NAO 2.1").

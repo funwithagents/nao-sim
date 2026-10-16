@@ -26,6 +26,6 @@ The robot's touch sensors as a host device ([devices.md](devices.md)): the three
 
 ## Open questions
 
-1. **What the desktop NAOqi derives.** Whether writing a sensor's value key makes `ALSensors`/`ALTouch` raise the touch events on 2.1 and 2.8, or whether the device raises every event itself. To measure before this spec can be `Stable`.
+1. **What the desktop NAOqi derives.** Whether writing a sensor's value key makes `ALSensors`/`ALTouch` raise the touch events on 2.1 and 2.8, or whether the device raises every event itself. To measure before this spec can be `Stable`. On a real NAO 2.1 (measured Oct 16, 2026) the key is the DCM's: `insertData` of 1.0 into `Device/SubDeviceList/Head/Touch/Front/Sensor/Value` reads 0.0 again 50 ms later and raises nothing, so the robot cannot answer the desktop question; but raising `FrontTactilTouched 1.0` and `TouchChanged [["Head/Touch/Front", true]]` from a client is enough for `ALBasicAwareness` (`StimulusDetected "Touch"`), which subscribes to `TouchChanged`, as does `ALAutonomousLife`.
 2. **A source key.** Whether the device publishes `NaoqiSim/Touch/Source` (`viewer`, `api`) like the other inputs. It would extend the `NaoqiSim` service's contract ([status-service.md](../container/status-service.md)), which changes only with a coordinated release.
 3. **Clickable parts.** Which bodies of naoqi-viewer's model map to which sensors, and how a click on the hand or the foot is told apart from a click on the robot as a whole; decided with naoqi-viewer.

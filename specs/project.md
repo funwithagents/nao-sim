@@ -29,7 +29,7 @@ Structure and tooling for the naoqi-sim project itself: Python version, dependen
   - `docker` is run as `shutil.which` finds it, following `PATHEXT` as a shell does, where `subprocess` looks for `docker.exe` only (`docker_images.resolve`; the fast tier's fake is a `docker.cmd` there).
 - **Package layout:** `src/` layout — `src/naoqi_sim/...` — not flat, to avoid accidentally importing an uninstalled package from the repo root.
 - **Dependency/venv management:** `uv`. Dev tooling lives in the `dev` dependency group (`uv sync --dev`), not in runtime `dependencies`. Build backend: `hatchling` (wheel packages `src/naoqi_sim`).
-- **Linting/formatting:** `ruff`, excluding `docker/naoqi/services/` (Python 2.7) and the local `spike/` scripts.
+- **Linting/formatting:** `ruff`, excluding `docker/naoqi/services/` (Python 2.7) and the untracked local investigation scripts.
 - **Testing:** `pytest`, in two physically-separated tiers — a fast, deterministic, no-network default run (`tests/`, the only tier `testpaths` collects) and an opt-in live tier (`tests-e2e/`) that builds and runs the naoqi-sim containers. Full strategy is specced in [testing.md](testing/testing.md).
 - **Type checking:** `pyright` (`standard` mode), a dev dependency run via `uv run pyright`. Config lives in `[tool.pyright]` in `pyproject.toml`, targeting `src`, `tests`, and `tests-e2e`, pinned to the `.venv`. `docker/` is not itself in pyright's `include` (its code runs in container images whose dependencies are not in the host venv), but `extraPaths` lists each `docker/naoqi/services/<service>/` and `docker/tts-engine`, so the tests that import that code type-check.
 - **Repo shape:**

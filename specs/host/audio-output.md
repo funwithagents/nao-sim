@@ -103,5 +103,5 @@ What the robot plays can be heard by something else than the sink: the audio inp
 
 ## Open questions
 
-1. **Device selection and volume.** The audio output has no output device option, and the system volume (`ALAudioDevice.setOutputVolume`, [audio-device.md](../services/audio-device.md), and `ALTextToSpeech.setVolume` for the speech stream) is not applied to the mix. On a NAO, the system volume scales the whole output; it would become a `set` without a stream once the services forward it.
+1. **Device selection and volume.** The audio output has no output device option, and the system volume (`ALAudioDevice.setOutputVolume`, [audio-device.md](../services/audio-device.md), and `ALTextToSpeech.setVolume` for the speech stream) is not applied to the mix. On a NAO, the system volume scales the whole output (measured on a real NAO 2.1, Oct 16, 2026: its own voice reaches its microphones at 0.28 times the RMS at volume 30 and 3.4 times at volume 80, relative to volume 50; [audio-device.md](../services/audio-device.md), open question 2); it would become a `set` without a stream once the services forward it.
 2. **Tick length.** 20 ms is provisional: short enough for a stop and for a sound joining a sentence to land where a NAO's would, long enough for Python to keep up under emulation. To confirm when built.

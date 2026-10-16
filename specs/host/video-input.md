@@ -22,6 +22,8 @@ The robot's head cameras as a host device ([devices.md](devices.md)). It feeds f
 
 No NAOqi service is replaced: `ALVideoDevice.putImage(camera, width, height, rgb)` is public, so the device is an ordinary qi client. Verified on 2.1 and 2.8: injected frames come back through `subscribeCamera`/`getImageRemote`.
 
+The reference, a real NAO V5 on 2.1 (measured Oct 16, 2026): `getImageRemote` answers 12 fields, `[width, height, layers, colorspace, seconds, microseconds, data, camera id, left angle, top angle, right angle, bottom angle]`, the angles `0.5315, 0.4154, -0.5315, -0.4154` rad (60.9° by 47.6°, the V5 geometry naoqi-viewer renders), the timestamp from the robot's own clock (this robot's was years off, so a client cannot treat it as the epoch). QVGA RGB came at 30 frames per second, VGA at about 5 to 9 (the robot's own `FrameGetter` subscribers hold each camera at 5), 4VGA (1280 by 960, 3.7 MB a frame) at about 2.5; a VGA call took 100 to 330 ms.
+
 ## Decided
 
 ### Sources
@@ -61,7 +63,7 @@ Nothing to change in the images. Both suites ship `/opt/naoqi/etc/naoqi/VideoDev
 
 ### As measured
 
-Spike of Oct 9, 2026 (`spike/RESULTS.md`, "Video input"), both versions, OrbStack on Apple Silicon:
+Measured Oct 9, 2026, both versions, OrbStack on Apple Silicon:
 
 - Per-subscriber conversion: six subscribers on `CameraTop` (QQVGA/QVGA/VGA RGB, QVGA BGR, YUV422, Y), one RGB `putImage`, each served correctly in its own format with one timestamp.
 - `putImage` sizes: 2.1 accepts 80×60 to 1280×960; 2.8 accepts 80×60 to 640×480; 4VGA on 2.8, 2560×1920 on both and odd sizes return `False` and drop the frame.

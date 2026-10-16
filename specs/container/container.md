@@ -62,7 +62,7 @@ Our C++ NAOqi modules (the native relay, [service-replacement.md](service-replac
 | 2.8 | `naoqi-sdk-2.8.7.4-linux64.tar.gz` (1.3 GB) | Aldebaran's GitHub repository `aldebaran/nao6-doc-sdk` (Git LFS, `https://media.githubusercontent.com/media/aldebaran/nao6-doc-sdk/master/`) | `e42c8b95e6e3de349cf76100d006a9f5b48bd625f0236b0a0fe094fc29970967` | The NAOqi module API, libqi (`qi`, `ka`) and boost 1.64 headers: the same release as the suite |
 
 - The pins live in `src/naoqi_sim/suite.py` with the others, and follow the same rules (kept when the hash matches, `.part` and hash check, `FetchError`). 2.8's SDK comes from GitHub like its suite and robot image (`aldebaran/nao6-binaries`); 2.1's from Aldebaran's download site, since no repository holds it (`aldebaran/NAO-V5-ressources` has the suite and image only).
-- Each SDK is its suite's own release, so the header code compiled into our modules (the `ALProxy` and `qi::AnyObject` call templates) matches the suite's libraries. Until Oct 12, 2026 the 2.8 build used the 2.8.5.10 SDK's module API headers with libqi `qi-framework-v1.8.7` (our fork) and boost 1.64 first on the include path: it linked and the relay worked, but those libqi headers differ from 2.8.7.4's in 57 files, and typed calls from C++ to Python services sent "Invalid" values that crashed `naoqi-service` (`spike/RESULTS.md`, "Building the speech front").
+- Each SDK is its suite's own release, so the header code compiled into our modules (the `ALProxy` and `qi::AnyObject` call templates) matches the suite's libraries. Until Oct 12, 2026 the 2.8 build used the 2.8.5.10 SDK's module API headers with libqi `qi-framework-v1.8.7` (our fork) and boost 1.64 first on the include path: it linked and the relay worked, but those libqi headers differ from 2.8.7.4's in 57 files, and typed calls from C++ to Python services sent "Invalid" values that crashed `naoqi-service` (measured Oct 12, 2026, building the speech front).
 - Like the suite, the SDKs are Aldebaran's public files downloaded to the user's machine; nothing is redistributed, and an image that contains the relay is local, as every naoqi-sim image is.
 
 #### Fetching the image data
@@ -100,7 +100,7 @@ Each Dockerfile has three stages, so the compiler and the headers never reach th
 | Include path | The SDK's `include/` | The SDK's `include/` |
 
 - `ALCALL` (the module entry points' export macro) is defined by qibuild, not by the SDK's headers: the source defines it as default visibility when absent.
-- Measured on Oct 10, 2026 (`spike/RESULTS.md`): both relays compile, load with `launchLocal` and deliver correct buffers; a 2.8 relay built against the 2.8.5 SDK's own libqi headers does not load on 2.8.7.4.
+- Measured on Oct 10, 2026: both relays compile, load with `launchLocal` and deliver correct buffers; a 2.8 relay built against the 2.8.5 SDK's own libqi headers does not load on 2.8.7.4.
 
 ### Package store
 
@@ -195,7 +195,7 @@ Whether CI could run the live tier on Windows, measured on GitHub's hosted `wind
 - **A container reaches a server on Windows only once the firewalls let it**, which naoqi-sim needs (the containers connect out to 9562 and 9563). With WSL's default NAT networking, both WSL and its containers reach Windows at WSL's default gateway (`ip route show default`, a `172.x.y.1` address), after a Windows Firewall rule for the port and WSL's Hyper-V firewall set to inbound `Allow` (`Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow`), then a WSL restart (`wsl --shutdown`): the Hyper-V firewall applies when the VM starts. Before that, ping goes through and TCP does not.
 - **Mirrored networking is not available** on that runner: WSL answers `The specified request is unsupported` (`0x803b0015`) and falls back to no network.
 
-**The live tier on Windows, measured once** (a one-off workflow on a scratch branch, kept untracked in `spike/`): naoqi-sim's host side on Windows against NAOqi 2.1 in Docker Engine inside WSL 2, in about 20 minutes cold. It took:
+**The live tier on Windows, measured once** (a one-off workflow on a scratch branch, never merged): naoqi-sim's host side on Windows against NAOqi 2.1 in Docker Engine inside WSL 2, in about 20 minutes cold. It took:
 
 - **Docker Engine under systemd**, which Ubuntu's WSL distribution boots: `docker.io` starts a `dockerd` of its own, so it is configured (`/etc/docker/daemon.json`: `hosts` with a TCP socket, `"tls": false`, which Docker 27+ requires on a plain TCP socket, and `host-gateway-ip` at WSL's gateway, so the containers' `host.docker.internal` is Windows) with a unit override dropping its `-H fd://`, rather than doubled;
 - **Windows' Docker CLI at the WSL VM's own address** (`DOCKER_HOST=tcp://<VM>:2375`): WSL's localhost relay did not carry `dockerd`'s socket, though it does carry a container published on `127.0.0.1` (NAOqi's 9559 is reached on `127.0.0.1` as on the other hosts), and the buildx plugin, which Compose builds with and Windows' CLI lacks;

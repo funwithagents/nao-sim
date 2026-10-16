@@ -63,7 +63,7 @@ Two containers and one host side. Every NAOqi-specific decision stays in the con
 | Simulated world (naoqi-viewer sim mode) | Built and tested: the window, and the headless viewer rendering both head cameras for the video input, in the live tier and CI ([viewer.md](host/viewer.md)) |
 | Distribution (uv git dependency: wheel with the recipes, user data directory) | Implemented ([project.md](project.md), "Distribution") |
 | CI | Implemented ([ci.md](testing/ci.md)) |
-| Capability probe | Spike scripts only; deferred (see [below](#capability-probe)) |
+| Capability probe | Checked by hand only; deferred (see [below](#capability-probe)) |
 | Asset guard | Planned, deferred (see [Licensing](#licensing)) |
 | Perception, speech recognition | Not naoqi-sim's: clients |
 
@@ -161,7 +161,7 @@ What was measured on both desktop suites (Oct 8, 2026) stays here as the referen
 - Neither suite ships a face engine: 2.1 has no `ALFaceDetection`; 2.8 launches `HumanPerception` as `hp.registerWithoutOkao` and it is not running. The face engine only exists in the robot system image.
 - `ALPeoplePerception` and `ALMovementDetection` exist on both and run their `ALModularity` processes on the injected frames (bound at 5 Hz, frames read back correctly), yet produce nothing: an empty population on 2.8, no output on 2.1, no movement events even with moving frames. The modularity graph cannot be fed from outside and its programs are compiled into the libraries: a dead end, not a bug.
 - Once started, `ALBasicAwareness` subscribes to exactly three inputs on both versions: `PeoplePerception/PopulationUpdated`, `MovementDetection/MovementDetected` and `TouchChanged` (plus preference events). It tracks people with `ALTracker`'s `People` target, which reads the `PeoplePerception/Person/<id>/Position*` keys.
-- **The built-in `ALBasicAwareness` and `ALTracker` work on naoqi-sim once a client publishes the people-perception contract in ALMemory.** Fake-population test (`spike/fake_people.py`): the host inserts `PeoplePerception/PeopleList`, `VisiblePeopleList`, `NonVisiblePeopleList` and the `Person/<id>/` keys (`PositionInTorsoFrame`, `PositionInRobotFrame`, `PositionInWorldFrame`, `Distance`, `AnglesYawPitch`, `IsVisible`, `IsFaceDetected`, `NotSeenSince`, `PresentSince`, `RealHeight`), raises `JustArrived` once and `PopulationUpdated` plus `PeopleDetected` at 5 Hz. On 2.1 and 2.8, `ALBasicAwareness` raises `StimulusDetected "People"` and `HumanTracked 42`, `ALTracker` switches to its servoing target, and the head turns toward the person (HeadYaw 0.74 rad for a person at 0.6 rad). 2.8 briefly reports `HumanLost` then re-tracks, to tune with the update cadence. Both built-ins are kept as they are.
+- **The built-in `ALBasicAwareness` and `ALTracker` work on naoqi-sim once a client publishes the people-perception contract in ALMemory.** Fake-population test: the host inserts `PeoplePerception/PeopleList`, `VisiblePeopleList`, `NonVisiblePeopleList` and the `Person/<id>/` keys (`PositionInTorsoFrame`, `PositionInRobotFrame`, `PositionInWorldFrame`, `Distance`, `AnglesYawPitch`, `IsVisible`, `IsFaceDetected`, `NotSeenSince`, `PresentSince`, `RealHeight`), raises `JustArrived` once and `PopulationUpdated` plus `PeopleDetected` at 5 Hz. On 2.1 and 2.8, `ALBasicAwareness` raises `StimulusDetected "People"` and `HumanTracked 42`, `ALTracker` switches to its servoing target, and the head turns toward the person (HeadYaw 0.74 rad for a person at 0.6 rad). 2.8 briefly reports `HumanLost` then re-tracks, to tune with the update cadence. Both built-ins are kept as they are.
 - 2.1 does not autoload `basicawareness`; `ALLauncher.launchLocal("basicawareness")` registers it (only its sound stimulus fails to initialise). On 2.8 it is the `expressivity.basicawareness` package service, running by default. A NAO has it on both versions, so naoqi-sim's 2.1 entrypoint launches it ([naoqi-fidelity.md](container/naoqi-fidelity.md), "Matching a real NAOqi robot's modules").
 - Sound stimulus: 2.8's awareness logs "Desktop detected, ALSoundLocalization won't be used", a hard-coded check. 2.1: with a stub `ALSoundLocalization` registered first, the stimulus initialises, but a `SoundLocated` event raised from the host produced no reaction.
 
@@ -197,7 +197,7 @@ Deferred: the probe gets its spec when the NAOqi 2.8 validation milestone needs 
 | Recording proxy: a replacement that forwards every call to the renamed built-in and logs calls, arguments and events, driven by `ALAnimatedSpeech`, a Choregraphe Say box and an `ALDialog` topic | The exact contract per caller, without reading Aldebaran code |
 | Perception modules loaded, results from injected frames | Documents for clients that the built-in detectors give nothing on naoqi-sim ([Perception and speech recognition](#perception-and-speech-recognition-on-the-clients)) |
 
-The spike scripts (`spike/`, local only) cover these checks by hand today.
+These checks are run by hand today, with local scripts.
 
 ## Packaging and platforms
 
@@ -215,7 +215,7 @@ Two tiers ([testing.md](testing/testing.md)): a fast, deterministic `tests/` tie
 
 The toolkit document numbers the milestones across the three packages; naoqi-sim's share is below, with the toolkit's number.
 
-1. **Validation spike** (done, Oct 8, 2026; toolkit 1): a module loaded into NAOqi serves a host client; a host-registered service is called back from the container; the built-in `ALTextToSpeech` is replaced, with `ALAnimatedSpeech` using the replacement. On 2.1 and 2.8.
+1. **Validation** (done, Oct 8, 2026; toolkit 1): a module loaded into NAOqi serves a host client; a host-registered service is called back from the container; the built-in `ALTextToSpeech` is replaced, with `ALAnimatedSpeech` using the replacement. On 2.1 and 2.8.
 2. **Speech path** (done except subtitles; toolkit 7): `ALTextToSpeech` replacement, `tts` container, audio output, under test on both versions (plan [202610081257](../plans/202610081257_baseline-tests-speech-path.md)).
    - Done Oct 12, 2026: the Say and Animated Say boxes stop as on a NAO (the C++ front), and sound files play through the `ALAudioPlayer` replacement, mixed with speech. Still to exit: a Choregraphe behaviour with animated speech and the `animations` package runs with gestures on their words; reference sentences within the agreed duration tolerance.
 3. **naoqi-sim run and CI** (done, Oct 9, 2026; toolkit 2 and 4): status service, healthcheck and `fetch-and-build-images`; `NaoqiSimConfig` and the `NaoqiSim` object with the audio sinks and the sim window, `naoqi-sim run`/`cleanup`/`status`/`logs` ([config.md](runtime/config.md), [api.md](runtime/api.md), [cli.md](runtime/cli.md), [audio-output.md](host/audio-output.md), [viewer.md](host/viewer.md)), CI on both versions ([ci.md](testing/ci.md)), the distribution as a uv git dependency ([project.md](project.md)) (all done).
