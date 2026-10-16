@@ -12,7 +12,7 @@ tests:
 
 # Viewer: the simulated world
 
-**Status:** Updated
+**Status:** Implemented
 
 ## Purpose
 
