@@ -79,7 +79,9 @@ def test_stop_all_cuts_the_sentence(nao):
     done = last(nao.container.speech_log(), "say-done")
     assert done["interrupted"] is True
     assert returned < 0.5
-    assert played < done["duration"] - 2.0
+    assert (
+        played < 2.0
+    )  # of a sentence of about 9 s (`duration` is 0 when nothing played)
 
 
 def test_stop_all_during_synthesis(nao):
