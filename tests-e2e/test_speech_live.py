@@ -72,7 +72,9 @@ def test_stop_all_cuts_the_sentence(nao):
     tts.stopAll()
     future.wait(10000)
     returned = time.time() - t_stop
-    played = nao.played(mark)
+    # A moment of audio, cut; or none at all when the stop at 1.5 s still found the engine
+    # synthesizing (about 1.5 s for this sentence on a GitHub runner, under a second on a Mac).
+    played = nao.played_if_any(mark)
 
     done = last(nao.container.speech_log(), "say-done")
     assert done["interrupted"] is True
@@ -127,14 +129,16 @@ def run():
     return {{"id": tid, "waited": time.time() - t0, "status": memory().getData("ALTextToSpeech/Status")}}
 """,
     )
-    playback = nao.sink.wait_for(lambda p: p.started_at >= mark)
+    # The stop at 1 s lands during the audio (a Mac synthesizes the sentence in under a second:
+    # a short, cut playback) or still during synthesis (about 1.5 s on a GitHub runner: the say
+    # is abandoned and nothing plays). Either way, a moment of audio at most.
+    played = nao.played_if_any(mark)
 
     assert out["id"] >= 0  # a task id, from post/pCall
     assert out["waited"] < 2.0  # the stop at 1 s, not the sentence's ~9 s
     assert out["status"] == [out["id"], "done"]  # the call's own id
     assert done_entry(nao, out["id"])[0]["interrupted"] is True
-    assert playback.interrupted
-    assert playback.duration_s < 2.0
+    assert played < 2.0
 
 
 def test_stopping_a_waiting_sentence_skips_it(nao):
