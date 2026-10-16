@@ -72,12 +72,16 @@ def test_stop_all_cuts_the_sentence(nao):
     tts.stopAll()
     future.wait(10000)
     returned = time.time() - t_stop
-    played = nao.played(mark)
+    # A moment of audio, cut; or none at all when the stop at 1.5 s still found the engine
+    # synthesizing (about 1.5 s for this sentence on a GitHub runner, under a second on a Mac).
+    played = nao.played_if_any(mark)
 
     done = last(nao.container.speech_log(), "say-done")
     assert done["interrupted"] is True
     assert returned < 0.5
-    assert played < done["duration"] - 2.0
+    assert (
+        played < 2.0
+    )  # of a sentence of about 9 s (`duration` is 0 when nothing played)
 
 
 def test_stop_all_during_synthesis(nao):
@@ -92,8 +96,9 @@ def test_stop_all_during_synthesis(nao):
 
     done = last(nao.container.speech_log(), "say-done")
     assert done["interrupted"] is True
-    # Synthesis plus the stop, not the ~15 s of audio; synthesis alone varies on a shared runner.
-    assert returned < 3.0
+    # The stop at 0.15 s, not the synthesis (about 3 s for this text on a GitHub runner, which
+    # say() no longer waits for) nor the ~15 s of audio.
+    assert returned < 1.0
     # A moment of audio at most, or none when the stop came before the first of it.
     assert nao.played_if_any(mark) < 0.3
 
@@ -126,14 +131,16 @@ def run():
     return {{"id": tid, "waited": time.time() - t0, "status": memory().getData("ALTextToSpeech/Status")}}
 """,
     )
-    playback = nao.sink.wait_for(lambda p: p.started_at >= mark)
+    # The stop at 1 s lands during the audio (a Mac synthesizes the sentence in under a second:
+    # a short, cut playback) or still during synthesis (about 1.5 s on a GitHub runner: the say
+    # is abandoned and nothing plays). Either way, a moment of audio at most.
+    played = nao.played_if_any(mark)
 
     assert out["id"] >= 0  # a task id, from post/pCall
     assert out["waited"] < 2.0  # the stop at 1 s, not the sentence's ~9 s
     assert out["status"] == [out["id"], "done"]  # the call's own id
     assert done_entry(nao, out["id"])[0]["interrupted"] is True
-    assert playback.interrupted
-    assert playback.duration_s < 2.0
+    assert played < 2.0
 
 
 def test_stopping_a_waiting_sentence_skips_it(nao):

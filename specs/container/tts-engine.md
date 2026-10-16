@@ -31,13 +31,13 @@ It is its own container because:
 
 ### HTTP API (port 8080, standard-library `ThreadingHTTPServer`)
 
-- `POST /say` with `{"language": "English", "rate": 100, "pitch": 100, "engine": "piper"|"espeak" (optional), "items": [...]}`. Items:
+- `POST /say` with `{"id": <say id> (optional), "language": "English", "rate": 100, "pitch": 100, "engine": "piper"|"espeak" (optional), "items": [...]}`. Items:
   - `{"type": "text", "text": "..."}`
   - `{"type": "mark", "id": N}`
   - `{"type": "pause", "ms": N}`
 
-  The reply is `{"duration": s, "marks": {"N": offset_s}, "rate": sample_rate, "engine": name, "synth_time": s}`. On a synthesis error: 500 `{"error": ...}`.
-- `POST /stop`: stops the stream in progress and sends a stop of the `speech` stream to the audio output, so the sounds `ALAudioPlayer` plays go on. Returns `{"stopped": true}`.
+  The reply is `{"duration": s, "marks": {"N": offset_s}, "rate": sample_rate, "engine": name, "synth_time": s}`; for a say a `/stop` cancelled before it played, `{"duration": 0, "marks": {}, ..., "stopped": true}`. On a synthesis error: 500 `{"error": ...}`.
+- `POST /stop {"id": <say id>}`: cancels that say wherever it is (the synthesis stops at the next item and the say is answered `stopped` with no audio; a say that has rendered but not started playing is not played; a say that has not arrived yet is cancelled when it does, the last 64 stopped ids being kept), stops the stream in progress and sends a stop of the `speech` stream to the audio output, so the sounds `ALAudioPlayer` plays go on. Returns `{"stopped": true}`. Without an `id`, only the stream and the audio output are stopped, as before. The `ALTextToSpeech` replacement names the call's id in both `/say` and `/stop` ([speech.md](../services/speech.md), "Stop").
 - `GET /health`: `{"ok": true, "engine", "voices", "soundcard"}`.
 
 ### Rendering
@@ -61,4 +61,4 @@ It is its own container because:
 
 1. **More languages and voices.** Only English and French are mapped; `getAvailableLanguages` on the NAOqi side is hard-coded to match. Adding a language means a voice in the image and a map entry.
 2. **Word events.** `CurrentWord` and `PositionOfCurrentWord` would need per-word timings: eSpeak NG can produce them, Piper cannot. Not in v1.
-3. **Stop and concurrent streams.** `/stop` sets one global flag that the next stream clears. A `/stop` racing a new `/say` can therefore be lost. It is harmless today, because the replacement serializes `say()`.
+3. **Stop and concurrent streams.** Settled by the ids (Oct 16, 2026): a `/stop` names its say, so one racing a new `/say` cancels that say and no other, whether it arrives before or after it. The global flag remains for an idless `/stop`.

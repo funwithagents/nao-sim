@@ -4,13 +4,15 @@ POST /say   {"language": "English", "rate": 100, "pitch": 100, "engine": "piper"
              "items": [{"type":"text","text":"Hello"}, {"type":"mark","id":1}, {"type":"pause","ms":500}]}
         ->  {"duration": s, "marks": {"1": offset_s}, "rate": 22050, "engine": "piper"}
             The PCM is streamed to the host sound card (NAOQI_SIM_SOUNDCARD) before the reply.
-POST /stop  stops streaming and asks the sound card to stop.
+POST /stop  {"id": <say id>}: cancels that say (synthesizing, about to play, or not yet arrived),
+            stops streaming and asks the sound card to stop.
 GET  /health
 
 Markers are exact: every text item is synthesized on its own and concatenated, so a mark's
 offset is the sum of the durations before it.
 """
 
+import collections
 import io
 import json
 import os
@@ -34,6 +36,25 @@ DEFAULT_ENGINE = os.environ.get("NAOQI_SIM_TTS_ENGINE", "piper")
 _piper_voices = {}
 _lock = threading.Lock()
 _stop = threading.Event()
+# The ids of the says that were stopped (the last few): a /stop names its say's id, so a stop
+# cancels that say whether it is synthesizing, about to stream, or has not even arrived yet.
+_cancelled: collections.deque[object] = collections.deque(maxlen=64)
+
+
+class Cancelled(Exception):
+    """The say was stopped while it was being rendered."""
+
+
+def stop_say(say_id) -> None:
+    """Cancels the say with that id, now or when it arrives."""
+    if say_id is not None:
+        _cancelled.append(say_id)
+
+
+def cancelled(say_id) -> bool:
+    return say_id is not None and say_id in _cancelled
+
+
 _current = {"sock": None}
 
 
@@ -99,13 +120,18 @@ def resample(pcm, sr_from, sr_to):
 
 
 def render(req):
+    """The request's audio, marks, rate and engine; `Cancelled` when a /stop named its id,
+    checked before each item (an item is synthesized whole)."""
     engine = req.get("engine") or DEFAULT_ENGINE
     lang = req.get("language") or "English"
     rate = float(req.get("rate") or 100)
     pitch = float(req.get("pitch") or 100)
+    say_id = req.get("id")
     parts, marks, sr, used = [], {}, None, engine
     total = 0.0
     for item in req.get("items", []):
+        if cancelled(say_id):
+            raise Cancelled()
         t = item.get("type")
         if t == "text":
             text = (item.get("text") or "").strip()
@@ -145,8 +171,11 @@ def soundcard_connect():
     return s
 
 
-def stream_to_soundcard(pcm, sr):
-    """Send a header line then raw PCM; the sound card plays as it receives. Returns when sent."""
+def stream_to_soundcard(pcm, sr, say_id=None):
+    """Send a header line then raw PCM; the sound card plays as it receives. Returns when sent,
+    or at once (nothing sent) when the say was stopped meanwhile."""
+    if cancelled(say_id):
+        return
     _stop.clear()
     s = soundcard_connect()
     _current["sock"] = s
@@ -168,7 +197,7 @@ def stream_to_soundcard(pcm, sr):
         data = pcm.tobytes()
         chunk = sr * 2 // 10  # 100 ms
         for i in range(0, len(data), chunk):
-            if _stop.is_set():
+            if _stop.is_set() or cancelled(say_id):
                 break
             s.sendall(data[i : i + chunk])
     finally:
@@ -215,21 +244,31 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", "0"))
         req = json.loads(self.rfile.read(n) or b"{}")
         if self.path == "/stop":
+            stop_say(req.get("id"))
             _stop.set()
             soundcard_stop()
             return self._json(200, {"stopped": True})
         if self.path != "/say":
             return self._json(404, {"error": "not found"})
         t0 = time.time()
+        say_id = req.get("id")
         try:
             pcm, sr, marks, used = render(req)
+        except Cancelled:
+            print(f"say {say_id}: stopped during synthesis")
+            return self._json(200, self._stopped(req, t0))
         except Exception as e:  # noqa: BLE001
             print("render error:", repr(e))
             return self._json(500, {"error": repr(e)})
+        if cancelled(say_id):  # stopped after the last item: nothing to play
+            print(f"say {say_id}: stopped before playing")
+            return self._json(200, self._stopped(req, t0))
         synth = time.time() - t0
         duration = len(pcm) / float(sr)
         # Stream in the background so the reply (and the caller's clock) starts with the audio.
-        th = threading.Thread(target=self._safe_stream, args=(pcm, sr), daemon=True)
+        th = threading.Thread(
+            target=self._safe_stream, args=(pcm, sr, say_id), daemon=True
+        )
         th.start()
         print(f"say: {used} {duration:.2f}s audio, synth {synth:.2f}s, marks {marks}")
         self._json(
@@ -243,9 +282,20 @@ class Handler(BaseHTTPRequestHandler):
             },
         )
 
-    def _safe_stream(self, pcm, sr):
+    def _stopped(self, req, t0):
+        """The reply for a say stopped before it played: no audio, `stopped` set."""
+        return {
+            "duration": 0.0,
+            "marks": {},
+            "rate": 22050,
+            "engine": req.get("engine") or DEFAULT_ENGINE,
+            "synth_time": round(time.time() - t0, 3),
+            "stopped": True,
+        }
+
+    def _safe_stream(self, pcm, sr, say_id=None):
         try:
-            stream_to_soundcard(pcm, sr)
+            stream_to_soundcard(pcm, sr, say_id)
         except OSError as e:
             print(f"sound card unreachable ({e}): audio dropped")
 

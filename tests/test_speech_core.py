@@ -22,7 +22,11 @@ class FakeEngine(core.Speaker):
         self.events: list[tuple[float, str, object]] = []
         self.signals: list[tuple] = []
         self.engine_calls: list[dict] = []
-        self.engine_stops = 0
+        self.engine_stops: list[object] = []  # the ids /stop named
+        self.engine_ids: list[object] = []  # the ids /say carried
+        self.reply_stopped = (
+            False  # the engine says it stopped the say before playing it
+        )
         super().__init__(self._record, signal=lambda *a: self.signals.append(a))
         self.reply = {"duration": duration, "marks": marks or {}, "engine": "fake"}
         self.synth_s = synth_s
@@ -31,17 +35,20 @@ class FakeEngine(core.Speaker):
     def _record(self, key, value):
         self.events.append((time.monotonic(), key, value))
 
-    def _engine_say(self, items, rate, pitch, language):
+    def _engine_say(self, items, rate, pitch, language, sid):
         self.engine_calls.append(
             {"items": items, "rate": rate, "pitch": pitch, "language": language}
         )
+        self.engine_ids.append(sid)
         time.sleep(self.synth_s)
         if self.fail:
             raise OSError("engine unreachable")
+        if self.reply_stopped:
+            return {"duration": 0.0, "marks": {}, "engine": "fake", "stopped": True}
         return self.reply
 
-    def _engine_stop(self):
-        self.engine_stops += 1
+    def _engine_stop(self, sid=None):
+        self.engine_stops.append(sid)
 
     def sequence(self):
         return [(k, v) for _, k, v in self.events]
@@ -137,7 +144,7 @@ def test_say_raises_the_event_sequence_on_the_engine_clock():
     assert b1 - started == pytest.approx(0.1, abs=0.03)
     assert b2 - started == pytest.approx(0.2, abs=0.03)
     assert took == pytest.approx(0.3, abs=0.05)
-    assert sp.engine_stops == 0
+    assert sp.engine_stops == []
 
 
 def test_say_sends_the_parsed_items_rate_and_language():
@@ -172,20 +179,39 @@ def test_stop_all_mid_sentence():
     assert marks == [1, 0]  # 2 was never reached; 0 is the end-of-sentence reset
     assert ("ALTextToSpeech/TextInterrupted", 1) in sp.sequence()
     assert sp.sequence()[-5:] == [("ALTextToSpeech/Status", [1, "done"]), *END]
-    assert sp.engine_stops == 1
+    assert len(sp.engine_stops) == 1
 
 
-def test_stop_all_during_synthesis_is_not_lost():
-    sp = FakeEngine(duration=1.0, marks={"1": 0.3}, synth_s=0.2)
-    th, done = say_in_thread(sp, "\\mrk=1\\ a sentence still being synthesized")
+def test_stop_all_during_synthesis_returns_at_once_and_stops_that_say():
+    """The engine takes 2 s to synthesize; the stop comes at 0.1 s: say() returns then, not
+    after the reply (3 s for a long text on a GitHub runner), and the engine is told which say
+    to abandon, so the reply's audio never plays."""
+    sp = FakeEngine(duration=1.0, marks={"1": 0.3}, synth_s=2.0)
+    th, done = say_in_thread(sp, "\\mrk=1\\ a sentence still being synthesized", sid=7)
     time.sleep(0.1)
     sp.stop_all()
-    th.join(2)
+    th.join(3)
 
-    assert done[0] < 0.3  # right after the engine's reply, not after its 1 s of audio
+    assert done[0] < 0.4  # at the stop, not after the engine's reply
     assert ("ALTextToSpeech/TextInterrupted", 1) in sp.sequence()
     assert ("ALTextToSpeech/CurrentBookMark", 1) not in sp.sequence()
-    assert sp.engine_stops == 1
+    assert sp.sequence()[-5:] == [("ALTextToSpeech/Status", [7, "done"]), *END]
+    assert sp.engine_stops == [7]  # once, with the say's id
+    assert sp.engine_ids == [7]  # the id the engine knows the say by
+
+
+def test_a_say_the_engine_stopped_first_is_interrupted_without_audio():
+    """The stop reached the engine before the say did (or between its last item and the
+    stream): the engine answers `stopped`, and the call ends interrupted at once."""
+    sp = FakeEngine(duration=1.0)
+    sp.reply_stopped = True
+    t0 = time.monotonic()
+    sp.say("hello", 3)
+
+    assert time.monotonic() - t0 < 0.2  # not the 1 s of audio there would have been
+    assert ("ALTextToSpeech/TextInterrupted", 1) in sp.sequence()
+    assert sp.sequence()[-5:] == [("ALTextToSpeech/Status", [3, "done"]), *END]
+    assert sp.engine_stops == []  # the engine already stopped it
 
 
 def test_a_stop_before_say_does_not_cut_the_next_sentence():
@@ -290,7 +316,7 @@ def test_stop_by_id_ends_the_speaking_call_and_the_next_one_speaks():
     assert sp.sequence().count(("ALTextToSpeech/TextInterrupted", 1)) == 1
     # The second call was not cut by the first one's stop: it played its whole duration.
     assert second_done[0] == pytest.approx(0.15 + 0.6, abs=0.15)
-    assert sp.engine_stops == 1
+    assert len(sp.engine_stops) == 1
 
 
 def test_stop_by_id_of_a_waiting_call_drops_it_unspoken():
@@ -311,7 +337,7 @@ def test_stop_by_id_of_a_waiting_call_drops_it_unspoken():
         [5, "started"],
         [5, "done"],
     ]
-    assert sp.engine_stops == 0
+    assert sp.engine_stops == []
 
 
 def test_stop_by_an_unknown_or_finished_id_does_nothing():

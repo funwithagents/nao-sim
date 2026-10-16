@@ -100,6 +100,45 @@ def test_the_request_selects_the_engine(synth):
     assert synth == [("espeak", "0.1@22050")]
 
 
+@pytest.fixture(autouse=True)
+def no_cancelled_says():
+    server._cancelled.clear()
+    yield
+    server._cancelled.clear()
+
+
+def test_a_stop_naming_the_say_cancels_it_between_items(synth, monkeypatch):
+    """The stop arrives while the first item is being synthesized: the second item is never
+    synthesized and the say is reported stopped."""
+    real = server.synth_piper
+
+    def stopping(text, lang, rate):
+        server.stop_say(7)  # the /stop lands during this item's synthesis
+        return real(text, lang, rate)
+
+    monkeypatch.setattr(server, "synth_piper", stopping)
+    with pytest.raises(server.Cancelled):
+        server.render({"id": 7, "items": [text("0.1@22050"), text("0.2@22050")]})
+    assert [t for _, t in synth] == ["0.1@22050"]
+
+
+def test_a_stop_that_beats_its_say_cancels_it_before_any_synthesis(synth):
+    server.stop_say(8)
+    with pytest.raises(server.Cancelled):
+        server.render({"id": 8, "items": [text("0.1@22050")]})
+    assert synth == []
+
+
+def test_a_stop_names_one_say_only(synth):
+    server.stop_say(9)
+    pcm, sr, _, _ = server.render({"id": 10, "items": [text("0.1@22050")]})
+    assert len(pcm) == 2205 and sr == 22050
+    pcm, _, _, _ = server.render(
+        {"items": [text("0.1@22050")]}
+    )  # no id: never cancelled
+    assert len(pcm) == 2205
+
+
 @pytest.fixture
 def audio_output(monkeypatch):
     """A stand-in audio output on a free port: the header line of every connection it gets."""
@@ -149,3 +188,16 @@ def test_stop_stops_the_speech_stream_only(audio_output):
     wait_for(lambda: audio_output)
 
     assert audio_output == [{"cmd": "stop", "stream": "speech"}]
+
+
+def test_a_stopped_say_is_not_streamed(audio_output):
+    """Stopped between its last item and the stream (or before): nothing reaches the audio
+    output, not even a header."""
+    server.stop_say(11)
+    server.stream_to_soundcard(np.zeros(22050, dtype=np.int16), 22050, say_id=11)
+    time.sleep(0.2)
+    assert audio_output == []
+
+    server.stream_to_soundcard(np.zeros(2205, dtype=np.int16), 22050, say_id=12)
+    wait_for(lambda: audio_output)
+    assert audio_output[0]["cmd"] == "play"  # another say streams as usual
