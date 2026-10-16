@@ -18,7 +18,7 @@ tests:
 
 # NaoqiSim status service and healthcheck
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -66,8 +66,11 @@ The module writes these at load. All values are plain strings except `NaoqiSim/R
 The entrypoint exits non-zero (after terminating `naoqi-bin`) instead of carrying on when:
 
 - NAOqi does not answer after `NAOQI_SIM_READY_TRIES` polls (default 120, one per second);
+- NAOqi stops answering: three polls in a row whose `qicli info` takes longer than 5 s. Every `qicli` call the entrypoint makes is killed after 5 s, so a call that hangs fails the boot in seconds, with its reason in the log, instead of freezing it silently until Docker calls the container unhealthy minutes later (seen once on CI, a 2.8 restart whose log stopped after its last service registered);
 - a replaced name (`REPLACED`) does not answer within 10 s of loading the modules (a replacement that failed at import, which `launchPythonModule` does not report);
 - `NaoqiSim.setReady` fails (the status module itself did not load).
+
+While it waits, the entrypoint says so every 10 polls (`still waiting for: <services>`, or `the service list is still changing`), and logs each timed-out poll, so the tail of a failed boot's log, which a `BootError` carries, names what it was waiting for.
 
 So a container that is `running` and printed the ready line has its overrides in place, and one whose boot failed shows as `exited`, not as a half-robot. This replaces the earlier behaviour where both failure modes were silent (the former open questions of [container.md](container.md) and [service-replacement.md](service-replacement.md)).
 

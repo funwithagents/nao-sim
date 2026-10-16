@@ -30,7 +30,7 @@ tests:
 
 # NAOqi container
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -164,12 +164,12 @@ One script per version, each reading top to bottom as that version's procedure: 
 | Added built-ins (entries a NAO autoloads that the desktop suite ships but does not; see [naoqi-fidelity.md](naoqi-fidelity.md), "Matching a real NAOqi robot's modules"), written into the copy | `expressiveness` after `behaviormanager`; `basicawareness autonomousblinking autonomousmoves` after `alpanoramacompass`, so before `autonomouslife`, as on a NAO. `BUILTINS`, the names they register, are checked: `_ALExpressiveness ALBasicAwareness _ALAutonomousBlinking ALAutonomousMoves` | None |
 | `LAST` (registered last at boot, waited for) | `ALDialog` (`dialog`, the last autoload entry) | `ALPanoramaCompass` (the last autoload entry) and the package services `ALAnimatedSpeech ALDialog ALAutonomousLife` |
 
-The tunables below exist so the host-side tests can run the scripts against fake `naoqi-bin` and `qicli`; the images never set them: `NAOQI_SIM_READY_TRIES` (polls, one per second, before giving up on NAOqi; 120), `NAOQI_SIM_SETTLE_POLLS` (consecutive polls the service list must stay unchanged; 3), `NAOQI_SIM_POLL_INTERVAL` (seconds between polls; 1), `NAOQI_HOME`.
+The tunables below exist so the host-side tests can run the scripts against fake `naoqi-bin` and `qicli`; the images never set them: `NAOQI_SIM_READY_TRIES` (polls, one per second, before giving up on NAOqi; 120), `NAOQI_SIM_SETTLE_POLLS` (consecutive polls the service list must stay unchanged; 3), `NAOQI_SIM_POLL_INTERVAL` (seconds between polls; 1), `NAOQI_SIM_QICLI_TIMEOUT` (seconds a `qicli` call may take before it is killed; 5), `NAOQI_SIM_QICLI_HANGS` (consecutive timed-out polls that fail the boot; 3), `NAOQI_HOME`.
 
 Sequence (both versions):
 
 1. Write the autoload copy: the suite's `autoload.ini` with `LEFT_OUT` commented out, `OURS` after `pythonbridge` and, on 2.1, the added built-ins at their places. Export `NAOQI_SIM_PYTHON_MODULES` and `NAOQI_SIM_MODULES_DIR`, and start `naoqi-bin` with the copy.
-2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge` and every `LAST` service are registered **and** the list has not changed for `NAOQI_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, or `NAOQI_SIM_READY_TRIES` polls fail, exit 1. On 2.8 the package services keep registering for a few seconds after the last autoload entry; the settling waits for them.
+2. Poll the service list (`qicli info`) until `ALLauncher`, `ALPythonBridge` and every `LAST` service are registered **and** the list has not changed for `NAOQI_SIM_SETTLE_POLLS` polls. If `naoqi-bin` exits, `NAOQI_SIM_READY_TRIES` polls fail, or three polls in a row time out (NAOqi stopped answering), exit 1; every 10 polls, log what is still awaited ([status-service.md](status-service.md), "Readiness"). On 2.8 the package services keep registering for a few seconds after the last autoload entry; the settling waits for them.
 3. Check that every replaced, every added and (2.1) every added built-in name answers (up to 10 s each). `launchPythonModule` does not report an import failure and a library may register nothing, so a missing name is how a failed load shows. If one does not answer, exit 1.
 4. Call `NaoqiSim.setReady` (exit 1 if it fails: the status module is missing), print `[entrypoint] naoqi-sim ready` and wait on `naoqi-bin`. `SIGTERM`/`SIGINT` are forwarded to it.
 

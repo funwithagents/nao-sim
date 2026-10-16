@@ -8,8 +8,13 @@
 # The tests run the simulated NAO the way any caller does, with a `NaoqiSim`: each test runs
 # once per NAOqi version, and pytest stops one version's NaoqiSim before it starts the next
 # (both publish 9559). Its audio goes to a MemorySink, so a test asserts on what was played.
+#
+# A boot that fails is retried once. One that fails again is remembered: the first test that needs
+# that version's robot fails with the boot's own error, and every other one skips, so a failed boot
+# shows as one failure with its cause rather than as every later test failing on its own.
 import asyncio
 import json
+import sys
 import time
 import uuid
 from collections.abc import Iterator
@@ -39,6 +44,7 @@ from naoqi_sim.config import (
     VideoInputSettings,
     ViewerSettings,
 )
+from naoqi_sim.errors import BootError
 
 SCENE = Path(__file__).resolve().parent / "scenes" / "camera-target.xml"
 
@@ -100,10 +106,31 @@ class Nao:
         self.sim = NaoqiSim(live_config(version.name), sink=self.sink)
         self.container = Container(version)
         self._session: qi.Session | None = None
+        # Why the robot is down, once a boot failed twice; whether a test has failed with it yet.
+        self.boot_error: str | None = None
+        self.boot_error_reported = False
 
     def start(self) -> None:
-        self.runner.run(self.sim.start())
-        self._session = connect(self.sim.url)
+        """Starts the robot, retrying once a boot that fails. A boot that fails again is
+        remembered (`boot_error`) and raised, so the test that (re)started it fails with it."""
+        error: BootError | None = None
+        for attempt in (1, 2):
+            try:
+                self.runner.run(self.sim.start())
+            except BootError as e:
+                error = e
+                print(
+                    f"\nNAOqi {self.version.name} did not boot (attempt {attempt} of 2): {e}",
+                    file=sys.__stderr__,
+                )
+                continue  # a failed start has already torn itself down
+            self._session = connect(self.sim.url)
+            self.boot_error = None
+            return
+        assert error is not None
+        self.boot_error = f"NAOqi {self.version.name} did not boot, twice: {error}"
+        self.boot_error_reported = True
+        raise error
 
     def stop(self) -> None:
         if self._session is not None:
@@ -178,7 +205,29 @@ def nao(request) -> Iterator[Nao]:
     with asyncio.Runner() as runner:
         nao = Nao(version, runner)
         try:
-            nao.start()
+            try:
+                nao.start()
+            except BootError:
+                nao.boot_error_reported = (
+                    False  # the first test that needs it reports it
+                )
             yield nao
         finally:
             nao.stop()
+
+
+@pytest.fixture(autouse=True)
+def _the_robot_booted(request):
+    """A test that needs a robot whose boot failed: the first one fails with the boot's error,
+    the others skip, rather than each failing on its own for want of a robot."""
+    if "nao" not in request.fixturenames:
+        return
+    nao = request.getfixturevalue("nao")
+    if nao.boot_error is None:
+        return
+    if not nao.boot_error_reported:
+        nao.boot_error_reported = True
+        pytest.fail(nao.boot_error, pytrace=False)
+    pytest.skip(
+        f"NAOqi {nao.version.name} did not boot (the failure is reported once, above)"
+    )

@@ -26,7 +26,7 @@ tests:
 
 # Testing
 
-**Status:** Implemented
+**Status:** Updated
 
 ## Purpose
 
@@ -72,6 +72,7 @@ If the package holds process-global or singleton state, both tiers carry an iden
 naoqi-sim is tested as what it is: containers that behave like a NAO in their API, reached over qi on `127.0.0.1:9559`. The live tests bring that stack up themselves; there is no target to configure.
 
 - **Per version.** The `nao` fixture (`tests-e2e/conftest.py`) is session-scoped and parametrized over NAOqi 2.1 and 2.8, so every live test runs once per version. For each version it first runs `check_images` ([api.md](../runtime/api.md), "Images"): current images are used as they are; missing or outdated ones (an edit under `docker/` included) are built and verified with `fetch_and_build_images` when the image data are in `docker/image-data/`, and the version skips otherwise. Then it starts a `NaoqiSim` for that version, headless and silent, as any caller does ([api.md](../runtime/api.md)), connects, and stops it at the end; a test that needs another configuration (`naoqi-sim run`, the window) stops it and starts it again. Versions run one after the other, since both publish 9559.
+- **A boot is checked before the tests that need it.** A `NaoqiSim.start()` that raises `BootError` is retried once (the retry is printed); a boot that fails again is remembered by the session's `Nao`. A test that restarted the robot fails with the error; otherwise the first test that needs that version's robot fails with it, and every later one skips ("did not boot, the failure is reported once, above"). So a failed boot shows as one failure carrying its cause, not as every later test failing for want of a robot (seen once on CI: a 2.8 restart that did not boot turned some sixty tests red). A version whose robot does not boot still fails its CI job, through that one failure.
 - **Skip, never fail, without the means.** No Docker, or neither the version's suite tarball nor its image: that version's tests skip. A contributor (or CI) without the suites is never broken.
 - **Fail loudly on a conflict.** If 9559 or the audio output's 9562 is already taken (a naoqi-sim, or a stack started by hand), the tests fail with that message rather than test someone else's stack.
 - **Connect in one attempt** (`support.connect`): the libqi 3.1.6 wheel failed about one connect in three against NAOqi 2.1, instantly, with `disconnected`, and the tier retried; 3.1.8, the floor ([project.md](../project.md)), fixed it (200 plain connects to 2.1: 12 failures with 3.1.6, none with 3.1.8).
