@@ -41,6 +41,10 @@ class Host:
                 self.conn = None
             self.changed.notify_all()
 
+    def wait_connected(self, timeout: float = 2.0) -> None:
+        with self.changed:
+            assert self.changed.wait_for(lambda: self.conn is not None, timeout)
+
     def wait_need(self, predicate, timeout: float = 2.0) -> dict:
         with self.changed:
             assert self.changed.wait_for(
@@ -132,6 +136,7 @@ def device(link, monkeypatch):
         log=lambda msg: None,
     )
     assert dev.link.connected.wait(2)
+    host.wait_connected()  # the hello read by the host, not just sent by the device
     yield dev, host, relay
     dev.close()
 

@@ -55,6 +55,7 @@ The containers and the host devices exchange what qi cannot carry over one TCP p
 - **One connection per container-side service.** Each service that needs the host (today only `ALAudioDevice`) opens its own connection and sends a `hello` naming itself first; a second `hello` for the same service replaces the older connection.
 - **Framing**, the toolkit's shared convention (naoqi-viewer's protocol): `u32 header_len | u32 payload_len | JSON header | raw payload`, big-endian. Every header has a `type`; the device spec owns its types (the audio input's in [audio-input.md](audio-input.md), "On the host link"). The container side's framing is Python 2.7 (in the audio device's core module), the host's Python 3; both are tested in the fast tier against each other's bytes.
 - **No state survives a reconnect.** After a reconnect the container side sends its current state again (the audio input's subscription), so neither side needs to remember the other.
+- **A connection before its handler is kept, with what it said.** The containers boot before step 6 of `NaoqiSim.start()` registers the audio input, so a service's `hello` and first `need` can arrive while nobody serves it. The link keeps the connection and the newest message of each type it sent, and hands both to the handler when it registers: `connected`, then the kept messages in arrival order. A `need` sent at boot is thus served, not lost (the cause of a rare timeout in the `ALAudioDevice` core's reconnect test).
 
 ## Open questions
 

@@ -431,6 +431,10 @@ class AudioInput:
         self._conn: Any = None
         self._formats: set[Format] = set()
         self._energy = False
+        # What the producer reads, as one reference assigned under the lock: the producer never
+        # takes the lock, so a stop that joins it under the lock cannot wait on it (and leak a
+        # chunk after it returns, as it did once on a loaded CI runner).
+        self._need: tuple[Any, frozenset[Format], bool] = (None, frozenset(), False)
         self._started = False
         self._producer: threading.Thread | None = None
         self._halt = threading.Event()
@@ -464,6 +468,7 @@ class AudioInput:
     def connected(self, conn: Any) -> None:
         with self._lock:
             self._conn = conn
+            self._update()
 
     def message(self, conn: Any, header: dict, payload: bytes) -> None:
         if header.get("type") != "need":
@@ -492,7 +497,9 @@ class AudioInput:
         )
 
     def _update(self) -> None:
-        """Start or stop the producer to match the need (under the lock)."""
+        """Start or stop the producer to match the need (under the lock), which it reads as one
+        snapshot."""
+        self._need = (self._conn, frozenset(self._formats), self._energy)
         running = self._producer is not None
         if self._needed() and not running:
             self._halt = threading.Event()
@@ -528,15 +535,12 @@ class AudioInput:
                 k += int((now - due) / BLOCK_S)
                 continue
             k += 1
-            with self._lock:
-                conn, formats, want_energy = (
-                    self._conn,
-                    set(self._formats),
-                    self._energy,
-                )
+            conn, formats, want_energy = self._need  # one reference: no lock needed
             if conn is None:
                 continue
             block = self.source.read(block_start, BLOCK)
+            if halt.is_set():  # halted during the read: the block is dropped, not sent
+                return
             for fmt in formats - streams.keys():
                 streams[fmt] = _Stream(fmt)
             for fmt in streams.keys() - formats:
