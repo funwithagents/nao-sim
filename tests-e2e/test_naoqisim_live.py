@@ -92,7 +92,6 @@ def test_naoqi_sim_run_end_to_end(nao, tmp_path):
             run.kill()
             run.wait()
             subprocess.run([*NAOQI_SIM, "cleanup"], capture_output=True, check=False)
-        nao.start()
 
 
 def _display() -> bool:
@@ -118,4 +117,3 @@ def test_the_sim_window(nao):
         assert nao.runner.run(window.status()).ready
     finally:
         nao.runner.run(window.stop())
-        nao.start()

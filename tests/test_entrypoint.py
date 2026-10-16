@@ -6,7 +6,8 @@ but `NaoqiSim.setReady`: it writes the copy, starts `naoqi-bin`, waits for a set
 and checks names. The fakes sit first on PATH. `qicli` logs every invocation, lists
 `FAKE_QICLI_SERVICES` (minus the names that are "down", plus names that appear late) on `info`
 without a name, answers `info NAME` with failure while NAME is down (a module that did not load),
-and serves `NaoqiSim.setReady` and `NaoqiSim.isReady` in either suite's output style.
+hangs on the `info` calls `FAKE_QICLI_HANG` numbers (`first-last`), and serves
+`NaoqiSim.setReady` and `NaoqiSim.isReady` in either suite's output style.
 `naoqi-bin` records its arguments and the environment the loader reads.
 """
 
@@ -39,6 +40,10 @@ FAKE_QICLI = textwrap.dedent(
     if args[0] == "info":
         n = int(open(counter).read()) + 1 if os.path.exists(counter) else 1
         open(counter, "w").write(str(n))
+        first, _, last = os.environ.get("FAKE_QICLI_HANG", "0-0").partition("-")
+        if int(first) <= n <= int(last):  # these polls never answer
+            import time
+            time.sleep(60)
         if n <= int(os.environ.get("FAKE_QICLI_READY_AFTER", "0")):
             sys.exit(1)
         if args[1] == "--qi-url":  # no name: list the services, as `NNN [Name]` lines
@@ -310,6 +315,38 @@ def test_gives_up_when_a_required_service_never_appears(fakes, version, missing)
     assert "not ready after 3 polls" in ep.output()
     assert missing in ep.output()
     assert calls_only(fakes) == []
+
+
+@pytest.mark.parametrize("version", ["2.1", "2.8"])
+def test_fails_fast_when_naoqi_stops_answering(fakes, version):
+    """Every poll hangs: the boot fails after three timed-out polls, in about a second here,
+    not after the 120 polls (minutes) that only end when Docker calls the container unhealthy."""
+    started = time.time()
+    ep = Entrypoint(
+        fakes, version, {"FAKE_QICLI_HANG": "1-999", "NAOQI_SIM_QICLI_TIMEOUT": "0.3"}
+    )
+    assert ep.wait_exit() == 1
+    assert time.time() - started < 5
+    out = ep.output()
+    assert out.count("qicli info did not answer in 0.3s") == 3
+    assert "NAOqi stopped answering: qicli info timed out 3 times in a row" in out
+    assert "naoqi-sim ready" not in out
+
+
+def test_a_poll_that_hangs_once_does_not_fail_the_boot(fakes):
+    ep = Entrypoint(
+        fakes, "2.8", {"FAKE_QICLI_HANG": "2-2", "NAOQI_SIM_QICLI_TIMEOUT": "0.3"}
+    )
+    ep.wait_for_ready()
+    ep.stop()
+    assert "qicli info did not answer in 0.3s (1 in a row)" in ep.output()
+
+
+def test_says_what_it_is_still_waiting_for(fakes):
+    fakes.down("ALDialog")
+    ep = Entrypoint(fakes, "2.8", {"NAOQI_SIM_READY_TRIES": "12"})
+    assert ep.wait_exit() == 1
+    assert "[entrypoint] still waiting for: ALDialog (poll 10)" in ep.output()
 
 
 @pytest.mark.parametrize("version", ["2.1", "2.8"])

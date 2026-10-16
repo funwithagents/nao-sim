@@ -8,8 +8,16 @@
 # The tests run the simulated NAO the way any caller does, with a `NaoqiSim`: each test runs
 # once per NAOqi version, and pytest stops one version's NaoqiSim before it starts the next
 # (both publish 9559). Its audio goes to a MemorySink, so a test asserts on what was played.
+#
+# The robot is the fixtures' job: before each test that needs it, `_the_robot_runs` starts it if it
+# is not running (the first time, or after a test that stopped it for its own needs), so no test
+# restores it. `test_the_robot_boots` runs first for each version. A boot that fails is retried
+# once; one that fails again fails that test (or the next one that needs the robot, for a robot
+# brought back between tests), with the boot's own error, and every later test of that version
+# skips, so a failed boot shows as one failure with its cause.
 import asyncio
 import json
+import sys
 import time
 import uuid
 from collections.abc import Iterator
@@ -39,6 +47,7 @@ from naoqi_sim.config import (
     VideoInputSettings,
     ViewerSettings,
 )
+from naoqi_sim.errors import BootError
 
 SCENE = Path(__file__).resolve().parent / "scenes" / "camera-target.xml"
 
@@ -100,10 +109,36 @@ class Nao:
         self.sim = NaoqiSim(live_config(version.name), sink=self.sink)
         self.container = Container(version)
         self._session: qi.Session | None = None
+        # Why the robot is down, once a boot failed twice; whether a test has failed with it yet.
+        self.boot_error: str | None = None
+        self.boot_error_reported = False
+        self.last_test: str | None = None  # the last test that had the robot
+
+    @property
+    def running(self) -> bool:
+        return self._session is not None
 
     def start(self) -> None:
-        self.runner.run(self.sim.start())
-        self._session = connect(self.sim.url)
+        """Starts the robot, retrying once a boot that fails. A boot that fails again is
+        remembered (`boot_error`) and raised, so the test that (re)started it fails with it."""
+        error: BootError | None = None
+        for attempt in (1, 2):
+            try:
+                self.runner.run(self.sim.start())
+            except BootError as e:
+                error = e
+                print(
+                    f"\nNAOqi {self.version.name} did not boot (attempt {attempt} of 2): {e}",
+                    file=sys.__stderr__,
+                )
+                continue  # a failed start has already torn itself down
+            self._session = connect(self.sim.url)
+            self.boot_error = None
+            return
+        assert error is not None
+        self.boot_error = f"NAOqi {self.version.name} did not boot, twice: {error}"
+        self.boot_error_reported = True
+        raise error
 
     def stop(self) -> None:
         if self._session is not None:
@@ -176,9 +211,56 @@ def nao(request) -> Iterator[Nao]:
     ensure_images(version)
     require_free_ports()
     with asyncio.Runner() as runner:
-        nao = Nao(version, runner)
+        nao = Nao(
+            version, runner
+        )  # started by `_the_robot_runs`, before the first test
         try:
-            nao.start()
             yield nao
         finally:
             nao.stop()
+
+
+@pytest.fixture(autouse=True)
+def _the_robot_runs(request):
+    """Before a test that needs the robot: starts it if it is not running. A robot that did not
+    boot fails the first test that needs it, with the boot's error, and skips the others."""
+    if "nao" not in request.fixturenames:
+        yield
+        return
+    nao = request.getfixturevalue("nao")
+    if nao.boot_error is None and not nao.running:
+        try:
+            nao.start()
+        except BootError:
+            nao.boot_error_reported = False  # this test reports it
+            if nao.last_test is not None:
+                nao.boot_error = (
+                    f"{nao.boot_error} (bringing the robot back after {nao.last_test})"
+                )
+    if nao.boot_error is not None:
+        if not nao.boot_error_reported:
+            nao.boot_error_reported = True
+            pytest.fail(nao.boot_error, pytrace=False)
+        pytest.skip(
+            f"NAOqi {nao.version.name} did not boot (the failure is reported once, above)"
+        )
+    yield
+    nao.last_test = request.node.name
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """`test_the_robot_boots` first for each version: after pytest has grouped the tests by
+    version (the session-scoped `nao` parameter), each version's boot test moves to the head of
+    its group, so a robot that does not boot fails that test."""
+
+    def version(item: pytest.Item) -> str | None:
+        callspec = getattr(item, "callspec", None)
+        return callspec.params.get("nao") if callspec else None
+
+    for boot in [i for i in items if i.name.startswith("test_the_robot_boots[")]:
+        items.remove(boot)
+        first = next(
+            (n for n, i in enumerate(items) if version(i) == version(boot)), len(items)
+        )
+        items.insert(first, boot)

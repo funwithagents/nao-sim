@@ -182,8 +182,9 @@ def mic_robot(nao):
     finally:
         if session is not None:
             session.close()
-        nao.runner.run(sim.stop())
-        nao.start()
+        nao.runner.run(
+            sim.stop()
+        )  # the session's robot comes back before the next test
 
 
 def test_the_microphone_hears_the_room_and_the_robot(mic_robot):

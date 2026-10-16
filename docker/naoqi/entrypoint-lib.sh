@@ -5,13 +5,17 @@
 #
 # Any failure exits non-zero after terminating naoqi-bin, so a failed boot shows as an exited
 # container, never as a half-robot. Tunables (images never change them; the host-side tests do):
-# NAOQI_SIM_READY_TRIES, NAOQI_SIM_SETTLE_POLLS, NAOQI_SIM_POLL_INTERVAL, NAOQI_HOME.
+# NAOQI_SIM_READY_TRIES, NAOQI_SIM_SETTLE_POLLS, NAOQI_SIM_POLL_INTERVAL, NAOQI_SIM_QICLI_TIMEOUT,
+# NAOQI_SIM_QICLI_HANGS, NAOQI_HOME.
 set -u
 NAOQI_HOME=${NAOQI_HOME:-/opt/naoqi}
 cd "$NAOQI_HOME"
 INTERVAL=${NAOQI_SIM_POLL_INTERVAL:-1}
 TRIES=${NAOQI_SIM_READY_TRIES:-120}
 SETTLE=${NAOQI_SIM_SETTLE_POLLS:-3}
+QICLI_TIMEOUT=${NAOQI_SIM_QICLI_TIMEOUT:-5}  # seconds a qicli call may take
+HANGS=${NAOQI_SIM_QICLI_HANGS:-3}            # consecutive unanswered polls that fail the boot
+PROGRESS=10                                  # polls between two "still waiting" lines
 NAOQI_PID=
 URL=
 
@@ -23,8 +27,24 @@ fail() {
   exit 1
 }
 
+# qi <qicli arguments...>: qicli, killed after QICLI_TIMEOUT seconds (exit status 124). A NAOqi
+# that stopped answering, or a call that hangs, would otherwise freeze the boot without a word,
+# and the container would only turn unhealthy minutes later. Plain bash: the host-side tests run
+# this on macOS, which has no `timeout`.
+qi() {
+  local pid watcher status
+  qicli "$@" &
+  pid=$!
+  ( sleep "$QICLI_TIMEOUT"; kill -KILL "$pid" 2>/dev/null ) >/dev/null 2>&1 &
+  watcher=$!
+  wait "$pid"
+  status=$?
+  if kill "$watcher" 2>/dev/null; then wait "$watcher" 2>/dev/null; else status=124; fi
+  return "$status"
+}
+
 # call <Service.method> [args...]: a qicli call to NAOqi from inside the container.
-call() { qicli call "$@" --qi-url "$URL"; }
+call() { qi call "$@" --qi-url "$URL"; }
 
 # write_autoload <left out entries> [<anchor>:<entry>,<entry>...]...: AUTOLOAD, a copy of the suite's
 # autoload.ini with the left out entries commented out (`#replaced <entry>`) and each anchor's
@@ -61,13 +81,26 @@ start_naoqi() {
 # for SETTLE polls: NAOqi finished booting (on 2.8 the package services keep registering for a few
 # seconds after naoqi-service's last autoload entry).
 wait_for_naoqi() {
-  local services previous= stable=0 present i
+  local services previous= stable=0 present i listing missing hung=0
   for i in $(seq 1 "$TRIES"); do
-    services=$(qicli info --qi-url "$URL" 2>/dev/null | sed -n 's/^[0-9]* \[\(.*\)\]$/\1/p')
+    listing=$(qi info --qi-url "$URL" 2>/dev/null)
+    if [ $? -eq 124 ]; then  # a hang; a refused connection (NAOqi not listening yet) is not one
+      hung=$((hung + 1))
+      log "qicli info did not answer in ${QICLI_TIMEOUT}s ($hung in a row)"
+      [ "$hung" -lt "$HANGS" ] || fail "NAOqi stopped answering: qicli info timed out $HANGS times in a row"
+    else
+      hung=0
+    fi
+    services=$(printf '%s\n' "$listing" | sed -n 's/^[0-9]* \[\(.*\)\]$/\1/p')
     present=1
+    missing=
     for s in "$@"; do
-      printf '%s\n' "$services" | grep -qx "$s" || present=
+      printf '%s\n' "$services" | grep -qx "$s" || { present=; missing="$missing $s"; }
     done
+    if [ $((i % PROGRESS)) -eq 0 ]; then
+      if [ -n "$present" ]; then log "still waiting: the service list is still changing (poll $i)"
+      else log "still waiting for:$missing (poll $i)"; fi
+    fi
     if [ -n "$present" ]; then
       if [ "$services" = "$previous" ]; then stable=$((stable + 1)); else stable=0; fi
       if [ "$stable" -ge "$SETTLE" ]; then
@@ -94,7 +127,7 @@ check_answer() {
   for m in "$@"; do
     answered=
     for i in $(seq 1 10); do
-      if qicli info "$m" --qi-url "$URL" >/dev/null 2>&1; then answered=1; break; fi
+      if qi info "$m" --qi-url "$URL" >/dev/null 2>&1; then answered=1; break; fi
       sleep "$INTERVAL"
     done
     [ -n "$answered" ] || fail "$what service $m does not answer once NAOqi booted"
